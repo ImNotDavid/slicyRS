@@ -1,0 +1,16 @@
+# Rehearsal overlay: runs the whole production stack on one PC with HTTPS from Caddy's internal certificate authority
+# and a mail catcher (Mailpit) instead of a real mail provider, on unprivileged ports.
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.rehearsal.yml --env-file deploy/rehearsal.env up -d --build
+# Sign-in codes appear in Mailpit: http://localhost:8025
+services:
+  app:
+    env_file: !override [deploy/rehearsal.env]
+    depends_on: [mailpit]
+  caddy:
+    ports: !override ["8443:8443"]
+  mailpit:
+    image: axllent/mailpit
+    ports: ["127.0.0.1:8025:8025"]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"

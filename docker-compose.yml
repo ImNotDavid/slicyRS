@@ -1,0 +1,32 @@
+# Production stack for a Linux host on the printers' network: the app (slicer included) behind Caddy, which does HTTPS.
+# Setup: ./deploy/install.sh   (or copy deploy/.env.example to .env, fill it in, then: docker compose up -d --build)
+# Guide: deploy/DEPLOY.md
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      SLICY_DATA_DIR: /data
+    volumes: ["slicyrs-data:/data"]
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+    # no published port: only Caddy reaches the app
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (a domain name, or an internal name or IP)}
+    volumes:
+      - ./deploy/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app: { condition: service_healthy }
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
+volumes:
+  slicyrs-data:
+  caddy-data:
+  caddy-config:

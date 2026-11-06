@@ -1,0 +1,11 @@
+# Public or campus DNS name (for example slicer.example.ac.uk): Caddy gets and renews a certificate automatically.
+# Ports 80 and 443 must be reachable from the internet for the certificate check, unless your DNS provider
+# is set up for the DNS challenge (see deploy/DEPLOY.md).
+{$SITE_ADDRESS} {
+	request_body {
+		max_size 210MB
+	}
+	encode zstd gzip
+	header -Server
+	reverse_proxy app:8000
+}

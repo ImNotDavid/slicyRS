@@ -1,0 +1,175 @@
+"""Run a slice job: real OrcaSlicer CLI, or a perimeter-only mock for dev."""
+import json
+import math
+import re
+import shlex
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from . import profiles
+from .catalog import FILAMENTS, PRINTER_MODELS
+from .config import ORCA_BIN, SLICE_TIMEOUT_S, SLICER_MODE
+from .meshio import load_mesh
+
+_DENSITY_G_CM3 = {"PLA": 1.24, "PETG": 1.27, "ABS": 1.04, "ASA": 1.07, "TPU": 1.21, "PC": 1.2,
+                  "PA": 1.14, "PLA-CF": 1.3, "PA-CF": 1.2}
+
+
+class SliceError(RuntimeError):
+    pass
+
+
+def _orca_value(key: str, value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if key == "sparse_infill_density":
+        return f"{value}%"
+    return str(value)
+
+
+def run(workdir: Path, model_path: Path, printer_model: str, preset: str, filament: str,
+        overrides: dict[str, Any]) -> dict[str, Any]:
+    workdir.mkdir(parents=True, exist_ok=True)
+    if SLICER_MODE == "orca":
+        return _run_orca(workdir, model_path, printer_model, preset, filament, overrides)
+    return _run_mock(workdir, model_path, printer_model, filament, overrides)
+
+
+# ---------------------------------------------------------------- OrcaSlicer
+
+def _run_orca(workdir: Path, model_path: Path, printer_model: str, preset: str, filament: str,
+              overrides: dict[str, Any]) -> dict[str, Any]:
+    pm = PRINTER_MODELS[printer_model]
+    machine = profiles.find(pm["machine"])
+    process = profiles.process_name(preset, pm["process_suffix"])
+    fil = profiles.filament_name(FILAMENTS[filament]["orca"], pm["process_suffix"])
+    if not (machine and process and fil):
+        raise SliceError(f"Missing OrcaSlicer presets (machine={machine}, process={process}, filament={fil})")
+
+    process_json = profiles.resolve(process)
+    for k, v in overrides.items():
+        process_json[k] = _orca_value(k, v)
+    machine_json, fil_json = profiles.resolve(machine), profiles.resolve(fil)
+    # The CLI refuses presets whose compatibility list does not name the loaded printer.
+    machine_json["printer_settings_id"] = machine
+    process_json["print_settings_id"] = process
+    process_json["compatible_printers"] = [machine, "machine", "machine.json"]
+    fil_json["filament_settings_id"] = [fil]
+    fil_json["compatible_printers"] = [machine, "machine", "machine.json"]
+    machine_file, process_file, fil_file = (workdir / n for n in ("machine.json", "process.json", "filament.json"))
+    machine_file.write_text(json.dumps(machine_json))
+    process_file.write_text(json.dumps(process_json))
+    fil_file.write_text(json.dumps(fil_json))
+
+    out = workdir / "out"
+    out.mkdir(exist_ok=True)
+    cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "1",
+           "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
+           "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", str(model_path.resolve())]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SLICE_TIMEOUT_S, cwd=workdir)
+    (workdir / "slicer.log").write_text(proc.stdout + "\n" + proc.stderr)
+    gcode = next(iter(sorted(out.glob("*.gcode"))), None)
+    if proc.returncode != 0 or gcode is None:
+        raise SliceError(_failure_reason(proc, out))
+    final = workdir / "model.gcode"
+    gcode.replace(final)
+    bundle = out / "sliced.gcode.3mf"
+    if bundle.exists():
+        bundle.replace(workdir / "model.gcode.3mf")
+    return {"gcode": final.name, "bundle": "model.gcode.3mf" if (workdir / "model.gcode.3mf").exists() else None,
+            **parse_stats(final)}
+
+
+def _orca_cmd() -> list[str]:
+    # ORCA_BIN may be a plain path (Windows paths contain spaces/backslashes) or a wrapper like "xvfb-run -a orca"
+    return [ORCA_BIN] if Path(ORCA_BIN).exists() else shlex.split(ORCA_BIN)
+
+
+def _failure_reason(proc: subprocess.CompletedProcess, out: Path) -> str:
+    """Prefer the engine's own explanation (result.json) over raw log lines."""
+    try:
+        reason = json.loads((out / "result.json").read_text(encoding="utf-8")).get("error_string")
+        if reason:
+            return f"Slicer error: {reason}"
+    except (OSError, ValueError):
+        pass
+    tail = (proc.stderr or proc.stdout).strip().splitlines()[-5:]
+    return "Slicer failed: " + " | ".join(tail)
+
+
+def _dur_to_s(text: str) -> int:
+    total = 0
+    for n, unit in re.findall(r"(\d+)\s*([dhms])", text):
+        total += int(n) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[unit]
+    return total
+
+
+def parse_stats(gcode: Path) -> dict[str, Any]:
+    """Pull time / filament / layer count from the OrcaSlicer header+footer comments."""
+    size = gcode.stat().st_size
+    with open(gcode, "rb") as fh:
+        head = fh.read(200_000).decode("utf-8", "ignore")
+        fh.seek(max(0, size - 200_000))
+        tail = fh.read().decode("utf-8", "ignore")
+    text = head + "\n" + tail
+    stats: dict[str, Any] = {}
+    if m := re.search(r"total estimated time:\s*([^;\n]+)", text):
+        stats["time_s"] = _dur_to_s(m.group(1))
+    elif m := re.search(r"estimated printing time[^=]*=\s*([^\n]+)", text):
+        stats["time_s"] = _dur_to_s(m.group(1))
+    if m := re.search(r"total filament weight \[g\]\s*:\s*([\d.]+)", text) or \
+            re.search(r"filament used \[g\]\s*=\s*([\d.]+)", text):
+        stats["filament_g"] = float(m.group(1))
+    if m := re.search(r"total layer number:\s*(\d+)", text):
+        stats["layers"] = int(m.group(1))
+    return stats
+
+
+# ---------------------------------------------------------------------- mock
+
+def _run_mock(workdir: Path, model_path: Path, printer_model: str, filament: str,
+              overrides: dict[str, Any]) -> dict[str, Any]:
+    """Perimeter-only slicer: good enough to drive and demo the G-code viewer."""
+    lh = float(overrides.get("layer_height", 0.2))
+    width = float(overrides.get("line_width", 0.42))
+    speed = float(overrides.get("outer_wall_speed", 200))
+    mesh = load_mesh(model_path)
+    mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2,
+                            -(mesh.bounds[0][1] + mesh.bounds[1][1]) / 2, -mesh.bounds[0][2]])
+    bed = PRINTER_MODELS[printer_model]["bed"]
+    cx, cy = bed[0] / 2, bed[1] / 2
+    height = float(mesh.bounds[1][2])
+    n_layers = max(1, int(math.ceil(height / lh)))
+    zs = np.minimum((np.arange(n_layers) + 1) * lh, height) - lh / 2 + 1e-6
+    sections = mesh.section_multiplane([0, 0, 0], [0, 0, 1], zs - 0.0)
+
+    lines = ["; generated by slicyRS mock slicer (perimeters only)", "G90", "M83", "G28"]
+    e_per_mm = width * lh / (math.pi * (1.75 / 2) ** 2)
+    length = 0.0
+    for i, sec in enumerate(sections):
+        z = round(min((i + 1) * lh, height), 3)
+        lines += [f"; LAYER_CHANGE", f";Z:{z}", f"G1 Z{z} F1200"]
+        if sec is None:
+            continue
+        for poly in sec.discrete:
+            pts = np.asarray(poly)[:, :2]
+            if len(pts) < 2:
+                continue
+            lines.append(f"G1 X{pts[0][0] + cx:.3f} Y{pts[0][1] + cy:.3f} F{int(speed * 60)}")
+            for a, b in zip(pts[:-1], pts[1:]):
+                d = float(np.hypot(*(b - a)))
+                if d < 1e-3:  # degenerate edge (e.g. sphere poles): would round to E0
+                    continue
+                length += d
+                lines.append(f"G1 X{b[0] + cx:.3f} Y{b[1] + cy:.3f} E{d * e_per_mm:.5f}")
+    lines.append("M104 S0\nM140 S0")
+    gcode = workdir / "model.gcode"
+    gcode.write_text("\n".join(lines))
+    vol_mm3 = length * width * lh
+    grams = vol_mm3 / 1000 * _DENSITY_G_CM3.get(filament, 1.24)
+    return {"gcode": gcode.name, "bundle": None, "layers": n_layers,
+            "time_s": int(length / max(speed, 1) + n_layers * 4), "filament_g": round(grams, 1),
+            "mock": True}

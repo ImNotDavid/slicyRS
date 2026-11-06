@@ -1,0 +1,3 @@
+-r requirements.txt
+cadquery==2.7.0  # only to regenerate STEP fixtures
+dnspython==2.8.0

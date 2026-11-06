@@ -1,0 +1,12 @@
+# Internal use: no public DNS name needed. SITE_ADDRESS can be a LAN host name or an IP address (for example 192.168.1.50).
+# Caddy issues the certificate from its own local certificate authority, so each user's device must trust that
+# authority once (see deploy/DEPLOY.md, "Trusting the internal certificate"), otherwise browsers show a warning.
+{$SITE_ADDRESS} {
+	tls internal
+	request_body {
+		max_size 210MB
+	}
+	encode zstd gzip
+	header -Server
+	reverse_proxy app:8000
+}

@@ -1,0 +1,86 @@
+solid t
+facet normal -1.0 0.0 0.0
+ outer loop
+  vertex -20.0 -15.0 10.0
+  vertex -20.0 15.0 10.0
+  vertex -20.0 -15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 -1.0 0.0
+ outer loop
+  vertex 20.0 -15.0 -10.0
+  vertex -20.0 -15.0 10.0
+  vertex -20.0 -15.0 -10.0
+ endloop
+endfacet
+facet normal -1.0 0.0 0.0
+ outer loop
+  vertex -20.0 -15.0 -10.0
+  vertex -20.0 15.0 10.0
+  vertex -20.0 15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 0.0 -1.0
+ outer loop
+  vertex -20.0 15.0 -10.0
+  vertex 20.0 -15.0 -10.0
+  vertex -20.0 -15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 0.0 1.0
+ outer loop
+  vertex -20.0 -15.0 10.0
+  vertex 20.0 15.0 10.0
+  vertex -20.0 15.0 10.0
+ endloop
+endfacet
+facet normal 0.0 -1.0 0.0
+ outer loop
+  vertex 20.0 -15.0 10.0
+  vertex -20.0 -15.0 10.0
+  vertex 20.0 -15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 0.0 1.0
+ outer loop
+  vertex 20.0 -15.0 10.0
+  vertex 20.0 15.0 10.0
+  vertex -20.0 -15.0 10.0
+ endloop
+endfacet
+facet normal 0.0 1.0 0.0
+ outer loop
+  vertex -20.0 15.0 10.0
+  vertex 20.0 15.0 10.0
+  vertex -20.0 15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 0.0 -1.0
+ outer loop
+  vertex 20.0 15.0 -10.0
+  vertex 20.0 -15.0 -10.0
+  vertex -20.0 15.0 -10.0
+ endloop
+endfacet
+facet normal 0.0 1.0 0.0
+ outer loop
+  vertex -20.0 15.0 -10.0
+  vertex 20.0 15.0 10.0
+  vertex 20.0 15.0 -10.0
+ endloop
+endfacet
+facet normal 1.0 0.0 0.0
+ outer loop
+  vertex 20.0 15.0 -10.0
+  vertex 20.0 -15.0 10.0
+  vertex 20.0 -15.0 -10.0
+ endloop
+endfacet
+facet normal 1.0 0.0 0.0
+ outer loop
+  vertex 20.0 15.0 10.0
+  vertex 20.0 -15.0 10.0
+  vertex 20.0 15.0 -10.0
+ endloop
+endfacet
+endsolid t

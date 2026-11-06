@@ -1,0 +1,34 @@
+/* Design tokens extracted from the brand file ("[shh] ICRS stuuff.fig", node 2712:65):
+   blue #001eff, sky #0084ff, yellow #f2ff00, green #00b523, greys #f5f5f5/#d9d9d9/#666666,
+   Geist Mono for UI text. The display face (London Underground) is a licensed font and is
+   not bundled; add it to --font-display if you have the files. */
+:root {
+  color-scheme: light dark;
+  --brand-primary: #001eff;
+  --brand-primary-contrast: #ffffff;
+  --brand-accent: #00b523;
+  --brand-sky: #0084ff;
+  --brand-yellow: #f2ff00;
+  --brand-dark: #000000;
+  --surface: #ffffff;
+  --surface-2: #f5f5f5;
+  --border: #d9d9d9;
+  --text: #000000;
+  --text-muted: #666666;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --viewport-bg: #eceef1;
+  --bed: #15171a;
+  --radius: 6px;
+  --font: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-display: var(--font);
+  --rail-w: 76px;
+  --panel-w: 425px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #1b1e23; --surface-2: #23272e; --border: #343a43; --text: #eceff3;
+    --text-muted: #98a1ad; --viewport-bg: #12151a; --bed: #0a0b0d;
+  }
+}

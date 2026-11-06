@@ -1,0 +1,170 @@
+{
+  "cube_ascii.stl": {
+    "dims": [
+      40.0,
+      30.0,
+      20.0
+    ],
+    "note": "ASCII STL"
+  },
+  "cube_binary.stl": {
+    "dims": [
+      40.0,
+      30.0,
+      20.0
+    ],
+    "note": "binary STL"
+  },
+  "sphere.stl": {
+    "dims": [
+      30.0,
+      30.0,
+      30.0
+    ],
+    "note": ""
+  },
+  "tube.stl": {
+    "dims": [
+      20.0,
+      20.0,
+      90.0
+    ],
+    "note": "hollow"
+  },
+  "plate_250.stl": {
+    "dims": [
+      250.0,
+      250.0,
+      5.0
+    ],
+    "note": "fits 256 beds only"
+  },
+  "plate_300.stl": {
+    "dims": [
+      300.0,
+      300.0,
+      10.0
+    ],
+    "note": "H2D only"
+  },
+  "tall_300.stl": {
+    "dims": [
+      20.0,
+      20.0,
+      300.0
+    ],
+    "note": "H2D only (Z)"
+  },
+  "huge_400.stl": {
+    "dims": [
+      400.0,
+      400.0,
+      400.0
+    ],
+    "note": "fits nothing"
+  },
+  "tiny_2mm.stl": {
+    "dims": [
+      2.0,
+      2.0,
+      2.0
+    ],
+    "note": ""
+  },
+  "thin_sheet.stl": {
+    "dims": [
+      80.0,
+      60.0,
+      0.4
+    ],
+    "note": "single-layer-ish"
+  },
+  "offset_negative.stl": {
+    "dims": [
+      25.0,
+      25.0,
+      25.0
+    ],
+    "note": "far from origin, negative z"
+  },
+  "torus.3mf": {
+    "dims": [
+      50.0,
+      50.0,
+      10.0
+    ],
+    "note": ""
+  },
+  "two_bodies.3mf": {
+    "dims": [
+      50.0,
+      20.0,
+      50.0
+    ],
+    "note": "two build items merged"
+  },
+  "components.3mf": {
+    "dims": [
+      130.0,
+      60.0,
+      5.0
+    ],
+    "note": "Bambu-style components + transforms"
+  },
+  "unit_inch.3mf": {
+    "dims": [
+      25.4,
+      25.4,
+      25.4
+    ],
+    "note": "1in cube, unit=inch"
+  },
+  "cylinder.obj": {
+    "dims": [
+      24.0,
+      24.0,
+      30.0
+    ],
+    "note": ""
+  },
+  "quad_cube.obj": {
+    "dims": [
+      20.0,
+      20.0,
+      20.0
+    ],
+    "note": "quad faces must be triangulated"
+  },
+  "box.step": {
+    "dims": [
+      30.0,
+      20.0,
+      10.0
+    ],
+    "note": ""
+  },
+  "bracket.step": {
+    "dims": [
+      60.0,
+      30.0,
+      35.0
+    ],
+    "note": "holes + extrusion"
+  },
+  "tube_hole.step": {
+    "dims": [
+      30.0,
+      30.0,
+      40.0
+    ],
+    "note": "cylinder with bore"
+  },
+  "sphere.stp": {
+    "dims": [
+      24.0,
+      24.0,
+      24.0
+    ],
+    "note": ".stp extension"
+  }
+}
