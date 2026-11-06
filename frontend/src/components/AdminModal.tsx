@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
-import { api, type AuditEntry, type Catalog, type Printer, type PrinterInput, type ProbeResult, type User } from "../api";
+import { api, type AuditEntry, type Catalog, type Printer, type PrinterInput, type ProbeResult, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose: () => void; onPrintersChanged: () => void };
-type Tab = "printers" | "users" | "audit";
+type Tab = "printers" | "users" | "storage" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -15,7 +15,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
         <header>
           <h3>Admin</h3>
           <div className="tabs inline">
-            {(["printers", "users", "audit"] as Tab[]).map((t) => (
+            {(["printers", "users", "storage", "audit"] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
             ))}
           </div>
@@ -24,6 +24,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
         <div className="modal-body">
           {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
           {tab === "users" && <UsersTab me={me} />}
+          {tab === "storage" && <StorageTab />}
           {tab === "audit" && <AuditTab />}
         </div>
       </div>
@@ -213,3 +214,59 @@ const textOn = (hex: string) => {
   const n = parseInt(hex.slice(1, 7), 16);
   return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.55 ? "#000" : "#fff";
 };
+
+// ------------------------------------------------------------------- storage
+
+const bytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} kB`);
+
+function StorageTab() {
+  const [info, setInfo] = useState<StorageInfo | null>(null);
+  const [form, setForm] = useState({ job_files_days: 30, failed_job_days: 7, model_files_days: 30 });
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const load = useCallback(() => api.storage().then((i) => { setInfo(i); setForm(i.settings); }), []);
+  useEffect(() => { load(); }, [load]);
+  if (!info) return <p className="muted">Loading…</p>;
+  const used = 100 - (info.disk.free_percent ?? 0);
+
+  const save = async () => { setErr(""); setMsg(""); try { await api.saveStorage(form); setMsg("Retention settings saved."); load(); } catch (e) { setErr((e as Error).message); } };
+  const clean = async (dry: boolean) => {
+    setErr(""); setMsg("");
+    try {
+      const r = await api.cleanup(dry);
+      setMsg(`${dry ? "Would delete" : "Deleted"} files of ${r.jobs_cleaned} job(s) and ${r.models_cleaned} model(s), ${bytes(r.bytes_freed)}.`);
+      if (!dry) load();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  const num = (k: keyof typeof form, label: string, hint: string) => (
+    <label className="plate-field">{label}
+      <input type="number" min={0} max={3650} value={form[k]} onChange={(e) => setForm({ ...form, [k]: Number(e.target.value) })} aria-label={label} />
+      <span className="muted">{hint}</span>
+    </label>
+  );
+
+  return (
+    <>
+      {info.disk.low && <p className="form-error" role="alert">Disk space is low ({bytes(info.disk.free)} free). Uploads are refused when it runs out. Lower the retention times or free space.</p>}
+      <div className="meter" role="img" aria-label={`Disk ${used.toFixed(0)} percent used`}><div style={{ width: `${used}%` }} className={info.disk.low ? "bad" : ""} /></div>
+      <p className="muted">Disk: {bytes(info.disk.used)} used of {bytes(info.disk.total)} ({bytes(info.disk.free)} free).
+        This service: job files {bytes(info.data.jobs)}, uploaded models {bytes(info.data.models)}, database {bytes(info.data.database)}.{" "}
+        {info.counts.jobs_with_files} of {info.counts.jobs} jobs still have files.</p>
+      <h4>Delete files after (days, 0 = keep forever)</h4>
+      <div className="form-grid">
+        {num("job_files_days", "Job files (G-code, print bundles)", "counted from creation or printing")}
+        {num("failed_job_days", "Failed jobs", "slicing failed")}
+        {num("model_files_days", "Uploaded models", "not used for this long")}
+      </div>
+      <p className="muted">Only files are deleted. Job history, users, printers and the audit log are kept, so statistics are not lost.
+        Cleanup runs every 6 hours{info.last_cleanup ? `; last run removed ${info.last_cleanup.jobs_cleaned} job(s) and ${info.last_cleanup.models_cleaned} model(s) (${bytes(info.last_cleanup.bytes_freed)})` : ""}.</p>
+      {msg && <p className="ok-note" role="status">{msg}</p>}
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <div className="row-actions">
+        <button className="btn primary" onClick={save}>Save settings</button>
+        <button className="btn" onClick={() => clean(true)}>Preview cleanup</button>
+        <button className="btn danger" onClick={() => confirm("Delete all expired files now? This cannot be undone.") && clean(false)}>Run cleanup now</button>
+      </div>
+    </>
+  );
+}

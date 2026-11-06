@@ -17,7 +17,7 @@ import paho.mqtt.client as mqtt
 import ipaddress
 import socket
 
-from . import store
+from . import outcomes, store
 from .catalog import AMS_TYPE_ALIASES, BED_TYPES, DEFAULT_BED_TYPE
 from .crypto import unseal
 
@@ -108,6 +108,10 @@ class PrinterLink:
             update["bed_c"] = report["bed_temper"]
         if "hms" in report:
             update["hms"] = report["hms"]
+        for src, dst in (("print_error", "print_error"), ("layer_num", "layer_num"),
+                         ("total_layer_num", "total_layer_num"), ("subtask_name", "subtask_name")):
+            if src in report:
+                update[dst] = report[src]
         ams_units = (report.get("ams") or {}).get("ams")
         if ams_units is not None:
             update["ams"] = _parse_ams(ams_units)
@@ -267,6 +271,7 @@ def _set_status(printer_id: str, update: dict[str, Any]) -> None:
     status.update(update)
     status["updated"] = time.time()
     store.printers.update(printer_id, status=status)
+    outcomes.on_status(printer_id, status)  # records the result of a print this app started, once the printer reports it
 
 
 def _fingerprint(p: dict[str, Any]) -> tuple:

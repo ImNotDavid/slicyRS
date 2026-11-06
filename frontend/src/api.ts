@@ -30,6 +30,14 @@ export type PrinterInput = {
 };
 export type User = { id: string; email: string; name: string; role: "admin" | "user"; active: boolean; invited_by: string | null; created: number; last_login: number | null };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
+export type StorageInfo = {
+  disk: { total: number; used: number; free: number; free_percent: number | null; low: boolean };
+  data: { jobs: number; models: number; database: number };
+  counts: { jobs: number; jobs_with_files: number; models: number };
+  settings: { job_files_days: number; failed_job_days: number; model_files_days: number };
+  last_cleanup: { at: number; jobs_cleaned: number; models_cleaned: number; bytes_freed: number } | null;
+};
+export type CleanupReport = { dry_run: boolean; jobs_cleaned: number; models_cleaned: number; bytes_freed: number };
 export type AuditEntry = { id: string; at: number; actor: string; action: string; detail: string };
 export type ProbeResult = { ok: boolean; error: string | null; state?: string; ams?: AmsSlot[] };
 export type Candidate = {
@@ -40,7 +48,9 @@ export type AssignResult = { dims: [number, number, number]; chosen: string | nu
 export type Job = {
   id: string; name: string; state: "slicing" | "done" | "failed"; error?: string;
   printer_id: string; printer_name: string; printer_model: string; filament: string; preset: string;
-  queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string;
+  queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
+  result?: { outcome: "finished" | "failed"; summary: string; layer: number | null; total_layers: number | null;
+             hms: { code: string; text: string }[]; duration_s: number | null } | null;
   stats?: { time_s?: number; filament_g?: number; layers?: number; mock?: boolean };
 };
 export type Transform = { rotation: [number, number, number]; scale: number };
@@ -68,11 +78,15 @@ export const api = {
   emailVerify: (email: string, code: string) => send("POST", "/auth/email/verify", { email, code }).then(j<User>),
   testEmail: () => send("POST", "/api/admin/email/test").then(j<{ ok: boolean; to: string }>),
   devLogin: (email: string) => send("POST", "/auth/dev-login", { email }).then(j<User>),
+  logoutAll: () => send("POST", "/auth/logout-all").then(j<{ ok: boolean; ended: number }>),
   logout: () => send("POST", "/auth/logout").then(j<{ ok: boolean }>),
   users: () => fetch("/api/admin/users").then(j<User[]>),
   invite: (u: { email: string; name: string; role: string }) => send("POST", "/api/admin/users", u).then(j<User>),
   patchUser: (id: string, p: { role?: string; active?: boolean }) => send("PATCH", `/api/admin/users/${id}`, p).then(j<User>),
   deleteUser: (id: string) => send("DELETE", `/api/admin/users/${id}`).then(j<{ ok: boolean }>),
+  storage: () => fetch("/api/admin/storage").then(j<StorageInfo>),
+  saveStorage: (s: Partial<StorageInfo["settings"]>) => send("PUT", "/api/admin/storage/settings", s).then(j<StorageInfo["settings"]>),
+  cleanup: (dry: boolean) => send("POST", `/api/admin/storage/cleanup?dry_run=${dry}`).then(j<CleanupReport>),
   audit: () => fetch("/api/admin/audit?limit=100").then(j<AuditEntry[]>),
   testPrinter: (p: { host: string; port: number; serial: string; access_code?: string; printer_id?: string }) =>
     send("POST", "/api/admin/printers/test", p).then(j<ProbeResult>),

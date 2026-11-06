@@ -134,5 +134,5 @@ slicing, restart with all data intact); see `ROADMAP.md`.
   A manual stop-gap while there is no automation:
   `docker run --rm -v slicyrs_slicyrs-data:/data -v "$PWD":/backup busybox tar czf /backup/slicyrs-data-$(date +%F).tgz -C /data .`
   Copy the file off the machine, and keep a copy of `.env`.
-- **Disk clean-up.** Uploads and G-code are never deleted yet (roadmap 0.7); watch the disk (`docker system df`).
+- **Disk clean-up is automatic** (every 6 hours): job files are deleted after 30 days, failed jobs after 7, unused uploaded models after 30; history stays. Change the days or run it by hand in *Admin, Storage*, which also shows disk use and warns when it is low. Uploads are refused when under 1 GB is free.
 - **Untested on real hardware:** the install script has been syntax-checked but not run on a fresh Ubuntu machine, and the printers have not yet been reached from the container.

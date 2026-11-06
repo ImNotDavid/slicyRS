@@ -16,7 +16,7 @@ from conftest import ADMIN
 
 @pytest.fixture(autouse=True)
 def clean():
-    auth._hits.clear()
+    store.rate_reset()
     mailer.outbox.clear()
     yield
 

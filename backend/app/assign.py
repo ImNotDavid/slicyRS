@@ -7,7 +7,8 @@ the filament already loaded win, and small parts don't hog large printers.
 from dataclasses import dataclass, field
 from typing import Any
 
-from .catalog import FILAMENTS, PRINTER_MODELS
+from . import plate_compat
+from .catalog import DEFAULT_BED_TYPE, FILAMENTS, PRINTER_MODELS
 
 BED_MARGIN_MM = 3.0
 BUSY_STATES = {"RUNNING", "PREPARE", "PAUSE", "SLICING"}
@@ -62,6 +63,11 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     if fil.get("hardened") and not printer.get("hardened_nozzle"):
         c.eligible = False
         c.blockers.append(f"{filament} needs a hardened nozzle")
+    plate = printer.get("bed_type") or DEFAULT_BED_TYPE
+    why_not = plate_compat.explain(printer["model"], filament, plate)
+    if why_not:
+        c.eligible = False
+        c.blockers.append(why_not)
     if fil["nozzle"] > model["max_nozzle_c"]:
         c.eligible = False
         c.blockers.append(f"Nozzle max {model['max_nozzle_c']}°C is below {fil['nozzle']}°C")

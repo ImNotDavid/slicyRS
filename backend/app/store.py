@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import threading
+import time
 from typing import Any
 
 from .config import DATA_DIR
@@ -13,6 +14,29 @@ _conn.execute("PRAGMA journal_mode=WAL")
 _conn.execute("PRAGMA busy_timeout=5000")
 _conn.execute("CREATE TABLE IF NOT EXISTS docs (collection TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, "
               "PRIMARY KEY (collection, key))")
+_conn.execute("CREATE TABLE IF NOT EXISTS ratelimit (key TEXT NOT NULL, ts REAL NOT NULL)")
+_conn.execute("CREATE INDEX IF NOT EXISTS ratelimit_key ON ratelimit (key, ts)")
+_rate_calls = 0
+
+
+def rate_hit(key: str, limit: int, window_s: int) -> bool:
+    """Sliding-window limiter kept in the database, so limits survive restarts. True if the hit is allowed (and counted)."""
+    global _rate_calls
+    now = time.time()
+    with _lock:
+        _conn.execute("DELETE FROM ratelimit WHERE key=? AND ts<?", (key, now - window_s))
+        if _conn.execute("SELECT COUNT(*) FROM ratelimit WHERE key=?", (key,)).fetchone()[0] >= limit:
+            return False
+        _conn.execute("INSERT INTO ratelimit(key, ts) VALUES(?, ?)", (key, now))
+        _rate_calls += 1
+        if _rate_calls % 200 == 0:  # housekeeping: nothing is ever needed beyond a day
+            _conn.execute("DELETE FROM ratelimit WHERE ts<?", (now - 86400,))
+    return True
+
+
+def rate_reset() -> None:
+    with _lock:
+        _conn.execute("DELETE FROM ratelimit")
 
 
 class Collection:
@@ -56,3 +80,5 @@ users = Collection("users")
 models = Collection("models")
 audit = Collection("audit")
 codes = Collection("login_codes")
+settings = Collection("settings")
+sessions = Collection("sessions")

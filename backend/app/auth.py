@@ -14,11 +14,11 @@ import uuid
 from collections import defaultdict, deque
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from . import mailer, store
+from . import mailer, sessions, store
 from .config import (ADMIN_EMAILS, ALLOWED_EMAIL_DOMAINS, APP_NAME, CODE_TTL_MIN, DEV_AUTH, EMAIL_LOGIN, OIDC_CLIENT_ID,
                      OIDC_CLIENT_SECRET, OIDC_ISSUER, OIDC_TENANT_ID, PUBLIC_URL, SECRET_KEY, SSO_ENABLED, SSO_NAME)
 
@@ -86,11 +86,13 @@ def resolve_login(candidates: list[str | None], sub: str | None, name: str) -> d
 # -------------------------------------------------------------- dependencies
 
 def current_user(request: Request) -> dict[str, Any]:
-    uid = request.session.get("uid")
-    user = store.users.get(uid) if uid else None
+    sess = sessions.current(request)
+    user = store.users.get(sess["user_id"]) if sess else None
     if not user or not user.get("active", True):
-        request.session.clear()
+        if sess:
+            store.sessions.delete(sess["key"])  # a session of a disabled or deleted user is dead for good
         raise HTTPException(401, "Not signed in")
+    request.state.session = sess
     return user
 
 
@@ -155,12 +157,12 @@ async def callback(request: Request):
         seen = ", ".join(f"{k}={claims[k]}" for k in ("email", "preferred_username", "upn") if claims.get(k))
         audit(None, "login_rejected", f"{seen or 'no name claims'}: {e.detail}")
         return RedirectResponse(f"/?login_error={e.detail}")
-    request.session.clear()
-    request.session["uid"] = user["id"]
     # record which identity claims arrived: invaluable when matching invites to a real tenant for the first time
     seen = ", ".join(f"{k}={claims[k]}" for k in ("email", "preferred_username", "upn") if claims.get(k))
     audit(user, "login", f"sso: {seen or 'no name claims'}")
-    return RedirectResponse("/")
+    redirect = RedirectResponse("/")
+    sessions.start(request, redirect, user)
+    return redirect
 
 
 class DevLogin(BaseModel):
@@ -168,19 +170,41 @@ class DevLogin(BaseModel):
 
 
 @router.post("/auth/dev-login")
-def dev_login(body: DevLogin, request: Request):
+def dev_login(body: DevLogin, request: Request, response: Response):
     if not DEV_AUTH:
         raise HTTPException(404, "Not found")
     user = resolve_login([body.email], None, "")
-    request.session.clear()
-    request.session["uid"] = user["id"]
+    sessions.start(request, response, user)
     audit(user, "login", "dev")
     return public_user(user)
 
 
 @router.post("/auth/logout")
-def logout(request: Request):
+def logout(request: Request, response: Response):
+    sessions.end(request, response)
     request.session.clear()
+    return {"ok": True}
+
+
+@router.post("/auth/logout-all")
+def logout_all(request: Request, response: Response, user: dict[str, Any] = Depends(current_user)):
+    """Sign out on every device, including this one."""
+    n = sessions.revoke_user(user["id"])
+    sessions.end(request, response)
+    audit(user, "logout_all", f"{n} session(s)")
+    return {"ok": True, "ended": n}
+
+
+@router.get("/api/me/sessions")
+def my_sessions(request: Request, user: dict[str, Any] = Depends(current_user)):
+    cur = request.state.session["key"]
+    return sorted((sessions.public(s, cur) for s in sessions.list_user(user["id"])), key=lambda s: -s["last_seen"])
+
+
+@router.delete("/api/me/sessions/{sid}")
+def end_session(sid: str, user: dict[str, Any] = Depends(current_user)):
+    if not sessions.revoke_id(user["id"], sid):
+        raise HTTPException(404, "Unknown session")
     return {"ok": True}
 
 
@@ -192,22 +216,13 @@ def me(user: dict[str, Any] = Depends(current_user)):
 # ------------------------------------------------- emailed one-time login codes
 
 MAX_CODE_ATTEMPTS = 5
-_hits: dict[str, deque] = defaultdict(deque)
-_hits_lock = threading.Lock()
 _code_lock = threading.Lock()
 
 
 def _rate_ok(key: str, limit: int, window_s: int = 900) -> bool:
-    """Sliding-window limiter (in memory: per process, resets on restart)."""
-    now = time.time()
-    with _hits_lock:
-        q = _hits[key]
-        while q and q[0] < now - window_s:
-            q.popleft()
-        if len(q) >= limit:
-            return False
-        q.append(now)
-        return True
+    """Sliding-window limiter stored in the database, so a restart does not give an attacker a fresh allowance."""
+    return store.rate_hit(key, limit, window_s)
+
 
 
 def _code_hash(email: str, code: str) -> str:
@@ -260,7 +275,7 @@ def email_request(body: EmailRequest, request: Request):
 
 
 @router.post("/auth/email/verify")
-def email_verify(body: EmailVerify, request: Request):
+def email_verify(body: EmailVerify, request: Request, response: Response):
     if not EMAIL_LOGIN:
         raise HTTPException(404, "Email sign-in is not enabled")
     invalid = HTTPException(401, "That code is wrong or has expired. Request a new one.")
@@ -286,7 +301,6 @@ def email_verify(body: EmailVerify, request: Request):
         user = resolve_login([email], None, "")
     except HTTPException:
         raise invalid                              # disabled/removed since the code was sent: same generic answer
-    request.session.clear()
-    request.session["uid"] = user["id"]
+    sessions.start(request, response, user)
     audit(user, "login", "email code")
     return public_user(user)

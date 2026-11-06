@@ -100,7 +100,7 @@ returned by the API. Hosts that are loopback or link-local (including cloud meta
 The server connects out to the printers, so it must reach them on the LAN, via a VPN such as Tailscale or WireGuard.
 Printers without a host stay "manual": an admin sets state and loaded filament by hand.
 
-**Security notes.** Session cookies are signed, HttpOnly, SameSite=Lax (and Secure over https); state-changing
+**Security notes.** Sessions are held on the server: the cookie is an opaque random token (HttpOnly, SameSite=Lax, Secure over https) whose hash is stored, with an 8-hour idle and 12-hour absolute limit; signing out, disabling or deleting a user, "sign out all devices" and an admin's "sign out" end sessions at once. Rate limits are stored in the database so restarts do not reset them. Dependencies are audited weekly in CI; state-changing
 requests whose `Origin` is another host are rejected; users only reach their own models and jobs (others get 404);
 every admin action and print is written to the audit log; a public (https) deployment refuses to start with
 `DEV_AUTH=1`, `EMAIL_CONSOLE=1`, a missing `SECRET_KEY`, or no working sign-in method (SSO or SMTP with `SMTP_FROM`).

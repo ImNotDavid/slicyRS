@@ -2,8 +2,25 @@ name: ci
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly: new advisories appear without any code change
 
 jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install pip-audit && pip-audit -r backend/requirements.txt --progress-spinner off
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci && npm audit --audit-level=high
+        working-directory: frontend
+
   backend:
     name: Backend tests (mock slicer)
     runs-on: ubuntu-22.04

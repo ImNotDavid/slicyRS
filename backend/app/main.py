@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assign, auth, crypto, meshio, slicer, store
+from . import assign, auth, crypto, meshio, retention, sessions, slicer, store
 from .auth import audit, current_user, is_admin, require_admin
 from .bambu import PrinterError, check_host, links, probe
 from .defaults import effective_overrides, ui_defaults
@@ -91,8 +91,11 @@ def _model_dir(model_id: str, user: dict[str, Any]) -> Path:
     """Models belong to their uploader; other users get the same 404 as a missing model."""
     rec = store.models.get(model_id)
     d = MODELS_DIR / model_id
+    if rec and rec.get("files_deleted_at") and (rec["owner_id"] == user["id"] or is_admin(user)):
+        raise HTTPException(410, "This model was removed after not being used for a while. Please upload it again.")
     if not rec or not d.is_dir() or (rec["owner_id"] != user["id"] and not is_admin(user)):
         raise HTTPException(404, "Unknown model")
+    retention.touch_model(model_id)
     return d
 
 
@@ -118,6 +121,8 @@ def _startup() -> None:
             store.printers.put(pid, {"id": pid, "name": name, "model": model, "demo": True,
                                      "status": {"state": state, "ams": ams}})
     links.sync()
+    sessions.purge_expired()
+    retention.start_background()
 
 
 # ------------------------------------------------------------------- catalog
@@ -150,6 +155,8 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in meshio.SUPPORTED:
         raise HTTPException(400, f"Unsupported file type {ext!r}; use STL, 3MF, OBJ or STEP")
+    if not retention.has_room_for_upload():
+        raise HTTPException(507, "The server is almost out of disk space. Please tell an administrator.")
     data = await file.read()
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"File larger than {MAX_UPLOAD_MB} MB")
@@ -344,6 +351,8 @@ def patch_user(user_id: str, body: UserPatch, admin: dict = Depends(require_admi
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     rec = store.users.update(user_id, **fields)
     audit(admin, "user_update", f"{target['email']}: {fields}")
+    if body.active is False:
+        sessions.revoke_user(user_id)  # disabling takes effect at once, not when the cookie expires (roles are read live anyway)
     return auth.public_user(rec)  # type: ignore[arg-type]
 
 
@@ -355,6 +364,7 @@ def delete_user(user_id: str, admin: dict = Depends(require_admin)):
     if target["role"] == "admin" and target.get("active", True) and _other_active_admins(user_id) == 0:
         raise HTTPException(409, "There must be at least one active admin")
     store.users.delete(user_id)
+    sessions.revoke_user(user_id)
     audit(admin, "user_delete", target["email"])
     return {"ok": True}
 
@@ -369,6 +379,42 @@ def email_test(admin: dict = Depends(require_admin)):
         raise HTTPException(502, f"Could not send: {type(e).__name__}: {e}")
     audit(admin, "email_test", admin["email"])
     return {"ok": True, "to": admin["email"]}
+
+
+@app.delete("/api/admin/users/{user_id}/sessions")
+def revoke_user_sessions(user_id: str, admin: dict = Depends(require_admin)):
+    target = store.users.get(user_id)
+    if not target:
+        raise HTTPException(404, "Unknown user")
+    n = sessions.revoke_user(user_id)
+    audit(admin, "sessions_revoked", f"{target['email']}: {n} session(s)")
+    return {"ok": True, "ended": n}
+
+
+@app.get("/api/admin/storage")
+def storage_usage(admin: dict = Depends(require_admin)):
+    return retention.usage()
+
+
+class RetentionIn(BaseModel):
+    job_files_days: int | None = Field(None, ge=0, le=3650)
+    failed_job_days: int | None = Field(None, ge=0, le=3650)
+    model_files_days: int | None = Field(None, ge=0, le=3650)
+
+
+@app.put("/api/admin/storage/settings")
+def storage_settings(body: RetentionIn, admin: dict = Depends(require_admin)):
+    new = retention.set_settings({k: v for k, v in body.model_dump().items() if v is not None})
+    audit(admin, "storage_settings", str(new))
+    return new
+
+
+@app.post("/api/admin/storage/cleanup")
+def storage_cleanup(dry_run: bool = False, admin: dict = Depends(require_admin)):
+    report = retention.run(dry_run=dry_run)
+    if not dry_run:
+        audit(admin, "storage_cleanup_manual", f"{report['jobs_cleaned']} jobs, {report['models_cleaned']} models")
+    return report
 
 
 @app.get("/api/admin/audit")
@@ -473,6 +519,8 @@ def get_job(job_id: str, user: dict = User):
 
 def _job_file(job_id: str, key: str, user: dict[str, Any]) -> Path:
     job = _owned_job(job_id, user)
+    if job.get("files_deleted_at"):
+        raise HTTPException(410, "The files for this job were deleted to save space. Slice the part again to get new ones.")
     if job["state"] != "done" or not job.get(key):
         raise HTTPException(409, "Not available")
     return JOBS_DIR / job_id / job[key]
@@ -526,7 +574,7 @@ def print_job(job_id: str, user: dict = User):
         logging.getLogger("slicyrs").exception("print failed")
         audit(user, "print_failed", f"{job['name']} -> {job['printer_name']}: {type(e).__name__}")
         raise HTTPException(502, f"Unexpected error talking to the printer: {type(e).__name__}: {e}")
-    store.jobs.update(job_id, queued=True, printed=True)
+    store.jobs.update(job_id, queued=True, printed=True, remote_name=remote, started_at=time.time(), result=None)
     audit(user, "print", f"{job['name']} -> {job['printer_name']}")
     return {"ok": True, "started": started, "file": remote}
 

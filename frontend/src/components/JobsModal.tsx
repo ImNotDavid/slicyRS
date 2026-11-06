@@ -23,9 +23,14 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
                 <strong>{j.name}</strong>
                 <span className="muted">{j.printer_name} · {j.filament} · {j.preset}{showOwner && j.owner_email ? ` · ${j.owner_email}` : ""}</span>
               </div>
-              <span className={"pill " + j.state}>{j.printed ? "sent" : j.queued ? "queued" : j.state}</span>
+              <span className={"pill " + (j.result ? (j.result.outcome === "finished" ? "done" : "failed") : j.state)}>
+                {j.result ? (j.result.outcome === "finished" ? "printed" : j.result.layer != null && j.result.total_layers ? `failed at layer ${j.result.layer}/${j.result.total_layers}` : "failed")
+                  : j.printed ? "printing / sent" : j.queued ? "queued" : j.state}
+              </span>
               <span className="muted">{fmtTime(j.stats?.time_s)}</span>
-              {j.state === "done" && <button className="btn" onClick={() => onOpen(j)}>Open</button>}
+              {j.state === "done" && !j.files_deleted_at && <button className="btn" onClick={() => onOpen(j)}>Open</button>}
+              {j.files_deleted_at && <span className="muted" title="Files are removed after a retention period; slice the part again">files removed</span>}
+              {j.result && <p className={"result-note" + (j.result.outcome === "failed" ? " bad" : "")}>{j.result.summary}</p>}
             </div>
           ))}
         </div>

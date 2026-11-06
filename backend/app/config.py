@@ -34,7 +34,8 @@ def _secret_key() -> str:
 
 SECRET_KEY = _secret_key()
 COOKIE_SECURE = PUBLIC_URL.startswith("https://")
-SESSION_HOURS = int(os.environ.get("SESSION_HOURS", "12"))
+SESSION_HOURS = int(os.environ.get("SESSION_HOURS", "12"))              # absolute lifetime of a sign-in
+SESSION_IDLE_HOURS = int(os.environ.get("SESSION_IDLE_HOURS", "8"))   # signed out after this long without activity
 
 # Imperial College sign-in is Microsoft Entra ID: issuer https://login.microsoftonline.com/<tenant-id>/v2.0
 OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "")

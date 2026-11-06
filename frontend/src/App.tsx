@@ -166,6 +166,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
             <div className="menu" role="menu">
               <div className="menu-head"><strong>{user.name || user.email}</strong><span className="muted">{user.email}</span></div>
               <button role="menuitem" onClick={onSignOut}><LogOut size={16} /> Sign out</button>
+              <button role="menuitem" onClick={async () => { await api.logoutAll().catch(() => {}); onSignOut(); }}><LogOut size={16} /> Sign out all devices</button>
             </div>
           )}
         </div>
