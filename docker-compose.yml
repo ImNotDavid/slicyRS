@@ -17,6 +17,8 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (a domain name, or an internal name or IP)}
+      # certificate served to visitors who send no server name (anyone who types an IP address)
+      DEFAULT_SNI: ${DEFAULT_SNI:-${SITE_ADDRESS}}
     volumes:
       - ./deploy/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

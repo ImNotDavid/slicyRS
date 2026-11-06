@@ -35,6 +35,10 @@ esac
 case "$(val PUBLIC_URL)" in https://*) ;; *) echo "  PUBLIC_URL must start with https://"; problems=1 ;; esac
 [ "$(val PUBLIC_URL)" = "https://$(val SITE_ADDRESS)" ] || echo "  note: PUBLIC_URL is not exactly https://SITE_ADDRESS. That is fine for a custom port, otherwise sign-in will fail."
 [ "$(val DEV_AUTH)" != "1" ] || { echo "  DEV_AUTH=1 is not allowed on a server"; problems=1; }
+first=$(echo "$(val SITE_ADDRESS)" | cut -d, -f1 | tr -d ' ' | sed 's/:.*//')
+if echo "$first" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && [ "$(val CADDYFILE)" != "Caddyfile.internal" ]; then
+  echo "  SITE_ADDRESS is an IP address, which needs CADDYFILE=Caddyfile.internal (an IP cannot get a public certificate)"; problems=1
+fi
 [ "$problems" = 0 ] || { echo "Fix the items above in .env and run this script again."; exit 1; }
 
 docker compose config -q

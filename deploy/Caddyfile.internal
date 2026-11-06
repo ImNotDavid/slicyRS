@@ -1,6 +1,13 @@
-# Internal use: no public DNS name needed. SITE_ADDRESS can be a LAN host name or an IP address (for example 192.168.1.50).
+# Internal use: no public DNS name needed. SITE_ADDRESS can be a LAN host name or an IP address (for example 192.168.1.50),
+# or several separated by commas ("slicyrs.lan, 192.168.1.50"). Do not put a port in it.
 # Caddy issues the certificate from its own local certificate authority, so each user's device must trust that
 # authority once (see deploy/DEPLOY.md, "Trusting the internal certificate"), otherwise browsers show a warning.
+{
+	# Browsers send no server name when you type an IP address, so Caddy needs to be told which certificate to use then.
+	# Without this, https://<ip> fails with ERR_SSL_PROTOCOL_ERROR. DEFAULT_SNI defaults to SITE_ADDRESS (see docker-compose.yml).
+	default_sni {$DEFAULT_SNI}
+}
+
 {$SITE_ADDRESS} {
 	tls internal
 	request_body {

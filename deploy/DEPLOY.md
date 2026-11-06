@@ -24,7 +24,9 @@ included). Ask whoever runs your DNS, or ICT for a campus name.
 
 **B) Internal only.** Users type a LAN name or the machine's IP (for example `https://192.168.1.50`). Caddy makes the certificate
 from its own authority, so each user's device must trust that authority once (section 4). Nothing is exposed to the internet.
-This is the right choice until you have a DNS name.
+This is the right choice until you have a DNS name. Use `CADDYFILE=Caddyfile.internal`, put no port in `SITE_ADDRESS`, and
+list several addresses with commas if people will use more than one (`SITE_ADDRESS=slicyrs.lan, 192.168.1.50`; then also set
+`DEFAULT_SNI` to the IP, because browsers send no server name when you type an IP).
 
 ## 2. Install
 
@@ -95,6 +97,22 @@ Data (database, uploads, G-code) lives in the Docker volume `slicyrs_slicyrs-dat
 
 **Updating:** copy the new project files over the old ones, then `docker compose up -d --build`. Check *Admin, Audit log* afterwards.
 **Changing the slicer version:** see "Docker image and the slicer engine" in `README.md`; never change it casually.
+
+## 6a. If the browser cannot connect (`ERR_SSL_PROTOCOL_ERROR` and friends)
+
+Run `./deploy/diagnose.sh` on the server. It shows the settings (no secrets), container state, what owns ports 80 and 443, certificate
+errors from Caddy and what the handshake looks like, then prints a verdict. The usual causes:
+
+| Symptom | Cause and fix |
+|---|---|
+| `ERR_SSL_PROTOCOL_ERROR` when you type an **IP address** | The certificate was made for a name, or no server name is sent for an IP. Use `CADDYFILE=Caddyfile.internal`, put the IP in `SITE_ADDRESS` (and `DEFAULT_SNI`), then `docker compose up -d --force-recreate caddy` |
+| `ERR_SSL_PROTOCOL_ERROR` with a **DNS name** and `Caddyfile` | Caddy could not get a public certificate (name does not point here, or ports 80/443 not reachable from the internet). Fix DNS and the firewall, or switch to the internal option |
+| `ERR_SSL_PROTOCOL_ERROR` right after `https://` to a **port that is plain HTTP**, or another web server on 443 | Something other than Caddy answers: stop Apache/nginx on the host, and use `https://` only on 443 |
+| `ERR_CONNECTION_REFUSED` or timeout | Caddy is not running, or the firewall blocks 443 (`sudo ufw status`) |
+| Browser warns *Your connection is not private* (internal option) | Expected until the device trusts `slicyrs-root.crt` (section 4) |
+| `NET::ERR_CERT_COMMON_NAME_INVALID` | You typed an address that is not in `SITE_ADDRESS`; add it, separated by a comma |
+
+After editing `.env`, apply it with `docker compose up -d --force-recreate caddy` (Caddy reads its settings at start).
 
 ## 7. Rehearse before the real thing
 
