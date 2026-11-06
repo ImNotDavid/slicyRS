@@ -176,6 +176,15 @@ class PrinterLink:
                 with open(local_path, "rb") as fh:
                     while chunk := fh.read(64 * 1024):
                         conn.sendall(chunk)
+                # End the TLS session properly before closing, as ftplib's own storbinary does. Closing an encrypted
+                # socket with unread incoming data (TLS 1.3 session tickets) makes Linux reset the connection, which
+                # discards the last chunks of the file on the receiving side.
+                if isinstance(conn, ssl.SSLSocket):
+                    try:
+                        conn.settimeout(5)  # a printer that never answers must not stall a finished upload
+                        conn.unwrap()
+                    except (ssl.SSLError, OSError, ValueError):
+                        pass  # a peer that does not answer the close notification must not fail an upload that was sent in full
             finally:
                 conn.close()
             try:

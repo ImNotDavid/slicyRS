@@ -280,3 +280,20 @@ def test_real_sliced_job_prints_through_the_api(client, fleet, ftps, me):
         r = client.post(f"/api/jobs/{job['id']}/print")
         assert r.status_code == 409
         pytest.skip("mock slicer: no printable bundle")
+
+
+def test_large_upload_arrives_complete_every_time(tmp_path):
+    """Regression: closing the TLS data connection without ending the session truncated uploads on Linux (intermittently)."""
+    import os
+    srv = FakeFTPS(tmp_path, CODE)
+    big = tmp_path / "big.gcode.3mf"
+    with zipfile.ZipFile(big, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("Metadata/plate_1.gcode", os.urandom(3_000_000))      # incompressible, ~3 MB
+        z.writestr("Metadata/plate_1.gcode.md5", "AA\n")
+    try:
+        for i in range(8):
+            pid, link = make_link(srv.port)
+            assert link.send_print(big, f"big-{i}.gcode.3mf") is True
+            assert srv.files[f"big-{i}.gcode.3mf"] == big.read_bytes(), f"upload {i} was truncated"
+    finally:
+        srv.close()
