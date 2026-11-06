@@ -136,6 +136,9 @@ def start_background() -> None:
         while True:
             try:
                 run()
+                from . import outcomes, sessions
+                outcomes.sweep()
+                sessions.purge_expired()
                 if not usage()["disk"]["free"] >= MIN_FREE_MB * 1024 * 1024:
                     from .auth import audit
                     audit(None, "disk_low", f"{usage()['disk']['free'] // (1024 * 1024)} MB free")

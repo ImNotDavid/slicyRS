@@ -49,7 +49,7 @@ export type Job = {
   id: string; name: string; state: "slicing" | "done" | "failed"; error?: string;
   printer_id: string; printer_name: string; printer_model: string; filament: string; preset: string;
   queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
-  result?: { outcome: "finished" | "failed"; summary: string; layer: number | null; total_layers: number | null;
+  result?: { outcome: "finished" | "failed" | "unknown"; summary: string; layer: number | null; total_layers: number | null;
              hms: { code: string; text: string }[]; duration_s: number | null } | null;
   stats?: { time_s?: number; filament_g?: number; layers?: number; mock?: boolean };
 };

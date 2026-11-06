@@ -23,8 +23,9 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
                 <strong>{j.name}</strong>
                 <span className="muted">{j.printer_name} · {j.filament} · {j.preset}{showOwner && j.owner_email ? ` · ${j.owner_email}` : ""}</span>
               </div>
-              <span className={"pill " + (j.result ? (j.result.outcome === "finished" ? "done" : "failed") : j.state)}>
-                {j.result ? (j.result.outcome === "finished" ? "printed" : j.result.layer != null && j.result.total_layers ? `failed at layer ${j.result.layer}/${j.result.total_layers}` : "failed")
+              <span className={"pill " + (j.result ? (j.result.outcome === "finished" ? "done" : j.result.outcome === "unknown" ? "queued" : "failed") : j.state)}>
+                {j.result ? (j.result.outcome === "finished" ? "printed" : j.result.outcome === "unknown" ? "sent, result unknown"
+                  : j.result.layer != null && j.result.total_layers ? `failed at layer ${j.result.layer}/${j.result.total_layers}` : "failed")
                   : j.printed ? "printing / sent" : j.queued ? "queued" : j.state}
               </span>
               <span className="muted">{fmtTime(j.stats?.time_s)}</span>

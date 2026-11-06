@@ -98,7 +98,7 @@ def test_errors_older_than_the_print_are_ignored(me):
 
 def test_a_different_print_is_not_attributed_to_the_job(me):
     pid = new_printer()
-    jid = printed_job(me, pid)
+    jid = printed_job(me, pid, started=time.time() - 60)
     report(pid, state="FINISH", subtask_name="something-else")
     assert result(jid) is None
 
@@ -168,3 +168,36 @@ def test_mqtt_report_fields_reach_the_status(me):
     link._on_message(None, None, SimpleNamespace(payload=json.dumps(payload).encode()))
     st = store.printers.get(pid)["status"]
     assert (st["state"], st["layer_num"], st["total_layer_num"], st["subtask_name"], st["print_error"]) == ("FAILED", 3, 321, "card_display_stand_v2-a7fafc", 0)
+
+
+# ---- jobs whose result can no longer be seen must not stay "printing / sent" forever ----
+
+def test_sweep_marks_jobs_printed_before_tracking_as_unknown(me):
+    pid = new_printer()
+    jid = printed_job(me, pid, remote=None)
+    store.jobs.update(jid, remote_name=None)
+    assert outcomes.sweep() >= 1
+    assert result(jid)["outcome"] == "unknown" and "before result tracking" in result(jid)["summary"]
+    assert outcomes.sweep() == 0                                        # idempotent
+
+
+def test_sweep_leaves_a_recent_tracked_print_alone_but_not_a_week_old_one(me):
+    pid = new_printer()
+    fresh = printed_job(me, pid)
+    old = printed_job(me, pid, remote="old-1.gcode.3mf", started=time.time() - 8 * 86400)
+    outcomes.sweep()
+    assert result(fresh) is None and result(old)["outcome"] == "unknown"
+
+
+def test_printer_moving_on_to_another_print_resolves_the_missed_one(me):
+    pid = new_printer()
+    missed = printed_job(me, pid, remote="first-aa.gcode.3mf", started=time.time() - 3600)
+    report(pid, state="RUNNING", subtask_name="second-bb")
+    assert result(missed)["outcome"] == "unknown" and "moved on" in result(missed)["summary"]
+
+
+def test_a_just_started_print_is_not_resolved_by_the_old_one_still_showing(me):
+    pid = new_printer()
+    new = printed_job(me, pid, remote="new-cc.gcode.3mf", started=time.time() - 30)
+    report(pid, state="FINISH", subtask_name="previous-dd")             # printer still shows the last print
+    assert result(new) is None

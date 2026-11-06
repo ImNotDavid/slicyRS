@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assign, auth, crypto, meshio, retention, sessions, slicer, store
+from . import assign, auth, crypto, meshio, outcomes, retention, sessions, slicer, store
 from .auth import audit, current_user, is_admin, require_admin
 from .bambu import PrinterError, check_host, links, probe
 from .defaults import effective_overrides, ui_defaults
@@ -122,6 +122,7 @@ def _startup() -> None:
                                      "status": {"state": state, "ams": ams}})
     links.sync()
     sessions.purge_expired()
+    outcomes.sweep()
     retention.start_background()
 
 
