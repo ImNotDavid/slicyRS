@@ -17,7 +17,8 @@ import paho.mqtt.client as mqtt
 import ipaddress
 import socket
 
-from . import outcomes, store
+from . import bedstate, outcomes, store
+from .adapter import AdapterError
 from .catalog import AMS_TYPE_ALIASES, BED_TYPES, DEFAULT_BED_TYPE
 from .crypto import unseal
 
@@ -218,7 +219,7 @@ class PrinterLink:
                 ftp.close()
 
 
-class PrinterError(Exception):
+class PrinterError(AdapterError):
     """A failure the user can act on; surfaced by the API as a 502 with this message."""
 
 
@@ -267,10 +268,12 @@ def _set_status(printer_id: str, update: dict[str, Any]) -> None:
     p = store.printers.get(printer_id)
     if not p:
         return
+    prev_state = (p.get("status") or {}).get("state")
     status = dict(p.get("status", {}))
     status.update(update)
     status["updated"] = time.time()
     store.printers.update(printer_id, status=status)
+    bedstate.on_status(printer_id, prev_state, status)  # a finished print leaves the plate occupied until someone confirms it is clear
     outcomes.on_status(printer_id, status)  # records the result of a print this app started, once the printer reports it
 
 

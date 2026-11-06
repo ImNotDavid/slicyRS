@@ -233,6 +233,10 @@ def test_two_prints_do_not_overwrite_each_other(client, ftps, me):
     a, b = make_job(me, pid), make_job(me, pid)
     client.post(f"/api/jobs/{a}/print")
     store.printers.update(pid, status={"state": "IDLE"})
+    blocked = client.post(f"/api/jobs/{b}/print")                      # the first part is still on the plate
+    assert blocked.status_code == 409 and "not been confirmed clear" in blocked.json()["detail"]
+    ok = {"bed_empty": True, "plate_matches": True, "filament_matches": True}
+    assert client.post(f"/api/printers/{pid}/bed/clear", json=ok).status_code == 200
     client.post(f"/api/jobs/{b}/print")
     assert len(ftps.files) == 2
 

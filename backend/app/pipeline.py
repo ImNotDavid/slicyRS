@@ -1,0 +1,89 @@
+"""The slicing steps of the job pipeline, run by workers from the task queue (A.1, A.5).
+
+  preview  slice for a generic reference printer (the P2S profile when installed, else X1C) so the user sees an estimate
+           and a pickup time can be judged before any printer is chosen
+  slice    slice for the printer the allocator chose, then optionally start the print
+"""
+import logging
+import shutil
+from pathlib import Path
+from typing import Any
+
+from . import jobstate, printing, slicer, store, taskqueue
+from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
+from .config import JOBS_DIR
+from .defaults import effective_overrides
+
+log = logging.getLogger("pipeline")
+PREVIEW_MODELS = ("P2S", "X1C")   # first one that exists in the catalog; the P2S is not selectable yet, so X1C stands in
+
+
+def preview_model() -> str:
+    return next((m for m in PREVIEW_MODELS if m in PRINTER_MODELS), "X1C")
+
+
+def request_preview(job_id: str) -> None:
+    jobstate.transition(job_id, "previewing", None)
+    taskqueue.enqueue("preview", {"job_id": job_id})
+
+
+def request_slice(job_id: str) -> None:
+    taskqueue.enqueue("slice", {"job_id": job_id})
+
+
+def _input(job: dict[str, Any]) -> Path:
+    return JOBS_DIR / job["id"] / job["input_file"]
+
+
+def handle_preview(payload: dict[str, Any]) -> None:
+    job = store.jobs.get(payload["job_id"])
+    if not job or job.get("phase") != "previewing":
+        return
+    spec = job["spec"]
+    wd = JOBS_DIR / job["id"] / "preview"
+    try:
+        r = slicer.run(wd, _input(job), preview_model(), spec["preset"], spec["filament"],
+                       effective_overrides(spec["preset"], spec["settings"], DEFAULT_BED_TYPE))
+        preview = {"time_s": r.get("time_s"), "filament_g": r.get("filament_g"), "layers": r.get("layers"), "model": preview_model()}
+        if (store.jobs.get(job["id"]) or {}).get("phase") == "previewing":
+            jobstate.transition(job["id"], "previewed", None, preview=preview)
+    except Exception as e:
+        log.info("preview failed for %s: %s", job["id"], e)
+        jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)   # only the numbers are kept
+
+
+def handle_slice(payload: dict[str, Any]) -> None:
+    job = store.jobs.get(payload["job_id"])
+    if not job or job.get("phase") != "slicing":
+        return
+    spec = job["spec"]
+    wd = JOBS_DIR / job["id"]
+    try:
+        r = slicer.run(wd, _input(job), job["printer_model"], spec["preset"], spec["filament"],
+                       effective_overrides(spec["preset"], spec["settings"], job.get("bed_type") or DEFAULT_BED_TYPE))
+    except Exception as e:
+        if (store.jobs.get(job["id"]) or {}).get("phase") == "slicing":
+            jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
+        return
+    cur = store.jobs.get(job["id"]) or {}
+    if cur.get("phase") != "slicing":
+        return                                    # cancelled while slicing: drop the result
+    jobstate.transition(job["id"], "ready", None, stats=r, gcode=r["gcode"], bundle=r.get("bundle"))
+    if cur.get("auto_start"):
+        try:
+            printing.start(store.jobs.get(job["id"]), printing.bundle_path(store.jobs.get(job["id"])), None, require_clear=True)
+        except printing.PrintBlocked as e:
+            jobstate.event(job["id"], "auto_start_failed", None, reason=e.message)   # stays ready for the owner to start
+
+
+def on_dead(task: dict[str, Any]) -> None:
+    """A task that kept losing its worker: fail the job instead of leaving it waiting for ever."""
+    jid = task["payload"].get("job_id")
+    job = store.jobs.get(jid) if jid else None
+    if job and job.get("phase") in ("previewing", "slicing"):
+        jobstate.transition(jid, "failed", None, state="failed", error="The slicer stopped repeatedly while working on this job. Try again.")
+
+
+HANDLERS = {"preview": handle_preview, "slice": handle_slice}

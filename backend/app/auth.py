@@ -55,7 +55,7 @@ def create_user(email: str, role: str = "user", name: str = "", invited_by: str 
 
 
 def public_user(u: dict[str, Any]) -> dict[str, Any]:
-    return {k: u.get(k) for k in ("id", "email", "name", "role", "active", "invited_by", "created", "last_login")}
+    return {k: u.get(k) for k in ("id", "email", "name", "role", "active", "operator", "invited_by", "created", "last_login")}
 
 
 def resolve_login(candidates: list[str | None], sub: str | None, name: str) -> dict[str, Any]:

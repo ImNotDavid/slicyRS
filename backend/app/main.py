@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assign, auth, crypto, meshio, outcomes, retention, sessions, slicer, store
+from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, jobstate, meshio, outcomes, pipeline, pipelinecfg,
+               printing, retention, sessions, slicer, stats, store, taskqueue, worker)
 from .auth import audit, current_user, is_admin, require_admin
 from .bambu import PrinterError, check_host, links, probe
 from .defaults import effective_overrides, ui_defaults
@@ -70,7 +71,7 @@ def _public_printer(p: dict[str, Any], admin: bool) -> dict[str, Any]:
     """Everyone sees status; connection details are admin-only and the access code is never returned."""
     out = {"id": p["id"], "name": p["name"], "model": p["model"], "status": p.get("status", {}),
            "hardened_nozzle": p.get("hardened_nozzle", False), "enabled": p.get("enabled", True),
-           "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE,
+           "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p),
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host"))}
     if admin:
         out.update(host=p.get("host"), port=p.get("port") or 8883, serial=p.get("serial"),
@@ -123,6 +124,9 @@ def _startup() -> None:
     links.sync()
     sessions.purge_expired()
     outcomes.sweep()
+    bedstate.reset_all()   # after a restart nothing is known about any build plate
+    worker.start_embedded(int(os.environ.get("EMBED_WORKERS", str(MAX_WORKERS))))
+    allocator.start_background(float(os.environ.get("ALLOCATOR_INTERVAL_S", "5")))
     retention.start_background()
 
 
@@ -333,6 +337,7 @@ def invite_user(body: InviteIn, admin: dict = Depends(require_admin)):
 class UserPatch(BaseModel):
     role: str | None = None
     active: bool | None = None
+    operator: bool | None = None   # may clear build plates and is told when one waits
 
 
 def _other_active_admins(exclude_id: str) -> int:
@@ -482,8 +487,10 @@ def start_slice(body: SliceIn, user: dict = User):
         "printer_id": chosen.printer_id, "printer_name": printer.get("name"), "printer_model": chosen.model,
         "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
         "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
-        "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE,
+        "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(),
+        "submitted_at": time.time(),
     })
+    jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "slicing", "reason": "sliced directly for a chosen printer"})
     pool.submit(_do_slice, job_id, workdir, input_path, chosen.model, body, printer.get("bed_type") or DEFAULT_BED_TYPE)
     return store.jobs.get(job_id)
 
@@ -494,9 +501,9 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
     overrides = effective_overrides(body.preset, body.settings, bed_type)
     try:
         result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides)
-        store.jobs.update(job_id, state="done", stats=result, **{"gcode": result["gcode"], "bundle": result.get("bundle")})
+        jobstate.transition(job_id, "ready", None, state="done", stats=result, gcode=result["gcode"], bundle=result.get("bundle"))
     except Exception as e:  # surfaced to the UI as the job error
-        store.jobs.update(job_id, state="failed", error=str(e))
+        jobstate.transition(job_id, "failed", None, force=True, state="failed", error=str(e))
 
 
 @app.get("/api/jobs")
@@ -548,36 +555,179 @@ def queue_job(job_id: str, user: dict = User):
 
 
 def _remote_name(job: dict[str, Any]) -> str:
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(job["name"]).stem).strip("._")[:40] or "part"
-    return f"{stem}-{job['id'][:6]}.gcode.3mf"  # unique per job so prints never overwrite each other on the SD card
+    return printing.remote_name(job)
 
 
 @app.post("/api/jobs/{job_id}/print")
 def print_job(job_id: str, user: dict = User):
     job = _owned_job(job_id, user)
     bundle = _job_file(job_id, "bundle", user)
-    printer = store.printers.get(job["printer_id"])
-    if not printer:
-        raise HTTPException(409, "That printer no longer exists")
-    if not printer.get("enabled", True):
-        raise HTTPException(409, "That printer has been disabled by an admin")
-    link = links.get(job["printer_id"])
-    if link is None:
-        raise HTTPException(409, "This printer has no live connection (an admin must add its IP, serial and access code); "
-                                 "download the file and print from SD instead")
     try:
-        remote = _remote_name(job)
-        started = link.send_print(bundle, remote)
-    except PrinterError as e:
-        audit(user, "print_failed", f"{job['name']} -> {job['printer_name']}: {e}")
-        raise HTTPException(502, str(e))
-    except Exception as e:  # never leak a bare 500 for a printer problem
-        logging.getLogger("slicyrs").exception("print failed")
-        audit(user, "print_failed", f"{job['name']} -> {job['printer_name']}: {type(e).__name__}")
-        raise HTTPException(502, f"Unexpected error talking to the printer: {type(e).__name__}: {e}")
-    store.jobs.update(job_id, queued=True, printed=True, remote_name=remote, started_at=time.time(), result=None)
-    audit(user, "print", f"{job['name']} -> {job['printer_name']}")
-    return {"ok": True, "started": started, "file": remote}
+        return printing.start(job, bundle, user)
+    except printing.PrintBlocked as e:
+        raise HTTPException(e.status, e.message)
+
+
+# ------------------------------------------------------------------- job pipeline (A.1, A.2)
+
+class DraftIn(TransformIn):
+    model_id: str
+    filament: str
+    preset: str = "0.20mm Standard"
+    settings: dict[str, Any] = {}
+
+
+@app.post("/api/jobs/preview")
+def create_draft(body: DraftIn, user: dict = User):
+    """Save a printer-agnostic job and slice a preview for it (estimate time, filament, layers). Nothing is assigned yet."""
+    if body.filament not in FILAMENTS:
+        raise HTTPException(400, "Unknown filament")
+    if body.preset not in {p["id"] for p in PROCESS_PRESETS}:
+        raise HTTPException(400, "Unknown process preset")
+    bad = set(body.settings) - ALLOWED_SETTING_KEYS - SERVER_MANAGED_SETTINGS
+    if bad:
+        raise HTTPException(400, f"Unknown settings: {sorted(bad)}")
+    settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
+    mesh = _transformed(body.model_id, body.rotation, body.scale, user)
+    size = meshio.dims(mesh)
+    if not forecast.eligible_printers(size, body.filament):
+        why = sorted({b for c in assign.rank(_fleet(), size, body.filament) for b in c.blockers if b != "Printer is offline"})
+        raise HTTPException(409, "No printer in the fleet can ever print this part. " + "; ".join(why))
+    job_id = uuid.uuid4().hex[:12]
+    workdir = JOBS_DIR / job_id
+    workdir.mkdir()
+    src = _source_file(body.model_id, user)
+    if tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0 and src.suffix == ".3mf":
+        input_file = "input.3mf"
+        (workdir / input_file).write_bytes(src.read_bytes())
+    else:
+        input_file = "input.stl"
+        meshio.export_stl(mesh, workdir / input_file)
+    name = (MODELS_DIR / body.model_id / "name.txt").read_text(encoding="utf-8")
+    store.jobs.put(job_id, {
+        "id": job_id, "name": name, "state": "submitted", "phase": "submitted", "phase_at": time.time(), "created": time.time(),
+        "owner_id": user["id"], "owner_email": user["email"], "printer_id": None, "printer_name": None, "printer_model": None,
+        "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
+        "input_file": input_file, "pickup_by": None, "submitted_at": None,
+        "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "filament": body.filament,
+                 "preset": body.preset, "settings": settings},
+    })
+    jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})
+    pipeline.request_preview(job_id)
+    return store.jobs.get(job_id)
+
+
+@app.get("/api/jobs/{job_id}/forecast")
+def job_forecast(job_id: str, pickup_by: float | None = None, user: dict = User):
+    job = _owned_job(job_id, user)
+    return forecast.pickup_check({**job, "submitted_at": time.time()}, pickup_by)
+
+
+class SubmitIn(BaseModel):
+    pickup_by: float | None = None           # epoch seconds; None = whenever
+    colour: str = Field("any", max_length=40)  # recorded for later colour matching
+    auto_start: bool = False                 # start printing as soon as it is sliced and the plate is clear
+
+
+@app.post("/api/jobs/{job_id}/submit")
+def submit_job(job_id: str, body: SubmitIn, user: dict = User):
+    """Put a previewed job in the shared pool. A pickup time the forecast calls unlikely is refused with the earliest likely one."""
+    job = _owned_job(job_id, user)
+    if job.get("phase") != "previewed":
+        raise HTTPException(409, "The preview is not ready yet" if job.get("phase") in ("submitted", "previewing") else
+                            f"This job cannot be submitted (it is {job.get('phase')})")
+    now = time.time()
+    if body.pickup_by is not None and body.pickup_by <= now:
+        raise HTTPException(400, "The pickup time must be in the future")
+    check = forecast.pickup_check({**job, "submitted_at": now}, body.pickup_by, now)
+    if not check["feasible"]:
+        raise HTTPException(409, "No printer in the fleet can print this part")
+    if not check["likely"]:
+        jobstate.event(job_id, "pickup_refused", user["email"], pickup_by=body.pickup_by, earliest=check["earliest_finish"])
+        return JSONResponse({"detail": "That pickup time is unlikely: the earliest the part is expected to be ready is shown. "
+                                       "Choose a later time or submit without one.",
+                             "earliest_pickup": check["earliest_finish"]}, status_code=409)
+    jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, submitted_at=now, pickup_by=body.pickup_by,
+                        colour=body.colour, auto_start=body.auto_start, at_risk=False)
+    audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
+    allocator.tick()
+    return store.jobs.get(job_id)
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str, user: dict = User):
+    job = _owned_job(job_id, user)
+    try:
+        out = jobstate.transition(job_id, "cancelled", user["email"], state="cancelled")
+    except jobstate.InvalidTransition:
+        raise HTTPException(409, f"A job that is {job.get('phase')} cannot be cancelled")
+    audit(user, "job_cancel", job["name"])
+    return out
+
+
+@app.get("/api/jobs/{job_id}/events")
+def job_events(job_id: str, user: dict = User):
+    _owned_job(job_id, user)
+    return jobstate.events_for(job_id)
+
+
+# ------------------------------------------------------------------- bed state (A.3)
+
+class BedClearIn(BaseModel):
+    bed_empty: bool = False
+    plate_matches: bool = False
+    filament_matches: bool = False
+
+
+def _printer_or_404(printer_id: str) -> dict[str, Any]:
+    p = store.printers.get(printer_id)
+    if not p:
+        raise HTTPException(404, "Unknown printer")
+    return p
+
+
+@app.post("/api/printers/{printer_id}/bed/clear")
+def bed_clear(printer_id: str, body: BedClearIn, user: dict = User):
+    _printer_or_404(printer_id)
+    try:
+        bed = bedstate.confirm_clear(printer_id, user, body.model_dump())
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    allocator.tick()
+    return bed
+
+
+@app.post("/api/printers/{printer_id}/bed/occupied")
+def bed_occupied(printer_id: str, user: dict = User):
+    _printer_or_404(printer_id)
+    try:
+        return bedstate.mark_occupied(printer_id, user)
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+
+
+# ------------------------------------------------------------------- pipeline admin and statistics
+
+@app.get("/api/admin/pipeline")
+def pipeline_settings(admin: dict = Depends(require_admin)):
+    return pipelinecfg.get()
+
+
+@app.put("/api/admin/pipeline")
+def pipeline_settings_put(body: dict[str, int], admin: dict = Depends(require_admin)):
+    try:
+        out = pipelinecfg.put(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    audit(admin, "pipeline_settings", str(out))
+    return out
+
+
+@app.get("/api/admin/stats")
+def admin_stats(days: int | None = None, admin: dict = Depends(require_admin)):
+    return {**stats.summary(time.time() - days * 86400 if days else None), "tasks": taskqueue.counts()}
 
 
 # ------------------------------------------------------------------- static

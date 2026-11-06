@@ -6,7 +6,7 @@ Called for every status update of a printer. When the printer reports FINISH or 
 import time
 from typing import Any
 
-from . import store
+from . import jobstate, store
 
 FINAL = {"FINISH": "finished", "FAILED": "failed"}
 HMS_LIST_URL = "https://wiki.bambulab.com/en/hms/error-code"
@@ -77,6 +77,7 @@ def mark_unknown(job: dict[str, Any], reason: str) -> None:
     result = {"outcome": "unknown", "summary": reason, "hms": [], "layer": None, "total_layers": None, "percent": None,
               "print_error": 0, "printer_state": None, "started_at": job.get("started_at"), "ended_at": time.time(), "duration_s": None}
     store.jobs.update(job["id"], result=result)
+    jobstate.transition(job["id"], "unknown", None, force=True, state="done")
     _audit("print_result_unknown", f"{job['name']} on {job.get('printer_name')}: {reason}")
 
 
@@ -134,6 +135,7 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
     }
     result["summary"] = _summary(outcome, job, result)
     store.jobs.update(job["id"], result=result)
+    jobstate.transition(job["id"], "printed" if outcome == "finished" else "failed", None, force=True, state="done")
     _audit("print_result", f"{job['name']} on {job.get('printer_name')}: {outcome}"
           + (f" at layer {result['layer']}/{result['total_layers']}" if outcome == "failed" and result["layer"] is not None else "")
           + (f" [{', '.join(h['code'] for h in hms)}]" if hms else ""))
