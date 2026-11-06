@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
-import { api, type AuditEntry, type Catalog, type Printer, type PrinterInput, type ProbeResult, type StorageInfo, type User } from "../api";
+import { api, type AuditEntry, type Catalog, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose: () => void; onPrintersChanged: () => void };
-type Tab = "printers" | "users" | "storage" | "audit";
+type Tab = "printers" | "users" | "storage" | "pipeline" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -15,7 +15,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
         <header>
           <h3>Admin</h3>
           <div className="tabs inline">
-            {(["printers", "users", "storage", "audit"] as Tab[]).map((t) => (
+            {(["printers", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
             ))}
           </div>
@@ -25,6 +25,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
           {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
           {tab === "users" && <UsersTab me={me} />}
           {tab === "storage" && <StorageTab />}
+          {tab === "pipeline" && <PipelineTab />}
           {tab === "audit" && <AuditTab />}
         </div>
       </div>
@@ -188,11 +189,65 @@ function UsersTab({ me }: { me: User }) {
           <select value={u.role} aria-label={`Role for ${u.email}`} onChange={(e) => guard(() => api.patchUser(u.id, { role: e.target.value }))}>
             <option value="user">User</option><option value="admin">Admin</option>
           </select>
+          <label className="check" title="Can confirm build plates are clear and is told when one is waiting"><input type="checkbox" checked={!!u.operator} onChange={(e) => guard(() => api.patchUser(u.id, { operator: e.target.checked }))} aria-label={`Operator ${u.email}`} /> Operator</label>
           <label className="check"><input type="checkbox" checked={u.active} onChange={(e) => guard(() => api.patchUser(u.id, { active: e.target.checked }))} aria-label={`Active ${u.email}`} /> Active</label>
           <button className="icon" aria-label={`Delete ${u.email}`} disabled={u.id === me.id}
             onClick={() => confirm(`Delete ${u.email}?`) && guard(() => api.deleteUser(u.id))}><Trash2 size={16} /></button>
         </div>
       ))}
+    </>
+  );
+}
+
+// --------------------------------------------------------------------- pipeline
+
+const PIPE_FIELDS: [keyof PipelineSettings, string, string][] = [
+  ["cooling_margin_min", "Cooling margin (minutes)", "Added after each print before parts can be handled; used when judging pickup times."],
+  ["operator_delay_min", "Wait before telling operators (minutes)", "A finished print waits this long for its owner to clear the plate."],
+  ["ready_hold_min", "Hold a sliced job for its owner (minutes)", "After this a job that nobody started goes back to the pool and frees the printer."],
+  ["estimate_buffer_pct", "Slack on time estimates (%)", "Slicer estimates run short; this is added when forecasting a pickup time."],
+  ["max_hold_h", "Longest wait for batching partners (hours)", "For plate sharing, which is not built yet."],
+];
+
+function PipelineTab() {
+  const [cfg, setCfg] = useState<PipelineSettings | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { api.pipeline().then(setCfg); api.stats().then(setStats); }, []);
+  if (!cfg) return <p className="muted">Loading…</p>;
+  const ratio = (r: number | null) => (r == null ? "not enough data yet" : `${r.toFixed(2)}x (1.00 means the estimate was exact)`);
+  return (
+    <>
+      <p className="muted">Numbers the job pool and bed-clearing rules use. Operators are chosen on the Users tab.</p>
+      {PIPE_FIELDS.map(([k, label, help]) => (
+        <label className="field-row" key={k}>{label}
+          <input type="number" min={0} value={cfg[k]} onChange={(e) => { setCfg({ ...cfg, [k]: Number(e.target.value) }); setSaved(false); }} />
+          <span className="muted">{help}</span>
+        </label>
+      ))}
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <div className="row-actions">
+        <button className="btn primary" onClick={async () => { setErr(""); try { setCfg(await api.savePipeline(cfg)); setSaved(true); } catch (e) { setErr((e as Error).message); } }}>Save</button>
+        {saved && <span className="ok-note" role="status">Saved</span>}
+      </div>
+      {stats && (
+        <>
+          <h4>Statistics</h4>
+          <p className="muted">{stats.jobs} jobs, {stats.events} recorded events.
+            Prints take {ratio(stats.estimate_accuracy.sliced_median_ratio)} of the slicer estimate ({stats.estimate_accuracy.samples} finished prints).
+            Median wait for a printer {stats.queue_wait_s.median == null ? "n/a" : `${Math.round(stats.queue_wait_s.median / 60)} min`}.
+            Pickup times met {stats.pickup.met}, missed {stats.pickup.missed}.</p>
+          <table className="audit">
+            <thead><tr><th>Printer</th><th>Prints</th><th>Failed</th><th>Hours</th></tr></thead>
+            <tbody>{Object.entries(stats.by_printer).map(([id, p]) => <tr key={id}><td>{p.name ?? id}</td><td>{p.finished}</td><td>{p.failed}</td><td>{(p.print_s / 3600).toFixed(1)}</td></tr>)}</tbody>
+          </table>
+          <table className="audit">
+            <thead><tr><th>User</th><th>Jobs</th><th>Printed</th><th>Failed</th><th>Filament g</th></tr></thead>
+            <tbody>{Object.entries(stats.by_user).map(([e, u]) => <tr key={e}><td>{e}</td><td>{u.jobs}</td><td>{u.finished}</td><td>{u.failed}</td><td>{u.filament_g.toFixed(0)}</td></tr>)}</tbody>
+          </table>
+        </>
+      )}
     </>
   );
 }

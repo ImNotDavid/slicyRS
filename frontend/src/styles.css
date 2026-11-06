@@ -245,3 +245,25 @@ button.link:disabled { opacity: 0.5; }
 .meter { height: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .meter > div { height: 100%; background: var(--brand-primary); }
 .meter > div.bad { background: var(--danger); }
+
+/* job pipeline */
+.pill.pooled, .pill.assigned, .pill.ready, .pill.previewing, .pill.previewed, .pill.submitted { background: #dbeafe; color: #1e40af; }
+.pill.cancelled { background: var(--surface-2); color: var(--text-muted); }
+.pill.bed-clear { background: #dcfce7; color: #166534; }
+.pill.bed-occupied { background: #fef3c7; color: #92400e; }
+.pill.bed-unknown { background: var(--surface-2); color: var(--text-muted); }
+.bed-check { flex: 1 1 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; }
+.submit-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 12px; }
+.submit-facts dt { color: var(--text-muted); }
+.submit-facts dd { margin: 0; }
+.field-row { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.field-row input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); max-width: 260px; }
+.bad-text { color: #b91c1c; }
+ul.history { margin: 4px 0 0; padding-left: 18px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pill.pooled, :root:not([data-theme="light"]) .pill.assigned, :root:not([data-theme="light"]) .pill.ready,
+  :root:not([data-theme="light"]) .pill.previewing, :root:not([data-theme="light"]) .pill.previewed, :root:not([data-theme="light"]) .pill.submitted { background: #1e3a8a; color: #dbeafe; }
+  :root:not([data-theme="light"]) .pill.bed-clear { background: #14532d; color: #bbf7d0; }
+  :root:not([data-theme="light"]) .pill.bed-occupied { background: #78350f; color: #fde68a; }
+  :root:not([data-theme="light"]) .bad-text { color: #fca5a5; }
+}

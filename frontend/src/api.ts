@@ -18,7 +18,9 @@ export type Catalog = {
   default_bed_type: string;
 };
 export type AmsSlot = { slot: number; type: string; color: string; remain: number };
+export type Bed = { state: "occupied" | "clear" | "unknown"; source: string | null; by?: string | null; at: number | null; finished?: boolean };
 export type Printer = {
+  bed?: Bed;
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null };
   // admin only
@@ -28,7 +30,7 @@ export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
   hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; status?: Printer["status"];
 };
-export type User = { id: string; email: string; name: string; role: "admin" | "user"; active: boolean; invited_by: string | null; created: number; last_login: number | null };
+export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
 export type StorageInfo = {
   disk: { total: number; used: number; free: number; free_percent: number | null; low: boolean };
@@ -45,13 +47,26 @@ export type Candidate = {
   reasons: string[]; blockers: string[]; loaded_slot: number | null;
 };
 export type AssignResult = { dims: [number, number, number]; chosen: string | null; candidates: Candidate[] };
+export type Phase = "submitted" | "previewing" | "previewed" | "pooled" | "assigned" | "slicing" | "ready" | "printing" | "printed" | "failed" | "unknown" | "cancelled" | "rejected";
 export type Job = {
-  id: string; name: string; state: "slicing" | "done" | "failed"; error?: string;
-  printer_id: string; printer_name: string; printer_model: string; filament: string; preset: string;
+  id: string; name: string; state: string; phase?: Phase; error?: string;
+  pickup_by?: number | null; at_risk?: boolean; submitted_at?: number | null; auto_start?: boolean;
+  preview?: { time_s?: number; filament_g?: number; layers?: number };
+  printer_id: string | null; printer_name: string | null; printer_model: string | null; filament: string; preset: string;
   queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
   result?: { outcome: "finished" | "failed" | "unknown"; summary: string; layer: number | null; total_layers: number | null;
              hms: { code: string; text: string }[]; duration_s: number | null } | null;
   stats?: { time_s?: number; filament_g?: number; layers?: number; mock?: boolean };
+};
+export type Forecast = { feasible: boolean; earliest_finish: number | null; jobs_ahead: number; printer_name: string | null; likely?: boolean };
+export type JobEvent = { id: string; kind: string; at: number; actor: string | null; data: Record<string, unknown> };
+export type PipelineSettings = { cooling_margin_min: number; operator_delay_min: number; ready_hold_min: number; estimate_buffer_pct: number; max_hold_h: number };
+export type Stats = {
+  jobs: number; by_phase: Record<string, number>; events: number; tasks: Record<string, number>;
+  by_user: Record<string, { jobs: number; finished: number; failed: number; print_s: number; filament_g: number }>;
+  by_printer: Record<string, { name: string | null; jobs: number; finished: number; failed: number; print_s: number }>;
+  estimate_accuracy: { samples: number; sliced_median_ratio: number | null; preview_median_ratio: number | null; preview_samples: number };
+  queue_wait_s: { samples: number; median: number | null; max: number | null }; pickup: { met: number; missed: number };
 };
 export type Transform = { rotation: [number, number, number]; scale: number };
 
@@ -82,7 +97,7 @@ export const api = {
   logout: () => send("POST", "/auth/logout").then(j<{ ok: boolean }>),
   users: () => fetch("/api/admin/users").then(j<User[]>),
   invite: (u: { email: string; name: string; role: string }) => send("POST", "/api/admin/users", u).then(j<User>),
-  patchUser: (id: string, p: { role?: string; active?: boolean }) => send("PATCH", `/api/admin/users/${id}`, p).then(j<User>),
+  patchUser: (id: string, p: { role?: string; active?: boolean; operator?: boolean }) => send("PATCH", `/api/admin/users/${id}`, p).then(j<User>),
   deleteUser: (id: string) => send("DELETE", `/api/admin/users/${id}`).then(j<{ ok: boolean }>),
   storage: () => fetch("/api/admin/storage").then(j<StorageInfo>),
   saveStorage: (s: Partial<StorageInfo["settings"]>) => send("PUT", "/api/admin/storage/settings", s).then(j<StorageInfo["settings"]>),
@@ -100,6 +115,21 @@ export const api = {
     post("/api/assign", { model_id, filament, ...t }).then(j<AssignResult>),
   slice: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string } & Transform) =>
     post("/api/slice", body).then(j<Job>),
+  draft: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown> } & Transform) =>
+    post("/api/jobs/preview", body).then(j<Job>),
+  forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
+  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean }) => {
+    const res = await post(`/api/jobs/${id}/submit`, body);
+    if (res.status === 409) { const d = await res.json().catch(() => ({})); if (d.earliest_pickup) throw Object.assign(new Error(d.detail), { earliest: d.earliest_pickup as number }); throw new Error(d.detail ?? "Cannot submit"); }
+    return j<Job>(res);
+  },
+  cancel: (id: string) => post(`/api/jobs/${id}/cancel`).then(j<Job>),
+  events: (id: string) => fetch(`/api/jobs/${id}/events`).then(j<JobEvent[]>),
+  bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
+  bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),
+  pipeline: () => fetch("/api/admin/pipeline").then(j<PipelineSettings>),
+  savePipeline: (s: Partial<PipelineSettings>) => send("PUT", "/api/admin/pipeline", s).then(j<PipelineSettings>),
+  stats: () => fetch("/api/admin/stats").then(j<Stats>),
   job: (id: string) => fetch(`/api/jobs/${id}`).then(j<Job>),
   jobs: () => fetch("/api/jobs").then(j<Job[]>),
   queue: (id: string) => post(`/api/jobs/${id}/queue`).then(j<Job>),

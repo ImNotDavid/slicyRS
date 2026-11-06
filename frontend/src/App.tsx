@@ -9,6 +9,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import FleetModal from "./components/FleetModal";
 import AdminModal from "./components/AdminModal";
 import JobsModal, { fmtTime } from "./components/JobsModal";
+import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
 const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1 };
@@ -31,7 +32,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [layerRange, setLayerRange] = useState<[number, number]>([0, 0]);
   const [fitSignal, setFitSignal] = useState(0);
   const [infoOpen, setInfoOpen] = useState(() => window.innerWidth > 900);
-  const [modal, setModal] = useState<null | "fleet" | "jobs" | "admin">(null);
+  const [modal, setModal] = useState<null | "fleet" | "jobs" | "admin" | "submit">(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const isAdmin = user.role === "admin";
   const [busy, setBusy] = useState(false);
@@ -314,11 +315,14 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
             <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
           </button>
           <button className="btn dark" disabled={!ready || job?.queued} onClick={queue}>QUEUE</button>
+          <button className="btn" disabled={!model || busy} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
           <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
         </div>
       </main>
 
-      {modal === "fleet" && <FleetModal printers={printers} onClose={() => setModal(null)} />}
+      {modal === "fleet" && <FleetModal printers={printers} onClose={() => setModal(null)} onChanged={refreshPrinters} />}
+      {modal === "submit" && model && <SubmitModal spec={{ model_id: model.id, filament, preset, settings, ...transform }} onClose={() => setModal(null)}
+        onDone={(j) => { setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
       {modal === "admin" && isAdmin && <AdminModal catalog={catalog} me={user} onClose={() => setModal(null)} onPrintersChanged={refreshPrinters} />}
       {modal === "jobs" && <JobsModal onClose={() => setModal(null)} onOpen={openJob} showOwner={isAdmin} />}
     </div>

@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { X } from "lucide-react";
-import type { Printer } from "../api";
+import { api, type Printer } from "../api";
 
-type Props = { printers: Printer[]; onClose: () => void };
+type Props = { printers: Printer[]; onClose: () => void; onChanged?: () => void };
 
 // black or white text, whichever reads better on a filament colour
 const textOn = (hex: string) => {
@@ -10,8 +11,16 @@ const textOn = (hex: string) => {
 };
 
 /** Read-only fleet status for every user; admins configure printers in the Admin console. */
-export default function FleetModal({ printers, onClose }: Props) {
+export default function FleetModal({ printers, onClose, onChanged }: Props) {
   const visible = printers.filter((p) => p.enabled);
+  const [open, setOpen] = useState<string | null>(null);
+  const [ticks, setTicks] = useState({ bed_empty: false, plate_matches: false, filament_matches: false });
+  const [err, setErr] = useState("");
+  const confirm = async (id: string) => {
+    setErr("");
+    try { await api.bedClear(id, ticks); setOpen(null); setTicks({ bed_empty: false, plate_matches: false, filament_matches: false }); onChanged?.(); }
+    catch (e) { setErr((e as Error).message); }
+  };
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" role="dialog" aria-label="Printer fleet" onClick={(e) => e.stopPropagation()}>
@@ -25,11 +34,22 @@ export default function FleetModal({ printers, onClose }: Props) {
                 <span className="muted">{p.model}{p.queue_depth ? ` · ${p.queue_depth} queued` : ""}</span>
               </div>
               <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
+              {p.bed && <span className={"pill bed-" + p.bed.state} title={p.bed.by ? `confirmed by ${p.bed.by}` : "build plate"}>plate {p.bed.state}</span>}
+              {p.bed && p.bed.state !== "clear" && p.status.state !== "RUNNING" && <button className="btn" onClick={() => { setOpen(open === p.id ? null : p.id); setErr(""); }}>Confirm plate clear</button>}
               <div className="ams">
                 {(p.status.ams ?? []).map((s) => (
                   <span key={s.slot} className="slot" title={`${s.type} ${s.remain}%`} style={{ background: s.color, color: textOn(s.color) }}>{s.type}</span>
                 ))}
               </div>
+              {open === p.id && (
+                <div className="bed-check">
+                  {([["bed_empty", "The build plate is empty"], ["plate_matches", "The plate type matches the printer's setting"], ["filament_matches", "The loaded filament matches the next job"]] as const).map(([k, label]) => (
+                    <label className="check" key={k}><input type="checkbox" checked={ticks[k]} onChange={(e) => setTicks({ ...ticks, [k]: e.target.checked })} /> {label}</label>
+                  ))}
+                  {err && <p className="form-error" role="alert">{err}</p>}
+                  <button className="btn primary" disabled={!Object.values(ticks).every(Boolean)} onClick={() => confirm(p.id)}>Confirm clear</button>
+                </div>
+              )}
             </div>
           ))}
         </div>

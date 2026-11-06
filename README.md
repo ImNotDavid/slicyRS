@@ -64,6 +64,27 @@ printer is online. Remaining printers are scored: idle beats busy, filament alre
 filament change, shorter queue wins, and the smallest bed that fits wins so large printers stay free.
 You can still override the choice from the printer card.
 
+## Job pool (Milestone A)
+
+Besides slicing for a printer you pick (**SLICE**), a part can be **submitted to the pool** (**SUBMIT TO POOL**). The server then:
+
+1. saves a printer-independent job and slices a **preview** (estimated time, filament, layers; X1C profile until a P2S model is added);
+2. forecasts when it would be ready; an optional **pickup time** that the forecast calls unlikely is refused, with the earliest likely time offered;
+3. keeps it in one shared pool; a printer that is idle, enabled, not holding another job and whose **build plate is confirmed clear** takes the best job it can
+   print (jobs at risk of missing their pickup time first, then submission order), slices it for that printer, and optionally starts it (**auto start**);
+4. emails the owner when a job may miss its pickup time, when it is late, and when a print has finished; operators are emailed if a finished plate stays
+   unconfirmed past an admin-set delay.
+
+Every phase change is an event (`GET /api/jobs/{id}/events`, **History** in the Jobs list). **Bed state** (`occupied`, `clear`, `unknown`) is kept per
+printer: a running or finished print makes it `occupied`, a server restart makes it `unknown`, and the owner of the last print, an operator or an admin confirms it
+clear with a three-item checklist (Fleet page). Operators are chosen by an admin (Admin > Users). Admin > Pipeline holds the margins and delays and shows statistics
+(usage per user and printer, estimate accuracy, queue wait, pickup times met). Printing from the Print button is also blocked while a plate is `occupied`.
+
+Slicing for the pool runs through a database task queue. By default the web process runs the workers itself (`SLICE_WORKERS`, default 2). For a separate worker,
+set `EMBED_WORKERS=0` on the web process and run `python -m app.worker` against the same data directory; a worker that dies mid-slice loses nothing (its task
+is handed on, and fails the job after three attempts). `ALLOCATOR_INTERVAL_S` (default 5) sets how often the pool is checked. Not built yet: plate sharing
+between users, a printer gateway as its own process, storage interfaces for Postgres (see `ROADMAP.md`).
+
 ## Cloud service: accounts, SSO, admin
 
 **Sign-in.** Two methods, usable together; both are invite-only (an admin adds a person's Imperial email in
