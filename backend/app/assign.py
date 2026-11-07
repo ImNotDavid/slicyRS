@@ -91,7 +91,10 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     score -= 8 * printer.get("queue_depth", 0)
 
     slot = _match_loaded(status.get("ams", []), filament)
-    if slot is not None:
+    if not status.get("ams") and not fil.get("external_spool"):
+        # No AMS (e.g. A1 mini): the printer reports nothing about the external spool, so we cannot tell what is loaded.
+        c.reasons.append(f"No AMS — uses the external spool; {filament} must be loaded there")
+    elif slot is not None:
         score += 30
         c.loaded_slot = slot
         c.reasons.append(f"{filament} already loaded in AMS slot {slot + 1}")

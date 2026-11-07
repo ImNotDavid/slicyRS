@@ -28,7 +28,8 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
               <div className="fleet-main">
                 <strong>{j.name}</strong>
                 <span className="muted">{j.printer_name ?? "printer not chosen yet"} · {j.filament} · {j.preset}{showOwner && j.owner_email ? ` · ${j.owner_email}` : ""}{j.pickup_by ? ` · pickup by ${when(j.pickup_by)}` : ""}</span>
-                {j.at_risk && <span className="muted bad-text">may miss its pickup time</span>}
+                {j.phase === "pooled" && j.waiting_for && <span className="muted">{j.waiting_for}</span>}
+                {j.at_risk &&<span className="muted bad-text">may miss its pickup time</span>}
               </div>
               <span className={"pill " + (j.result ? (j.result.outcome === "finished" ? "done" : j.result.outcome === "unknown" ? "queued" : "failed") : j.state)}>
                 {j.result ? (j.result.outcome === "finished" ? "printed" : j.result.outcome === "unknown" ? "sent, result unknown"

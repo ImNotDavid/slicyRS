@@ -50,7 +50,7 @@ export type AssignResult = { dims: [number, number, number]; chosen: string | nu
 export type Phase = "submitted" | "previewing" | "previewed" | "pooled" | "assigned" | "slicing" | "ready" | "printing" | "printed" | "failed" | "unknown" | "cancelled" | "rejected";
 export type Job = {
   id: string; name: string; state: string; phase?: Phase; error?: string;
-  pickup_by?: number | null; at_risk?: boolean; submitted_at?: number | null; auto_start?: boolean;
+  pickup_by?: number | null; at_risk?: boolean; waiting_for?: string; submitted_at?: number | null; auto_start?: boolean;
   preview?: { time_s?: number; filament_g?: number; layers?: number };
   printer_id: string | null; printer_name: string | null; printer_model: string | null; filament: string; preset: string;
   queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;

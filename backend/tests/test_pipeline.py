@@ -124,7 +124,7 @@ def test_cancel(client, fleet):
 
 def pooled_job(owner, name, submitted, pickup_by=None, at_risk=False):
     jid = f"pool-{name}-{time.time_ns()}"
-    store.jobs.put(jid, {"id": jid, "name": name, "phase": "pooled", "state": "pooled", "created": submitted, "submitted_at": submitted,
+    store.jobs.put(jid, {"id": jid, "name": name, "phase": "pooled", "pooled": True, "state": "pooled", "created": submitted, "submitted_at": submitted,
                          "owner_id": owner["id"], "owner_email": owner["email"], "dims": [20, 20, 20], "filament": "PLA",
                          "preset": "0.20mm Standard", "spec": {"preset": "0.20mm Standard", "filament": "PLA", "settings": {}},
                          "input_file": "input.stl", "pickup_by": pickup_by, "at_risk": at_risk, "printed": False, "queued": False})
@@ -282,7 +282,7 @@ def test_task_that_keeps_losing_workers_is_declared_dead(client):
 
 def test_job_in_a_killed_slicer_is_failed_not_lost(client, fleet):
     j = draft(client)
-    jobstate.transition(j["id"], "pooled", state="pooled", submitted_at=time.time())
+    jobstate.transition(j["id"], "pooled", state="pooled", pooled=True, submitted_at=time.time())
     jobstate.transition(j["id"], "assigned", printer_id=fleet["mini"])
     jobstate.transition(j["id"], "slicing", state="slicing")
     store._conn.execute("DELETE FROM tasks")

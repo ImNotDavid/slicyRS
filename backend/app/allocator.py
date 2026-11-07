@@ -18,8 +18,15 @@ HOLDING = {"assigned", "slicing", "ready", "printing"}
 _lock = threading.Lock()
 
 
+def _holds(j: dict[str, Any]) -> bool:
+    """A job holds its printer while printing, or while it is a pool job that is assigned, slicing or ready.
+    A job sliced directly for a chosen printer (not from the pool) that is not being printed holds nothing."""
+    ph = j.get("phase")
+    return ph == "printing" or (ph in HOLDING and bool(j.get("pooled")))
+
+
 def free_printers() -> list[dict[str, Any]]:
-    held = {j.get("printer_id") for j in store.jobs.all() if j.get("phase") in HOLDING}
+    held = {j.get("printer_id") for j in store.jobs.all() if _holds(j)}
     out = []
     for p in store.printers.all():
         st = (p.get("status") or {}).get("state", "OFFLINE")
@@ -36,7 +43,44 @@ def priority(job: dict[str, Any]) -> tuple:
     return (0 if risk else 1, (job.get("pickup_by") or 0) if risk else 0, job.get("submitted_at") or 0)
 
 
+def waiting_reason(job: dict[str, Any]) -> str:
+    """Why a pooled job has not been given a printer yet, in words for the job's owner."""
+    held = {j.get("printer_id") for j in store.jobs.all() if _holds(j)}
+    printers = store.printers.all()
+    if not printers:
+        return "No printers are set up"
+    can = {c.printer_id for c in assign.rank([{**p, "assume_available": True} for p in printers], tuple(job["dims"]), job["filament"])
+           if c.eligible}
+    if not can:
+        return "No printer can print this part"
+    why = []
+    for p in printers:
+        if p["id"] not in can:
+            continue
+        st = (p.get("status") or {}).get("state", "OFFLINE")
+        bed = bedstate.get(p)["state"]
+        if not p.get("enabled", True):
+            why.append(f"{p['name']} is disabled")
+        elif p["id"] in held:
+            h = next((j for j in store.jobs.all() if j.get("printer_id") == p["id"] and _holds(j)), {})
+            why.append(f"{p['name']} is held by \"{h.get('name', 'another job')}\" ({h.get('phase')})")
+        elif st in BUSY:
+            why.append(f"{p['name']} is printing")
+        elif st == "ERROR" or (st == "OFFLINE" and not p.get("assume_available")):
+            why.append(f"{p['name']} is {'in error' if st == 'ERROR' else 'offline'}")
+        elif bed == "occupied":
+            why.append(f"{p['name']}: finished print still on the plate — confirm it is clear on the Fleet page")
+        elif bed != "clear":
+            why.append(f"{p['name']}: plate state unknown — confirm it is clear on the Fleet page")
+    return "; ".join(why) or "Starting soon"
+
+
 def assign_pool() -> int:
+    for j in store.jobs.all():
+        if j.get("phase") == "pooled":
+            w = waiting_reason(j)
+            if w != j.get("waiting_for"):
+                store.jobs.update(j["id"], waiting_for=w)
     n = 0
     pooled = sorted((j for j in store.jobs.all() if j.get("phase") == "pooled"), key=priority)
     for job in pooled:
@@ -62,7 +106,7 @@ def expire_holds(now: float) -> int:
     hold = pipelinecfg.get()["ready_hold_min"] * 60
     n = 0
     for j in store.jobs.all():
-        if j.get("phase") == "ready" and not j.get("auto_start") and j.get("submitted_at") and now - (j.get("phase_at") or now) > hold:
+        if j.get("phase") == "ready" and j.get("pooled") and not j.get("auto_start") and now - (j.get("phase_at") or now) > hold:
             jobstate.transition(j["id"], "pooled", "allocator", state="pooled", reason="not started within the hold time",
                                 printer_id=None, printer_name=None)
             n += 1
