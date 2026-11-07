@@ -11,7 +11,7 @@ CLEAR = {"bed_empty": True, "plate_matches": True, "filament_matches": True}
 
 
 def stl():
-    return next(VALID.glob("*.stl"))
+    return VALID / "cube_binary.stl"   # fixed: directory order differs between machines
 
 
 def wait_phase(client, job_id, phases, timeout=30):
