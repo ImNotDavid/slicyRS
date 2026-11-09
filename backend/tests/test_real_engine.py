@@ -75,3 +75,47 @@ def test_several_parts_share_one_plate_and_too_many_are_refused(engine, tmp_path
     assert both["time_s"] > alone["time_s"] and both["filament_g"] > alone["filament_g"]     # one plate carrying both parts
     with pytest.raises(engine.SliceError):                                                  # two 250 mm plates cannot share a 256 mm bed
         engine.run(tmp_path / "big", [FIX / "plate_250.stl"] * 2, "X1C", "0.20mm Standard", "PLA", {})
+
+
+# Settings jobs on a shared plate may differ in must really be honoured per object by the pinned slicer, or a part would
+# silently print with another job's settings. Each case changes the setting on both parts and expects a visible change.
+PER_OBJECT_CASES = {
+    "outer_wall_line_width": ({}, 0.6), "inner_wall_line_width": ({}, 0.7), "ironing_type": ({}, "top"), "wall_loops": ({}, 5),
+    "top_shell_layers": ({}, 8), "bottom_shell_layers": ({}, 7), "sparse_infill_density": ({}, "40%"),
+    "sparse_infill_pattern": ({}, "gyroid"), "outer_wall_speed": ({}, 50), "inner_wall_speed": ({}, 20),
+    "sparse_infill_speed": ({}, 60), "top_surface_speed": ({}, 10), "enable_support": ({}, 1),
+    "support_threshold_angle": ({"enable_support": 1}, 90), "raft_layers": ({}, 2), "brim_type": ({"brim_width": 15}, "outer_only"),
+    "brim_width": ({"brim_type": "outer_only"}, 20), "fuzzy_skin": ({}, "allwalls"),
+}
+
+
+def plate_stats(engine, tmp_path, tag, settings):
+    models = [FIX / "cube_binary.stl", FIX / "sphere.stl"]
+    return engine.run(tmp_path / tag, models, "A1 mini", "0.20mm Standard", "PLA", {}, object_settings=settings)
+
+
+def changed(a, b):
+    return abs(b["time_s"] - a["time_s"]) > 0.015 * a["time_s"] or abs(b["filament_g"] - a["filament_g"]) > 0.25
+
+
+def test_every_setting_a_shared_plate_lets_parts_differ_in_is_honoured_per_object(engine, tmp_path):
+    from app.plates import PER_OBJECT
+    base = plate_stats(engine, tmp_path, "base", [{}, {}])
+    untested = PER_OBJECT - set(PER_OBJECT_CASES) - {"line_width", "skeleton_infill_density", "skin_infill_density"}
+    assert not untested, f"add a case for {sorted(untested)}"
+    ignored = []
+    for key, (ctx, alt) in PER_OBJECT_CASES.items():
+        ref = plate_stats(engine, tmp_path, "ref_" + key, [ctx, ctx]) if ctx else base
+        got = plate_stats(engine, tmp_path, key, [{**ctx, key: alt}] * 2)
+        if not changed(ref, got):
+            ignored.append(key)
+    assert not ignored, f"the slicer ignored these as per-object settings: {ignored}"
+
+
+def test_each_part_gets_its_own_settings_in_the_order_given(engine, tmp_path):
+    base = plate_stats(engine, tmp_path, "b", [{}, {}])
+    first = plate_stats(engine, tmp_path, "f", [{"sparse_infill_density": "100%"}, {}])
+    second = plate_stats(engine, tmp_path, "s", [{}, {"sparse_infill_density": "100%"}])
+    # the cube (first) is the bigger part, so solid infill on it costs more filament than on the sphere (second)
+    assert first["filament_g"] - base["filament_g"] > second["filament_g"] - base["filament_g"] + 3
+    assert second["filament_g"] > base["filament_g"] + 3

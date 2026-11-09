@@ -5,13 +5,12 @@
   slice    slice for the printer the allocator chose, then optionally start the print
 """
 import logging
-import shutil
 from pathlib import Path
 from typing import Any
 
 from . import jobstate, plates, printing, slicer, store, taskqueue
 from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
-from .config import JOBS_DIR
+from .storage import JOBS, files
 from .defaults import effective_overrides
 
 log = logging.getLogger("pipeline")
@@ -32,7 +31,7 @@ def request_slice(job_id: str) -> None:
 
 
 def _input(job: dict[str, Any]) -> Path:
-    return JOBS_DIR / job["id"] / job["input_file"]
+    return files.path(JOBS, job["id"], job["input_file"])
 
 
 def handle_preview(payload: dict[str, Any]) -> None:
@@ -40,7 +39,7 @@ def handle_preview(payload: dict[str, Any]) -> None:
     if not job or job.get("phase") != "previewing":
         return
     spec = job["spec"]
-    wd = JOBS_DIR / job["id"] / "preview"
+    wd = files.path(JOBS, job["id"], "preview")
     try:
         r = slicer.run(wd, _input(job), preview_model(), spec["preset"], spec["filament"],
                        effective_overrides(spec["preset"], spec["settings"], DEFAULT_BED_TYPE))
@@ -51,7 +50,7 @@ def handle_preview(payload: dict[str, Any]) -> None:
         log.info("preview failed for %s: %s", job["id"], e)
         jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
     finally:
-        shutil.rmtree(wd, ignore_errors=True)   # only the numbers are kept
+        files.remove_subdir(JOBS, job["id"], "preview")   # only the numbers are kept
 
 
 def handle_slice(payload: dict[str, Any]) -> None:
@@ -59,11 +58,13 @@ def handle_slice(payload: dict[str, Any]) -> None:
     if not job or job.get("phase") != "slicing":
         return
     spec = job["spec"]
-    wd = JOBS_DIR / job["id"]
-    inputs = [_input(job)] + [_input(m) for m in (store.jobs.get(i) for i in job.get("members") or []) if m]
+    wd = files.workdir(JOBS, job["id"])
+    members = [m for m in (store.jobs.get(i) for i in job.get("members") or []) if m]
+    inputs = [_input(job)] + [_input(m) for m in members]
     try:
         r = slicer.run(wd, inputs, job["printer_model"], spec["preset"], spec["filament"],
-                       effective_overrides(spec["preset"], spec["settings"], job.get("bed_type") or DEFAULT_BED_TYPE))
+                       effective_overrides(spec["preset"], spec["settings"], job.get("bed_type") or DEFAULT_BED_TYPE),
+                       object_settings=[{}] + [m.get("plate_overrides") or {} for m in members])
     except Exception as e:
         if (store.jobs.get(job["id"]) or {}).get("phase") == "slicing":
             if plates.drop_last(job["id"], f"the plate could not be sliced ({e})"):
@@ -71,6 +72,7 @@ def handle_slice(payload: dict[str, Any]) -> None:
             else:
                 jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
         return
+    files.publish(JOBS, job["id"])
     cur = store.jobs.get(job["id"]) or {}
     if cur.get("phase") != "slicing":
         return                                    # cancelled while slicing: drop the result

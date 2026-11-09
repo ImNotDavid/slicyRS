@@ -125,6 +125,7 @@ export const api = {
     if (res.status === 409) { const d = await res.json().catch(() => ({})); if (d.earliest_pickup) throw Object.assign(new Error(d.detail), { earliest: d.earliest_pickup as number }); throw new Error(d.detail ?? "Cannot submit"); }
     return j<Job>(res);
   },
+  discard: (id: string) => send("DELETE", `/api/jobs/${id}`).then(j<{ ok: boolean }>),
   cancel: (id: string) => post(`/api/jobs/${id}/cancel`).then(j<Job>),
   events: (id: string) => fetch(`/api/jobs/${id}/events`).then(j<JobEvent[]>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),

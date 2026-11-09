@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import shutil
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -21,8 +20,9 @@ from .bambu import PrinterError, check_host, links, probe
 from .defaults import effective_overrides, ui_defaults
 from .catalog import (ALLOWED_SETTING_KEYS, BED_TYPES, DEFAULT_BED_TYPE, FILAMENTS, PRINTER_MODELS, PROCESS_PRESETS,
                       SETTINGS_SCHEMA, preset_defaults)
-from .config import (ALLOWED_EMAIL_DOMAINS, COOKIE_SECURE, JOBS_DIR, MAX_UPLOAD_MB, MAX_WORKERS, MODELS_DIR, ORCA_BIN,
+from .config import (ALLOWED_EMAIL_DOMAINS, COOKIE_SECURE, MAX_UPLOAD_MB, MAX_WORKERS, ORCA_BIN,
                      SECRET_KEY, SESSION_HOURS, SLICER_MODE)
+from .storage import JOBS, MODELS, files
 
 app = FastAPI(title="slicyRS")
 pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
@@ -88,21 +88,20 @@ def _fleet() -> list[dict[str, Any]]:
     return [{**p, "queue_depth": _queue_depth(p["id"])} for p in store.printers.all() if p.get("enabled", True)]
 
 
-def _model_dir(model_id: str, user: dict[str, Any]) -> Path:
+def _checked_model(model_id: str, user: dict[str, Any]) -> str:
     """Models belong to their uploader; other users get the same 404 as a missing model."""
     rec = store.models.get(model_id)
-    d = MODELS_DIR / model_id
     if rec and rec.get("files_deleted_at") and (rec["owner_id"] == user["id"] or is_admin(user)):
         raise HTTPException(410, "This model was removed after not being used for a while. Please upload it again.")
-    if not rec or not d.is_dir() or (rec["owner_id"] != user["id"] and not is_admin(user)):
+    if not rec or not files.exists(MODELS, model_id) or (rec["owner_id"] != user["id"] and not is_admin(user)):
         raise HTTPException(404, "Unknown model")
     retention.touch_model(model_id)
-    return d
+    return model_id
 
 
 def _source_file(model_id: str, user: dict[str, Any]) -> Path:
-    d = _model_dir(model_id, user)
-    return next(f for f in d.iterdir() if f.name.startswith("source"))
+    _checked_model(model_id, user)
+    return files.path(MODELS, model_id, next(n for n in files.names(MODELS, model_id) if n.startswith("source")))
 
 
 def _transformed(model_id: str, rotation, scale, user: dict[str, Any]):
@@ -166,17 +165,16 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"File larger than {MAX_UPLOAD_MB} MB")
     model_id = uuid.uuid4().hex[:12]
-    d = MODELS_DIR / model_id
-    d.mkdir()
-    src = d / f"source{ext}"
-    src.write_bytes(data)
-    (d / "name.txt").write_text(file.filename or "model", encoding="utf-8")
+    files.create(MODELS, model_id)
+    files.write_bytes(MODELS, model_id, f"source{ext}", data)
+    files.write_text(MODELS, model_id, "name.txt", file.filename or "model")
     try:
-        mesh = meshio.load_mesh(src)
+        mesh = meshio.load_mesh(files.path(MODELS, model_id, f"source{ext}"))
     except Exception as e:
-        shutil.rmtree(d, ignore_errors=True)
+        files.remove(MODELS, model_id)
         raise HTTPException(400, f"Could not read model: {e}")
-    meshio.export_stl(mesh, d / "preview.stl")
+    meshio.export_stl(mesh, files.path(MODELS, model_id, "preview.stl"))
+    files.publish(MODELS, model_id)
     store.models.put(model_id, {"id": model_id, "owner_id": user["id"], "name": file.filename, "created": time.time()})
     return {"id": model_id, "name": file.filename, "dims": meshio.dims(mesh),
             "triangles": int(len(mesh.faces))}
@@ -184,7 +182,7 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
 
 @app.get("/api/models/{model_id}/preview.stl")
 def preview(model_id: str, user: dict = User):
-    return FileResponse(_model_dir(model_id, user) / "preview.stl", media_type="model/stl")
+    return FileResponse(files.path(MODELS, _checked_model(model_id, user), "preview.stl"), media_type="model/stl")
 
 
 class TransformIn(BaseModel):
@@ -442,6 +440,13 @@ class SliceIn(TransformIn):
 SERVER_MANAGED_SETTINGS = {"curr_bed_type"}
 
 
+def _discard_slice_drafts(user: dict[str, Any], model_id: str | None, keep: str | None = None) -> None:
+    """A slice made to look at a part is a draft, not a job. Sending the same part to the pool replaces it."""
+    for j in store.jobs.all():
+        if j.get("draft") and j.get("direct") and j.get("owner_id") == user["id"] and j.get("model_id") == model_id and j["id"] != keep:
+            jobstate.discard(j["id"])
+
+
 @app.post("/api/slice")
 def start_slice(body: SliceIn, user: dict = User):
     if body.filament not in FILAMENTS:
@@ -468,21 +473,21 @@ def start_slice(body: SliceIn, user: dict = User):
             raise HTTPException(409, "No printer in the fleet can print this part. " + "; ".join(why))
 
     job_id = uuid.uuid4().hex[:12]
-    workdir = JOBS_DIR / job_id
-    workdir.mkdir()
+    workdir = files.create(JOBS, job_id)
     src = _source_file(body.model_id, user)
     untransformed = tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0
     if untransformed and src.suffix == ".3mf":
-        input_path = workdir / "input.3mf"
-        input_path.write_bytes(src.read_bytes())
+        files.write_bytes(JOBS, job_id, "input.3mf", src.read_bytes())
+        input_path = files.path(JOBS, job_id, "input.3mf")
     else:
-        input_path = workdir / "input.stl"
+        input_path = files.path(JOBS, job_id, "input.stl")
         meshio.export_stl(mesh, input_path)
+    files.publish(JOBS, job_id)
 
     printer = store.printers.get(chosen.printer_id) or {}
-    name = (MODELS_DIR / body.model_id / "name.txt").read_text(encoding="utf-8")
+    name = files.read_text(MODELS, body.model_id, "name.txt")
     store.jobs.put(job_id, {
-        "id": job_id, "name": name, "state": "slicing", "created": time.time(), "owner_id": user["id"],
+        "id": job_id, "name": name, "model_id": body.model_id, "draft": True, "direct": True, "state": "slicing", "created": time.time(), "owner_id": user["id"],
         "owner_email": user["email"],
         "printer_id": chosen.printer_id, "printer_name": printer.get("name"), "printer_model": chosen.model,
         "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
@@ -501,6 +506,7 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
     overrides = effective_overrides(body.preset, body.settings, bed_type)
     try:
         result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides)
+        files.publish(JOBS, job_id)
         jobstate.transition(job_id, "ready", None, state="done", stats=result, gcode=result["gcode"], bundle=result.get("bundle"))
     except Exception as e:  # surfaced to the UI as the job error
         jobstate.transition(job_id, "failed", None, force=True, state="failed", error=str(e))
@@ -509,7 +515,7 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
 @app.get("/api/jobs")
 def list_jobs(user: dict = User):
     """Your jobs; admins see everyone's."""
-    jobs = [j for j in store.jobs.all() if is_admin(user) or j.get("owner_id") == user["id"]]
+    jobs = [j for j in store.jobs.all() if not j.get("draft") and (is_admin(user) or j.get("owner_id") == user["id"])]
     return sorted(jobs, key=lambda j: -j["created"])
 
 
@@ -534,7 +540,7 @@ def _job_file(job_id: str, key: str, user: dict[str, Any]) -> Path:
         raise HTTPException(410, "The files for this job were deleted to save space. Slice the part again to get new ones.")
     if job["state"] != "done" or not job.get(key):
         raise HTTPException(409, "Not available")
-    return JOBS_DIR / job_id / job[key]
+    return files.path(JOBS, job_id, job[key])
 
 
 @app.get("/api/jobs/{job_id}/gcode")
@@ -554,7 +560,7 @@ def job_bundle(job_id: str, user: dict = User):
 @app.post("/api/jobs/{job_id}/queue")
 def queue_job(job_id: str, user: dict = User):
     _owned_job(job_id, user)
-    return store.jobs.update(job_id, queued=True)
+    return store.jobs.update(job_id, queued=True, draft=False)       # queued on a printer: it is a job now
 
 
 def _remote_name(job: dict[str, Any]) -> str:
@@ -568,9 +574,12 @@ def print_job(job_id: str, user: dict = User):
     if job.get("batch_lead"):                       # any owner on a shared plate may start it
         job = store.jobs.get(job["batch_lead"]) or job
     try:
-        return printing.start(job, bundle, user)
+        out = printing.start(job, bundle, user)
     except printing.PrintBlocked as e:
         raise HTTPException(e.status, e.message)
+    if job.get("draft"):                            # a job exists once it has gone to a printer
+        store.jobs.update(job["id"], draft=False)
+    return out
 
 
 # ------------------------------------------------------------------- job pipeline (A.1, A.2)
@@ -599,18 +608,18 @@ def create_draft(body: DraftIn, user: dict = User):
         why = sorted({b for c in assign.rank(_fleet(), size, body.filament) for b in c.blockers if b != "Printer is offline"})
         raise HTTPException(409, "No printer in the fleet can ever print this part. " + "; ".join(why))
     job_id = uuid.uuid4().hex[:12]
-    workdir = JOBS_DIR / job_id
-    workdir.mkdir()
+    files.create(JOBS, job_id)
     src = _source_file(body.model_id, user)
     if tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0 and src.suffix == ".3mf":
         input_file = "input.3mf"
-        (workdir / input_file).write_bytes(src.read_bytes())
+        files.write_bytes(JOBS, job_id, input_file, src.read_bytes())
     else:
         input_file = "input.stl"
-        meshio.export_stl(mesh, workdir / input_file)
-    name = (MODELS_DIR / body.model_id / "name.txt").read_text(encoding="utf-8")
+        meshio.export_stl(mesh, files.path(JOBS, job_id, input_file))
+    files.publish(JOBS, job_id)
+    name = files.read_text(MODELS, body.model_id, "name.txt")
     store.jobs.put(job_id, {
-        "id": job_id, "name": name, "state": "submitted", "phase": "submitted", "phase_at": time.time(), "created": time.time(),
+        "id": job_id, "name": name, "draft": True, "state": "submitted", "phase": "submitted", "phase_at": time.time(), "created": time.time(),
         "owner_id": user["id"], "owner_email": user["email"], "printer_id": None, "printer_name": None, "printer_model": None,
         "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
         "input_file": input_file, "pickup_by": None, "submitted_at": None,
@@ -653,16 +662,30 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
         return JSONResponse({"detail": "That pickup time is unlikely: the earliest the part is expected to be ready is shown. "
                                        "Choose a later time or submit without one.",
                              "earliest_pickup": check["earliest_finish"]}, status_code=409)
-    jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, submitted_at=now, pickup_by=body.pickup_by,
+    jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, draft=False, submitted_at=now, pickup_by=body.pickup_by,
                         colour=body.colour, auto_start=body.auto_start, allow_batching=body.allow_batching, at_risk=False)
+    _discard_slice_drafts(user, (job.get("spec") or {}).get("model_id"), keep=job_id)
     audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
     allocator.tick()
     return store.jobs.get(job_id)
 
 
+@app.delete("/api/jobs/{job_id}")
+def discard_draft(job_id: str, user: dict = User):
+    """Throw away a draft (a preview or a slice that was never sent anywhere). Real jobs are cancelled, not deleted."""
+    job = _owned_job(job_id, user)
+    if not job.get("draft"):
+        raise HTTPException(409, "Only a draft can be discarded; cancel a job instead")
+    jobstate.discard(job_id)
+    return {"ok": True}
+
+
 @app.post("/api/jobs/{job_id}/cancel")
 def cancel_job(job_id: str, user: dict = User):
     job = _owned_job(job_id, user)
+    if job.get("draft"):
+        jobstate.discard(job_id)
+        return {**job, "phase": "cancelled", "state": "cancelled"}
     try:
         out = jobstate.transition(job_id, "cancelled", user["email"], state="cancelled")
     except jobstate.InvalidTransition:

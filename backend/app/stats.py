@@ -16,7 +16,7 @@ def _median(xs: list[float]) -> float | None:
 
 
 def summary(since: float | None = None) -> dict[str, Any]:
-    jobs = [j for j in store.jobs.all() if not since or j.get("created", 0) >= since]
+    jobs = [j for j in store.jobs.all() if not j.get("draft") and (not since or j.get("created", 0) >= since)]
     events = store.events.all()
     first_event: dict[tuple[str, str], float] = {}
     for e in events:

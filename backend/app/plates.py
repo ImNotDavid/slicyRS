@@ -4,19 +4,21 @@ A plate is a *lead* job plus *member* jobs. The lead carries the plate's slice, 
 other jobs. Each member has `batch_lead` pointing at the lead and mirrors the lead's phase and print result, so every owner
 sees their own job move. A job alone is just a plate of one (no members).
 
-Two jobs may share a plate only if both opted in, use the same material and slicer settings, have compatible colours,
-fit together on the chosen printer, and the combined print stays within the plate limits and every pickup time.
+Two jobs may share a plate only if both opted in, use the same filament and layer height, have compatible colours,
+fit together on the chosen printer, and the combined print stays within the plate limits and every pickup time. Other
+settings may differ: each part keeps its own wall, infill, speed and support choices (per-object settings), and the few
+settings that only exist for the whole plate follow the lead job.
 The footprint check here is quick and slightly conservative; the slicer's own arrange is the authority, and when it cannot
 fit everything the last job added is returned to the pool and the plate is sliced again.
 """
-import hashlib
-import json
 import logging
 from typing import Any
 
-from . import assign, forecast, jobstate, pipelinecfg, store
-from .catalog import PRINTER_MODELS
+from . import assign, forecast, jobstate, pipelinecfg, slicer, store
+from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
+from .defaults import effective_overrides
 from .meshio import load_mesh
+from .storage import JOBS, files
 
 log = logging.getLogger("plates")
 
@@ -57,11 +59,57 @@ def is_owner(user: dict[str, Any], job: dict[str, Any]) -> bool:
 
 # ------------------------------------------------------------------ compatibility
 
-def fingerprint(job: dict[str, Any]) -> str:
-    """Slicer settings apply to the whole plate, so only jobs with identical settings can share one."""
+# Settings that must be identical for jobs to share a plate: they apply to the whole plate (or change what the part is).
+MUST_MATCH = ("layer_height", "initial_layer_print_height", "print_sequence", "spiral_mode", "curr_bed_type")
+# Settings the slicer honours per object (checked against the pinned slicer by test_real_engine). Jobs may differ in these:
+# each part keeps its own value. Any other setting that differs takes the lead job's value for the whole plate.
+PER_OBJECT = frozenset({
+    "line_width", "outer_wall_line_width", "inner_wall_line_width", "ironing_type", "wall_loops", "top_shell_layers",
+    "bottom_shell_layers", "sparse_infill_density", "skeleton_infill_density", "skin_infill_density", "sparse_infill_pattern",
+    "outer_wall_speed", "inner_wall_speed", "sparse_infill_speed", "top_surface_speed", "enable_support",
+    "support_threshold_angle", "raft_layers", "brim_type", "brim_width", "fuzzy_skin"})
+_IGNORE = {"name", "print_settings_id", "setting_id", "from", "version", "inherits", "description", "compatible_printers",
+           "compatible_printers_condition", "filament_settings_id"}
+
+
+def _norm(v: Any) -> Any:
+    if isinstance(v, list):
+        v = v[0] if len(v) == 1 else tuple(v)
+    if isinstance(v, (tuple, list)):
+        return tuple(_norm(x) for x in v)
+    try:
+        return round(float(str(v).rstrip("%")), 6)
+    except ValueError:
+        return str(v)
+
+
+def _scalar(v: Any) -> Any:
+    return v[0] if isinstance(v, list) and v else v
+
+
+def process_of(job: dict[str, Any], printer: dict[str, Any]) -> dict[str, Any]:
     spec = job.get("spec") or {}
-    body = json.dumps([job.get("filament"), spec.get("preset"), spec.get("settings") or {}], sort_keys=True)
-    return hashlib.sha1(body.encode()).hexdigest()
+    ov = effective_overrides(spec.get("preset"), spec.get("settings") or {}, printer.get("bed_type") or DEFAULT_BED_TYPE)
+    return slicer.process_config(printer["model"], spec["preset"], ov)
+
+
+def compatibility(lead: dict[str, Any], cand: dict[str, Any], printer: dict[str, Any]) -> dict[str, Any] | None:
+    """None when the two jobs cannot share a plate; otherwise the settings `cand` keeps for itself (per object) and the
+    plate-wide settings it gives up in favour of the lead's. Jobs must use the same filament and the same layer height."""
+    if lead.get("filament") != cand.get("filament"):
+        return None
+    a, b = process_of(lead, printer), process_of(cand, printer)
+    if any(_norm(a.get(k)) != _norm(b.get(k)) for k in MUST_MATCH):
+        return None
+    own, given_up = {}, []
+    for k in sorted((set(a) | set(b)) - _IGNORE):
+        if _norm(a.get(k)) == _norm(b.get(k)):
+            continue
+        if k in PER_OBJECT and k in b:
+            own[k] = _scalar(b[k])
+        else:
+            given_up.append(k)
+    return {"object_settings": own, "plate_wide_differences": given_up}
 
 
 def colours_ok(jobs: list[dict[str, Any]]) -> bool:
@@ -96,9 +144,8 @@ def footprints_fit(dims: list[tuple[float, float, float]], bed: tuple[float, flo
 
 
 def volume_mm3(job: dict[str, Any]) -> float:
-    from .config import JOBS_DIR
     try:
-        return abs(float(load_mesh(JOBS_DIR / job["id"] / job["input_file"]).volume)) or 1.0
+        return abs(float(load_mesh(files.path(JOBS, job["id"], job["input_file"])).volume)) or 1.0
     except Exception:
         d = job.get("dims") or (1, 1, 1)
         return float(d[0] * d[1] * d[2]) * 0.3
@@ -118,12 +165,13 @@ def find_partners(lead: dict[str, Any], printer: dict[str, Any], pool: list[dict
     """Other pooled jobs that can share a plate with `lead` on `printer`, added one at a time in pool order."""
     cfg = pipelinecfg.get()
     bed = PRINTER_MODELS[printer["model"]]["bed"]
-    fp = fingerprint(lead)
     chosen: list[dict[str, Any]] = []
     for cand in pool:
         if cand["id"] == lead["id"] or not cand.get("allow_batching") or cand.get("phase") != "pooled":
             continue
-        if fingerprint(cand) != fp or cand["id"] in (lead.get("no_batch_with") or []) or lead["id"] in (cand.get("no_batch_with") or []):
+        if cand["id"] in (lead.get("no_batch_with") or []) or lead["id"] in (cand.get("no_batch_with") or []):
+            continue
+        if compatibility(lead, cand, printer) is None:
             continue
         group = [lead, *chosen, cand]
         if len(group) > cfg["plate_max_parts"] or plate_estimate_s(group) > cfg["plate_max_h"] * 3600:
@@ -150,16 +198,21 @@ def hold_reason(job: dict[str, Any], now: float) -> str | None:
         f = forecast.predict(job, now)
         if not f["feasible"] or job["pickup_by"] - f["earliest_finish"] <= cfg["batch_slack_min"] * 60:
             return None
-        return "Waiting for another part to share the plate (there is time to spare before your pickup time)"
-    return f"Waiting for another part to share the plate (up to {cfg['max_hold_h']} h)"
+        return ("Waiting for another part with the same material and layer height to share the plate "
+                "(there is time to spare before your pickup time)")
+    return f"Waiting for another part with the same material and layer height to share the plate (up to {cfg['max_hold_h']} h)"
 
 
 # ------------------------------------------------------------------ forming and breaking plates
 
-def form(lead: dict[str, Any], members: list[dict[str, Any]]) -> dict[str, Any]:
-    """Record the plate on its jobs (shares by part volume) before the lead is assigned; the lead's move then carries the rest."""
+def form(lead: dict[str, Any], members: list[dict[str, Any]], printer: dict[str, Any]) -> dict[str, Any]:
+    """Record the plate on its jobs (shares by part volume, each member's own settings) before the lead is assigned; the
+    lead's move then carries the rest."""
     group = [lead, *members]
     _set_shares(group)
+    for m in members:
+        c = compatibility(lead, m, printer) or {"object_settings": {}, "plate_wide_differences": []}
+        store.jobs.update(m["id"], plate_overrides=c["object_settings"], plate_wide_differences=c["plate_wide_differences"])
     for j in group:
         jobstate.event(j["id"], "batched", "allocator", lead=lead["id"], with_jobs=[g["id"] for g in group if g["id"] != j["id"]])
     return store.jobs.update(lead["id"], members=[m["id"] for m in members])

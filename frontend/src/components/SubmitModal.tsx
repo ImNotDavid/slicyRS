@@ -52,7 +52,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
     catch (e) { setError((e as Error).message); setEarliest((e as { earliest?: number }).earliest ?? null); }
     setBusy(false);
   };
-  const close = () => { if (job && job.phase === "previewed") api.cancel(job.id).catch(() => undefined); onClose(); };
+  const close = () => { if (job && job.phase === "previewed") api.discard(job.id).catch(() => undefined); onClose(); };
 
   return (
     <div className="modal-back" onClick={close}>
@@ -77,7 +77,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
               </label>
               <label className="check"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Start printing automatically when a printer is ready</label>
               <label className="check"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} /> Allow my part to share a plate with other people's parts</label>
-              {share && <p className="muted">The job may wait for a partner (never past your pickup time, and at most the admin-set maximum), and if one part on a shared plate fails, the others can be affected. Any one owner can clear the plate afterwards.</p>}
+              {share && <p className="muted">Only parts in the same filament and layer height can share; each part keeps its own wall, infill, speed and support settings. The job may wait for a partner (never past your pickup time, and at most the admin-set maximum), and if one part on a shared plate fails, the others can be affected. Any one owner can clear the plate afterwards.</p>}
               <p className="muted">The system picks the printer. Leave the time empty if you do not mind when it is done.</p>
             </>
           )}

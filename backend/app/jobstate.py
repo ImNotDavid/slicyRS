@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from . import store
+from .storage import JOBS, files
 
 PHASES = {"submitted", "previewing", "previewed", "pooled", "assigned", "slicing", "ready", "printing",
           "printed", "failed", "unknown", "cancelled", "rejected"}
@@ -70,3 +71,11 @@ def transition(job_id: str, to: str, actor: str | None = None, *, force: bool = 
     from . import plates   # late import: plates uses this module
     plates.after_transition(updated, to, actor)
     return store.jobs.get(job_id)
+
+
+def discard(job_id: str) -> None:
+    """Remove a draft completely: its record, its history and its files. Drafts are not jobs and leave no trace."""
+    for e in events_for(job_id):
+        store.events.delete(e["id"])
+    store.jobs.delete(job_id)
+    files.remove(JOBS, job_id)

@@ -209,9 +209,9 @@ def test_3mf_passthrough_vs_transformed(client, fleet):
     m = upload(client, VALID / "torus.3mf").json()
     _, a = slice_model(client, m["id"])
     _, b = slice_model(client, m["id"], scale=0.5)
-    from app.config import JOBS_DIR
-    assert (JOBS_DIR / a["id"] / "input.3mf").exists()
-    assert (JOBS_DIR / b["id"] / "input.stl").exists()
+    from app.storage import JOBS, files
+    assert files.has(JOBS, a["id"], "input.3mf")
+    assert files.has(JOBS, b["id"], "input.stl")
 
 
 # ------------------------------------------------------------------ settings

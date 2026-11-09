@@ -4,7 +4,7 @@ import time
 import pytest
 
 from app import allocator, bedstate, jobstate, outcomes, plates, slicer, stats, store
-from conftest import make_user
+from conftest import VALID, make_user, upload, wait_job
 from test_pipeline import CLEAR, draft, pooled_job, wait_phase
 
 
@@ -55,6 +55,56 @@ def test_only_opted_in_jobs_with_the_same_settings_and_colour_are_partners(clien
     assert mate in got and red in got                                    # same settings, "any" colour matches red
     assert stranger not in got and other_preset not in got               # not opted in / different settings
     assert blue not in got                                               # red and blue cannot share a plate
+
+
+def test_different_settings_may_share_a_plate_if_filament_and_layer_height_match(client, fleet):
+    me = client.get("/api/me").json()
+    printer = store.printers.get(fleet["p1s"])
+    lead = pooled_job(me, "standard", 100)
+    strong = pooled_job(me, "strong", 110)
+    edited = pooled_job(me, "edited", 120)
+    fine = pooled_job(me, "fine", 130)
+    petg = pooled_job(me, "petg", 140)
+    for j in (lead, strong, edited, fine, petg):
+        store.jobs.update(j, allow_batching=True)
+    store.jobs.update(strong, spec={"preset": "0.20mm Strength", "filament": "PLA", "settings": {}})
+    store.jobs.update(edited, spec={"preset": "0.20mm Standard", "filament": "PLA", "settings": {"wall_loops": 4, "outer_wall_speed": 80, "skirt_loops": 3}})
+    store.jobs.update(fine, spec={"preset": "0.12mm Fine", "filament": "PLA", "settings": {}})
+    store.jobs.update(petg, filament="PETG", spec={"preset": "0.20mm Standard", "filament": "PETG", "settings": {}})
+    L = store.jobs.get(lead)
+    c = plates.compatibility(L, store.jobs.get(strong), printer)
+    assert c["object_settings"]["wall_loops"] == 6 and c["object_settings"]["sparse_infill_density"] == 25
+    c = plates.compatibility(L, store.jobs.get(edited), printer)
+    assert c["object_settings"]["wall_loops"] == 4 and c["object_settings"]["outer_wall_speed"] == 80
+    assert "skirt_loops" in c["plate_wide_differences"] and "skirt_loops" not in c["object_settings"]   # a whole-plate setting follows the lead
+    assert plates.compatibility(L, store.jobs.get(fine), printer) is None        # different layer height
+    assert plates.compatibility(L, store.jobs.get(petg), printer) is None        # different filament
+    pool = [j for j in store.jobs.all() if j["phase"] == "pooled"]
+    assert {j["id"] for j in plates.find_partners(L, printer, pool, time.time())} == {strong, edited}
+
+
+def test_a_shared_plate_gives_each_part_its_own_settings_to_the_slicer(client, fleet, monkeypatch):
+    ann, bob = two_users(client)
+    only(fleet)
+    seen = []
+    real = slicer.run
+
+    def spy(workdir, models, *args, **kw):
+        seen.append((len(models) if isinstance(models, list) else 1, kw.get("object_settings")))
+        return real(workdir, models, *args, **kw)
+
+    monkeypatch.setattr(slicer, "run", spy)
+    a = draft(ann)
+    b = draft(bob, preset="0.20mm Strength")
+    seen.clear()
+    submit(ann, a, allow_batching=True)
+    submit(bob, b, allow_batching=True)
+    lead = next(j for j in store.jobs.all() if j.get("members"))
+    wait_phase(client, lead["id"], {"ready", "failed"})
+    member = store.jobs.get(lead["members"][0])
+    sliced = [s for s in seen if s[0] == 2]
+    assert sliced and sliced[0][1][0] == {} and sliced[0][1][1] == member["plate_overrides"]
+    assert lead["spec"]["preset"] != member["spec"]["preset"] and "wall_loops" in member["plate_overrides"]
 
 
 def test_plate_limits_and_pickup_times_are_respected(client, fleet):
@@ -174,11 +224,11 @@ def test_a_plate_the_slicer_cannot_fit_drops_its_last_job_and_slices_again(clien
     real = slicer.run
     calls = []
 
-    def fussy(workdir, models, *args):
+    def fussy(workdir, models, *args, **kw):
         calls.append(len(models) if isinstance(models, list) else 1)
         if isinstance(models, list) and len(models) > 1:
             raise slicer.SliceError("One of the plate is empty or has no object fully inside it.")
-        return real(workdir, models, *args)
+        return real(workdir, models, *args, **kw)
 
     monkeypatch.setattr(slicer, "run", fussy)
     a, b = draft(ann), draft(bob)
@@ -218,3 +268,64 @@ def test_a_plate_starts_by_itself_only_if_everyone_asked(client, fleet):
     assert plates.auto_start(store.jobs.get(a)) is False
     store.jobs.update(b, auto_start=True)
     assert plates.auto_start(store.jobs.get(a)) is True
+
+
+def test_slices_and_previews_are_drafts_that_leave_no_job_until_sent_somewhere(client, fleet):
+    only(fleet)
+    mid = upload(client, VALID / "cube_binary.stl").json()["id"]
+    body = {"model_id": mid, "filament": "PLA", "preset": "0.20mm Standard", "settings": {}}
+    before = {j["id"] for j in client.get("/api/jobs").json()}
+    first = client.post("/api/slice", json=body).json()
+    wait_job(client, first["id"])
+    second = client.post("/api/slice", json=body).json()                 # every slice is only a draft
+    wait_job(client, second["id"])
+    assert store.jobs.get(first["id"])["draft"] and store.jobs.get(second["id"])["draft"]
+    assert {j["id"] for j in client.get("/api/jobs").json()} == before   # drafts are not listed
+    assert client.get(f"/api/jobs/{second['id']}").json()["draft"] is True      # but the slice can still be fetched and viewed
+    assert all(j["id"] != second["id"] for j in stats_jobs())
+
+    d = client.post("/api/jobs/preview", json={"model_id": mid, "filament": "PLA"}).json()
+    wait_phase(client, d["id"], {"previewed"})
+    assert client.delete(f"/api/jobs/{d['id']}").status_code == 200       # closing the dialog leaves nothing behind
+    assert store.jobs.get(d["id"]) is None and client.get(f"/api/jobs/{d['id']}").status_code == 404
+
+    d = client.post("/api/jobs/preview", json={"model_id": mid, "filament": "PLA"}).json()
+    wait_phase(client, d["id"], {"previewed"})
+    submit(client, d)                                                    # now it is a job, and the slices of the same part are gone
+    assert store.jobs.get(second["id"]) is None and store.jobs.get(first["id"]) is None
+    assert not [e for e in store.events.all() if e["job_id"] == first["id"]]
+    listed = {j["id"] for j in client.get("/api/jobs").json()} - before
+    assert listed == {d["id"]} and not store.jobs.get(d["id"])["draft"]
+    assert client.delete(f"/api/jobs/{d['id']}").status_code == 409      # a real job is cancelled, not deleted
+
+
+def test_a_slice_becomes_a_job_only_when_it_is_sent_to_a_printer(client, fleet, monkeypatch):
+    from app import printing
+    pid = only(fleet)
+    mid = upload(client, VALID / "cube_binary.stl").json()["id"]
+    s = client.post("/api/slice", json={"model_id": mid, "filament": "PLA", "preset": "0.20mm Standard", "settings": {}}).json()
+    wait_job(client, s["id"])
+    from app.storage import JOBS, files
+    files.write_bytes(JOBS, s["id"], "model.gcode.3mf", b"PK")           # the mock slicer makes no print bundle
+    store.jobs.update(s["id"], bundle="model.gcode.3mf")
+    calls = []
+    monkeypatch.setattr(printing, "start", lambda job, bundle, user, **kw: calls.append(job["id"]) or {"ok": True, "started": True, "file": "x"})
+    assert client.post(f"/api/jobs/{s['id']}/print").status_code == 200
+    assert calls == [s["id"]] and store.jobs.get(s["id"])["draft"] is False
+    assert s["id"] in {j["id"] for j in client.get("/api/jobs").json()}
+
+
+def test_old_drafts_are_cleaned_up(client, fleet):
+    from app import retention
+    me = client.get("/api/me").json()
+    jid = pooled_job(me, "abandoned", time.time())
+    store.jobs.update(jid, draft=True, phase="previewed", created=time.time() - 7 * 3600)
+    fresh = pooled_job(me, "fresh", time.time())
+    store.jobs.update(fresh, draft=True, phase="previewed")
+    assert retention.run(dry_run=True)["drafts_cleaned"] == 1 and store.jobs.get(jid)
+    assert retention.run()["drafts_cleaned"] == 1
+    assert store.jobs.get(jid) is None and store.jobs.get(fresh)
+
+
+def stats_jobs():
+    return [j for j in store.jobs.all() if not j.get("draft")]

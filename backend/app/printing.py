@@ -8,7 +8,7 @@ from typing import Any
 
 from . import adapter, bedstate, jobstate, store
 from .adapter import AdapterError
-from .config import JOBS_DIR
+from .storage import JOBS, files
 
 
 class PrintBlocked(Exception):
@@ -56,4 +56,4 @@ def start(job: dict[str, Any], bundle: Path, actor: dict[str, Any] | None, requi
 
 
 def bundle_path(job: dict[str, Any]) -> Path:
-    return JOBS_DIR / job["id"] / job["bundle"]
+    return files.path(JOBS, job["id"], job["bundle"])

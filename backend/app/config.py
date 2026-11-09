@@ -3,10 +3,7 @@ import secrets
 from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("SLICY_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
-MODELS_DIR = DATA_DIR / "models"
-JOBS_DIR = DATA_DIR / "jobs"
-for d in (DATA_DIR, MODELS_DIR, JOBS_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # "orca" runs a Bambu Studio / OrcaSlicer CLI; "mock" writes a placeholder G-code so the
 # rest of the pipeline can be exercised without a slicer installed.

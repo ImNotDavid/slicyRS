@@ -4,8 +4,10 @@ import math
 import re
 import shlex
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 import numpy as np
 import trimesh
@@ -35,20 +37,52 @@ def _orca_value(key: str, value: Any) -> str:
     return str(value)
 
 
+def process_config(printer_model: str, preset: str, overrides: dict[str, Any]) -> dict[str, Any]:
+    """The full process settings a slice would use (the preset's own values with the overrides on top), for comparing two jobs."""
+    if SLICER_MODE != "orca":
+        return dict(overrides)        # the mock has no profiles: its overrides already hold every value
+    pm = PRINTER_MODELS[printer_model]
+    name = profiles.process_name(preset, pm["process_suffix"])
+    cfg = profiles.resolve(name) if name else {}
+    return {**cfg, **{k: _orca_value(k, v) for k, v in overrides.items()}}
+
+
 def run(workdir: Path, model_path: Path | list[Path], printer_model: str, preset: str, filament: str,
-        overrides: dict[str, Any]) -> dict[str, Any]:
-    """Slice one model, or several that share a plate (the slicer arranges them)."""
+        overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Slice one model, or several that share a plate (the slicer arranges them). `object_settings` gives each of several
+    models its own settings on top of the plate's (the same order as the models)."""
     workdir.mkdir(parents=True, exist_ok=True)
     models = list(model_path) if isinstance(model_path, (list, tuple)) else [model_path]
     if SLICER_MODE == "orca":
-        return _run_orca(workdir, models, printer_model, preset, filament, overrides)
+        return _run_orca(workdir, models, printer_model, preset, filament, overrides, object_settings)
     return _run_mock(workdir, models, printer_model, filament, overrides)
 
 
 # ---------------------------------------------------------------- OrcaSlicer
 
+def _plate_3mf(workdir: Path, models: list[Path], object_settings: list[dict[str, Any]]) -> Path:
+    """One 3MF holding every model as its own object, each with its own settings (Bambu's model_settings.config); the
+    slicer still arranges them. Object ids follow the order the objects are added."""
+    scene = trimesh.Scene()
+    for i, path in enumerate(models):
+        scene.add_geometry(load_mesh(path), node_name=f"part{i + 1}", geom_name=f"part{i + 1}")
+    raw, out = workdir / "objects.3mf", workdir / "plate.3mf"
+    scene.export(str(raw), file_type="3mf")
+    cfg = ['<?xml version="1.0" encoding="UTF-8"?>', "<config>"]
+    for i, ov in enumerate(object_settings):
+        cfg.append(f' <object id="{i + 1}"><metadata key="name" value="part{i + 1}"/>')
+        cfg += [f'  <metadata key="{escape(k)}" value="{escape(str(v))}"/>' for k, v in ov.items()]
+        cfg.append(" </object>")
+    cfg.append("</config>")
+    with zipfile.ZipFile(raw) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for n in zin.namelist():
+            zout.writestr(n, zin.read(n))
+        zout.writestr("Metadata/model_settings.config", "\n".join(cfg))
+    return out
+
+
 def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
-              overrides: dict[str, Any]) -> dict[str, Any]:
+              overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     pm = PRINTER_MODELS[printer_model]
     machine = profiles.find(pm["machine"])
     process = profiles.process_name(preset, pm["process_suffix"])
@@ -73,6 +107,9 @@ def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str
 
     out = workdir / "out"
     out.mkdir(exist_ok=True)
+    n_models = len(models)
+    if object_settings and n_models > 1 and any(object_settings):
+        models = [_plate_3mf(workdir, models, object_settings)]
     cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "1",
            "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
            "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", *[str(m.resolve()) for m in models]]
@@ -82,7 +119,7 @@ def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str
     gcode = gcodes[0] if gcodes else None
     if proc.returncode != 0 or gcode is None:
         raise SliceError(_failure_reason(proc, out))
-    if len(models) > 1 and len(gcodes) > 1:
+    if n_models > 1 and len(gcodes) > 1:
         raise PlateOverflow("The parts do not all fit on one plate")
     final = workdir / "model.gcode"
     gcode.replace(final)
@@ -141,7 +178,7 @@ def parse_stats(gcode: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------- mock
 
 def _run_mock(workdir: Path, models: list[Path], printer_model: str, filament: str,
-              overrides: dict[str, Any]) -> dict[str, Any]:
+              overrides: dict[str, Any]) -> dict[str, Any]:   # per-object settings are not modelled by the mock
     """Perimeter-only slicer: good enough to drive and demo the G-code viewer."""
     lh = float(overrides.get("layer_height", 0.2))
     width = float(overrides.get("line_width", 0.42))

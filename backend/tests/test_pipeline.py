@@ -60,8 +60,8 @@ def test_preview_gives_an_estimate_and_keeps_no_gcode(client, fleet):
     j = draft(client)
     assert j["preview"]["time_s"] > 0 and j["preview"]["layers"] > 0 and j["state"] == "previewed"
     assert j["printer_id"] is None                                       # printer-agnostic until the allocator chooses
-    from app.config import JOBS_DIR
-    assert not (JOBS_DIR / j["id"] / "preview").exists()
+    from app.storage import JOBS, files
+    assert not files.has(JOBS, j["id"], "preview")
 
 
 def test_part_no_printer_can_ever_print_is_refused_at_draft(client, fleet):
@@ -261,7 +261,7 @@ def test_pipeline_settings_are_admin_only_and_validated(client, fleet):
 # ----------------------------------------------------------------------------- task queue and worker
 
 def test_task_lost_with_its_worker_is_picked_up_by_another(client):
-    store._conn.execute("DELETE FROM tasks")
+    taskqueue.clear()
     tid = taskqueue.enqueue("noop", {})
     t = taskqueue.claim("worker-a")
     assert t["id"] == tid and taskqueue.claim("worker-b") is None      # held under lease
@@ -271,7 +271,7 @@ def test_task_lost_with_its_worker_is_picked_up_by_another(client):
 
 
 def test_task_that_keeps_losing_workers_is_declared_dead(client):
-    store._conn.execute("DELETE FROM tasks")
+    taskqueue.clear()
     taskqueue.enqueue("noop", {"job_id": "x"}, max_attempts=2)
     now = time.time()
     taskqueue.claim("a", now=now)
@@ -285,7 +285,7 @@ def test_job_in_a_killed_slicer_is_failed_not_lost(client, fleet):
     jobstate.transition(j["id"], "pooled", state="pooled", pooled=True, submitted_at=time.time())
     jobstate.transition(j["id"], "assigned", printer_id=fleet["mini"])
     jobstate.transition(j["id"], "slicing", state="slicing")
-    store._conn.execute("DELETE FROM tasks")
+    taskqueue.clear()
     taskqueue.enqueue("slice", {"job_id": j["id"]}, max_attempts=1)
     now = time.time()
     taskqueue.claim("dying", now=now)
@@ -299,7 +299,7 @@ def test_worker_loop_runs_tasks(client, fleet):
 
 
 def test_unknown_task_kind_fails_the_task_not_the_worker(client):
-    store._conn.execute("DELETE FROM tasks")
+    taskqueue.clear()
     taskqueue.enqueue("nonsense", {}, max_attempts=1)
     assert worker.run_once("w") is True
     assert taskqueue.counts().get("failed") == 1

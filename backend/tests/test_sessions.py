@@ -189,10 +189,12 @@ def test_rate_limit_counts_survive_a_restart():
     store.rate_reset()
     assert all(store.rate_hit("k", 3, 60) for _ in range(3)) and not store.rate_hit("k", 3, 60)
     # a restart re-opens the database: the counters live there, not in memory
-    import sqlite3
-    from app.store import _DB
-    assert sqlite3.connect(_DB).execute("SELECT COUNT(*) FROM ratelimit WHERE key='k'").fetchone()[0] == 3
-    assert not store.rate_hit("k", 3, 60)
+    from app.storage import db
+    from app.storage.sqlite_db import SqliteDatabase
+    if not hasattr(db, "path"):
+        pytest.skip("this backend does not persist")
+    reopened = SqliteDatabase(db.path)
+    assert not reopened.rate_hit("k", 3, 60)
 
 
 def test_rate_limit_window_expires_and_keys_are_independent():

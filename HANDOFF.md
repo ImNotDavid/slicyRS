@@ -9,7 +9,7 @@ Cloud slicer for Bambu Lab printers. FastAPI backend with a SQLite JSON store, R
 ## Where Milestone A stands
 
 Done: A.1 job states/events/preview, A.2 pool/allocator/pickup forecast, A.3 build-plate state, A.4 printer adapter interface, A.5 slice task queue and worker, A.8 statistics and admin Pipeline tab.
-A.6 plates and batching is done (see below). Not started: A.7 separate printer gateway process, A.9 storage interfaces. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
+A.6 plates and batching and A.9 storage interfaces are done (see below). Not started: A.7 separate printer gateway process. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
 
 ## How the pool works (read before changing it)
 
@@ -24,11 +24,20 @@ A.6 plates and batching is done (see below). Not started: A.7 separate printer g
 ## Plates and batching (A.6)
 
 - Opt-in per job (`allow_batching`, a checkbox in the submit dialog). A plate is a **lead** job plus **members** (`members` on the lead, `batch_lead` on each member). The lead carries the slice, printer and print; members mirror its phase and result (`backend/app/plates.py`, hooked into `jobstate.transition`).
-- Partners must have the same filament and slicer settings, compatible colours, fit on the chosen printer (shelf packing of bounding boxes, `footprints_fit`), and stay within `plate_max_parts`, `plate_max_h` and every pickup time. The slicer's arrange is the authority: if the sliced plate fails, the last job added goes back to the pool (never to pair with these again) and the plate is sliced again.
+- Partners must have the same filament and layer height (also first-layer height, print sequence, vase mode), compatible colours, fit on the chosen printer (shelf packing of bounding boxes, `footprints_fit`), and stay within `plate_max_parts`, `plate_max_h` and every pickup time. The slicer's arrange is the authority: if the sliced plate fails, the last job added goes back to the pool (never to pair with these again) and the plate is sliced again.
+- Other settings may differ: `plates.compatibility` diffs each job's full process settings against the lead's; differences in `PER_OBJECT` keys become that member's `plate_overrides`, sliced as per-object settings in a generated 3MF (`slicer._plate_3mf`); other plate-wide differences follow the lead (`plate_wide_differences`). `PER_OBJECT` was measured against the pinned slicer and is guarded by `test_real_engine.py`; re-check it after a slicer upgrade.
+- Previews and slices made before submitting are hidden **drafts** (`draft: true`), not jobs: they are discarded when the dialog closes, replaced by a newer slice of the same part, turned into a job on pool submit or print, and purged after `RETENTION_DRAFT_HOURS` (6).
 - A lone opted-in job waits for a partner (`plates.hold_reason`) up to `max_hold_h`, or until a pickup time leaves less than `batch_slack_min` spare. It does not hold the printer while waiting.
 - Cancelling a job, or an unstarted plate timing out, dissolves the plate: the other jobs return to the pool. A plate auto-starts only if every job asked for that. Any owner may start or clear it; the others are emailed.
 - Statistics split filament and time by `plate_share` (part volume); the plate counts once for the printer.
 - Tested in `test_batching.py` (mock slicer) and one real-engine test. Not yet tried with a real printer or in the browser.
+
+## Storage (A.9)
+
+- `backend/app/storage/` is the only place that knows how records and files are kept. The rest of the app uses `storage.db` (collections, rate limiter, task queue) and `storage.files` (areas keyed by namespace `JOBS`/`MODELS` and id). Interfaces: `storage/interfaces.py`.
+- Backends: `sqlite` (default) and `local` files (same on-disk layout as before, so existing data works unchanged); `memory` (database only, for tests, shared by nothing). Select with `DB_BACKEND` / `FILE_BACKEND`; add one by writing a class and registering a factory in `storage/__init__.py`.
+- A remote file backend returns local cached paths from `path`/`workdir` (the slicer needs real files) and uploads in `publish`, which callers already call after the slicer writes.
+- `test_storage.py` runs one contract over every backend and fails if code outside `storage/` mentions sqlite, `JOBS_DIR`/`MODELS_DIR` or `shutil.rmtree`. The whole suite also passes with `DB_BACKEND=memory`.
 
 ## Key files
 

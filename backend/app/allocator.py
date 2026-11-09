@@ -105,7 +105,7 @@ def assign_pool() -> int:
             if not partners and plates.hold_reason(job, now):
                 continue                         # keep the printer for others while this job waits for a partner
             if partners:
-                plates.form(job, partners)
+                plates.form(job, partners, printer)
                 taken.update(p["id"] for p in partners)
                 reason += f"; shares the plate with {len(partners)} other job(s)"
         jobstate.transition(job["id"], "assigned", "allocator", printer_id=printer["id"], printer_name=printer["name"],

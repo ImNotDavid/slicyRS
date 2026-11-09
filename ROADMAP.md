@@ -102,7 +102,7 @@ Design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Three deployables (Core,
 | A.6 | **DONE.** **Plates and batching**: opt-in, across users, footprint packing check, slicer arrange as authority, wait-for-partners using slack | XL | Two users' compatible parts print on one plate, and a failed plate returns both jobs to the pool. |
 | A.7 | **Printer gateway as its own process** that connects out to Core | L | Core runs anywhere with no LAN access to printers; the gateway runs on-site. |
 | A.8 | **DONE (API and an Admin > Pipeline view; no charts or export yet).** **Statistics from the event log**, including estimate versus actual print time | M | Admins can see usage by user, group and printer, and how accurate the preview estimate is. |
-| A.9 | **Storage interfaces** (database and files) so Postgres and object storage are a contained change later | M | Switching backends needs no changes outside the storage layer. |
+| A.9 | **DONE.** **Storage interfaces** (database and files) so Postgres and object storage are a contained change later | M | Switching backends needs no changes outside the storage layer. |
 
 **Not started:** A.7 (printer gateway as its own process), A.9 (storage interfaces). The exit check below is met.
 

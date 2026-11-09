@@ -7,14 +7,12 @@ Settings are admin-editable (stored in the database), with defaults from the env
 """
 import logging
 import os
-import shutil
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
-from . import store
-from .config import DATA_DIR, JOBS_DIR, MODELS_DIR
+from . import jobstate, store
+from .storage import JOBS, MODELS, db, files
 
 log = logging.getLogger("retention")
 DEFAULTS = {
@@ -22,6 +20,7 @@ DEFAULTS = {
     "failed_job_days": int(os.environ.get("RETENTION_FAILED_JOB_DAYS", "7")),
     "model_files_days": int(os.environ.get("RETENTION_MODEL_FILES_DAYS", "30")),
 }
+DRAFT_HOURS = float(os.environ.get("RETENTION_DRAFT_HOURS", "6"))   # a preview or slice nobody sent anywhere is thrown away after this
 MIN_FREE_MB = int(os.environ.get("MIN_FREE_MB", "1024"))        # uploads are refused below this
 WARN_FREE_PERCENT = 10                                           # the admin page warns below this share of free disk
 INTERVAL_HOURS = float(os.environ.get("RETENTION_INTERVAL_HOURS", "6"))   # 0 turns the background clean-up off
@@ -41,34 +40,21 @@ def set_settings(values: dict[str, int]) -> dict[str, int]:
     return merged
 
 
-def dir_bytes(path: Path) -> int:
-    total = 0
-    for root, _dirs, files in os.walk(path):
-        for f in files:
-            try:
-                total += (Path(root) / f).stat().st_size
-            except OSError:
-                pass
-    return total
-
-
 def usage() -> dict[str, Any]:
-    disk = shutil.disk_usage(DATA_DIR)
-    db = sum(p.stat().st_size for p in DATA_DIR.glob("slicyrs.db*") if p.is_file())
-    jobs, models = dir_bytes(JOBS_DIR), dir_bytes(MODELS_DIR)
+    total, free = files.total_free()
     return {
-        "disk": {"total": disk.total, "used": disk.used, "free": disk.free,
-                 "free_percent": round(100 * disk.free / disk.total, 1) if disk.total else None,
-                 "low": disk.free < MIN_FREE_MB * 1024 * 1024 or (disk.total and 100 * disk.free / disk.total < WARN_FREE_PERCENT)},
-        "data": {"jobs": jobs, "models": models, "database": db},
-        "counts": {"jobs": len(store.jobs.all()), "jobs_with_files": sum(1 for j in store.jobs.all() if not j.get("files_deleted_at") and (JOBS_DIR / j["id"]).is_dir()),
+        "disk": {"total": total, "used": total - free, "free": free,
+                 "free_percent": round(100 * free / total, 1) if total else None,
+                 "low": free < MIN_FREE_MB * 1024 * 1024 or (total and 100 * free / total < WARN_FREE_PERCENT)},
+        "data": {"jobs": files.total_bytes(JOBS), "models": files.total_bytes(MODELS), "database": db.size_bytes()},
+        "counts": {"jobs": len(store.jobs.all()), "jobs_with_files": sum(1 for j in store.jobs.all() if not j.get("files_deleted_at") and files.exists(JOBS, j["id"])),
                    "models": len(store.models.all())},
         "settings": get_settings(), "last_cleanup": store.settings.get("last_cleanup"),
     }
 
 
 def free_bytes() -> int:
-    return shutil.disk_usage(DATA_DIR).free
+    return files.free_bytes()
 
 
 def has_room_for_upload() -> bool:
@@ -83,19 +69,24 @@ def run(now: float | None = None, dry_run: bool = False) -> dict[str, Any]:
     """Delete expired files. Returns what was (or, for a dry run, would be) removed. Never touches records or running work."""
     now = now or time.time()
     cfg = get_settings()
-    report: dict[str, Any] = {"at": now, "dry_run": dry_run, "jobs_cleaned": 0, "models_cleaned": 0, "bytes_freed": 0, "settings": cfg}
+    report: dict[str, Any] = {"at": now, "dry_run": dry_run, "jobs_cleaned": 0, "models_cleaned": 0, "drafts_cleaned": 0, "bytes_freed": 0, "settings": cfg}
     day = 86400
     with _lock:
+        for j in store.jobs.all():
+            if j.get("draft") and DRAFT_HOURS and now - j.get("created", now) > DRAFT_HOURS * 3600:
+                report["drafts_cleaned"] += 1
+                report["bytes_freed"] += files.size(JOBS, j["id"])
+                if not dry_run:
+                    jobstate.discard(j["id"])
         for j in store.jobs.all():
             if j.get("files_deleted_at") or j.get("state") == "slicing":
                 continue
             days = cfg["failed_job_days"] if j.get("state") == "failed" else cfg["job_files_days"]
             if not days or now - _job_reference_time(j) < days * day:
                 continue
-            d = JOBS_DIR / j["id"]
-            size = dir_bytes(d) if d.is_dir() else 0
+            size = files.size(JOBS, j["id"])
             if not dry_run:
-                shutil.rmtree(d, ignore_errors=True)
+                files.remove(JOBS, j["id"])
                 store.jobs.update(j["id"], files_deleted_at=now, files_deleted_bytes=size)
             report["jobs_cleaned"] += 1
             report["bytes_freed"] += size
@@ -104,10 +95,9 @@ def run(now: float | None = None, dry_run: bool = False) -> dict[str, Any]:
                 continue
             if now - max(m.get("last_used", 0), m.get("created", 0)) < cfg["model_files_days"] * day:
                 continue
-            d = MODELS_DIR / m["id"]
-            size = dir_bytes(d) if d.is_dir() else 0
+            size = files.size(MODELS, m["id"])
             if not dry_run:
-                shutil.rmtree(d, ignore_errors=True)
+                files.remove(MODELS, m["id"])
                 store.models.update(m["id"], files_deleted_at=now)
             report["models_cleaned"] += 1
             report["bytes_freed"] += size

@@ -10,7 +10,7 @@ import pytest
 
 from app import bambu, crypto, main as app_main, store
 from app.bambu import PrinterError, PrinterLink
-from app.config import JOBS_DIR
+from app.storage import JOBS, files
 from conftest import VALID, upload, wait_job
 from fake_printer import FakeFTPS
 
@@ -197,10 +197,9 @@ def test_returns_false_when_printer_never_starts(ftps, bundle):
 
 def make_job(owner, printer_id, with_bundle=True, name="Cube.stl"):
     jid = uuid.uuid4().hex[:12]
-    d = JOBS_DIR / jid
-    d.mkdir()
+    files.create(JOBS, jid)
     if with_bundle:
-        with zipfile.ZipFile(d / "model.gcode.3mf", "w") as z:
+        with zipfile.ZipFile(files.path(JOBS, jid, "model.gcode.3mf"), "w") as z:
             z.writestr("Metadata/plate_1.gcode", "G1 X1 E1\n" * 5000)
             z.writestr("Metadata/plate_1.gcode.md5", "FF00\n")
     store.jobs.put(jid, {"id": jid, "name": name, "state": "done", "created": time.time(), "owner_id": owner["id"], "owner_email": owner["email"],
