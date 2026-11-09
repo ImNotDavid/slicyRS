@@ -322,7 +322,9 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
       {modal === "fleet" && <FleetModal printers={printers} onClose={() => setModal(null)} onChanged={refreshPrinters} />}
       {modal === "submit" && model && <SubmitModal spec={{ model_id: model.id, filament, preset, settings, ...transform }} onClose={() => setModal(null)}
-        onDone={(j) => { setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
+        onDone={(j) => {
+          if (job && !job.printed && !job.queued) api.cancel(job.id).catch(() => {});
+          setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
       {modal === "admin" && isAdmin && <AdminModal catalog={catalog} me={user} onClose={() => setModal(null)} onPrintersChanged={refreshPrinters} />}
       {modal === "jobs" && <JobsModal onClose={() => setModal(null)} onOpen={openJob} showOwner={isAdmin} />}
     </div>
