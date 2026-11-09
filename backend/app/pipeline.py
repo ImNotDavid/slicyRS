@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from . import jobstate, printing, slicer, store, taskqueue
+from . import jobstate, plates, printing, slicer, store, taskqueue
 from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
 from .config import JOBS_DIR
 from .defaults import effective_overrides
@@ -60,18 +60,22 @@ def handle_slice(payload: dict[str, Any]) -> None:
         return
     spec = job["spec"]
     wd = JOBS_DIR / job["id"]
+    inputs = [_input(job)] + [_input(m) for m in (store.jobs.get(i) for i in job.get("members") or []) if m]
     try:
-        r = slicer.run(wd, _input(job), job["printer_model"], spec["preset"], spec["filament"],
+        r = slicer.run(wd, inputs, job["printer_model"], spec["preset"], spec["filament"],
                        effective_overrides(spec["preset"], spec["settings"], job.get("bed_type") or DEFAULT_BED_TYPE))
     except Exception as e:
         if (store.jobs.get(job["id"]) or {}).get("phase") == "slicing":
-            jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
+            if plates.drop_last(job["id"], f"the plate could not be sliced ({e})"):
+                request_slice(job["id"])         # try again with one job fewer
+            else:
+                jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
         return
     cur = store.jobs.get(job["id"]) or {}
     if cur.get("phase") != "slicing":
         return                                    # cancelled while slicing: drop the result
     jobstate.transition(job["id"], "ready", None, stats=r, gcode=r["gcode"], bundle=r.get("bundle"))
-    if cur.get("auto_start"):
+    if plates.auto_start(store.jobs.get(job["id"])):
         try:
             printing.start(store.jobs.get(job["id"]), printing.bundle_path(store.jobs.get(job["id"])), None, require_clear=True)
         except printing.PrintBlocked as e:

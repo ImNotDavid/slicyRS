@@ -67,4 +67,6 @@ def transition(job_id: str, to: str, actor: str | None = None, *, force: bool = 
     updated = store.jobs.update(job_id, phase=to, phase_at=time.time(), **extra)
     data = {"from": frm, "to": to, "reason": reason, **{k: v for k, v in fields.items() if k in ("printer_id", "error")}}
     event(job_id, "phase", actor, **data)
-    return updated
+    from . import plates   # late import: plates uses this module
+    plates.after_transition(updated, to, actor)
+    return store.jobs.get(job_id)

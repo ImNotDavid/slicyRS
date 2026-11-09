@@ -6,10 +6,14 @@ DEFAULTS = {
     "operator_delay_min": 30,      # a finished print waits this long for its owner before operators are told
     "ready_hold_min": 30,          # a sliced job not started by its owner goes back to the pool after this long
     "estimate_buffer_pct": 15,     # slack on the slicer's time estimate when judging a pickup time
-    "max_hold_h": 24,              # longest a job may wait for batching partners (batching itself: A.6, not built yet)
+    "max_hold_h": 24,              # longest a job may wait for another part to share its plate
+    "batch_slack_min": 60,         # a job with a pickup time stops waiting for partners when less than this much time to spare is left
+    "plate_max_parts": 6,          # most jobs on one plate
+    "plate_max_h": 8,              # longest a shared plate may print (sum of the parts' estimates)
 }
 LIMITS = {"cooling_margin_min": (0, 240), "operator_delay_min": (0, 1440), "ready_hold_min": (1, 1440),
-          "estimate_buffer_pct": (0, 100), "max_hold_h": (1, 168)}
+          "estimate_buffer_pct": (0, 100), "max_hold_h": (1, 168),
+          "batch_slack_min": (0, 1440), "plate_max_parts": (2, 20), "plate_max_h": (1, 72)}
 
 
 def get() -> dict[str, int]:

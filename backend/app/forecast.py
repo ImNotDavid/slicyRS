@@ -16,7 +16,18 @@ HOLDING = {"assigned", "slicing", "ready"}
 DEFAULT_ESTIMATE_S = 1800  # when a job has no estimate yet
 
 
+def _same_plate(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    pa = a.get("batch_lead") or (a["id"] if a.get("members") else None)
+    return pa is not None and pa == (b.get("batch_lead") or (b["id"] if b.get("members") else None))
+
+
 def estimate_s(job: dict[str, Any]) -> float:
+    if job.get("members") and not job.get("stats"):       # a plate not sliced yet: its parts print one plate's worth together
+        return own_estimate_s(job) + sum(own_estimate_s(store.jobs.get(i) or {}) for i in job["members"])
+    return own_estimate_s(job)
+
+
+def own_estimate_s(job: dict[str, Any]) -> float:
     return float((job.get("stats") or {}).get("time_s") or (job.get("preview") or {}).get("time_s") or DEFAULT_ESTIMATE_S)
 
 
@@ -50,7 +61,8 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
         if st.get("state") in BUSY:
             t += float(st.get("remaining_min") or 0) * 60
         for j in jobs:                                   # work already committed to this printer
-            if j.get("printer_id") == p["id"] and j.get("phase") in HOLDING and j["id"] != job["id"]:
+            if (j.get("printer_id") == p["id"] and j.get("phase") in HOLDING and j["id"] != job["id"]
+                    and not _same_plate(j, job) and not j.get("batch_lead")):
                 t += estimate_s(j) + margin
         free_at[p["id"]] = t
 

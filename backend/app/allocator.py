@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from . import assign, bedstate, forecast, jobstate, mailer, pipeline, pipelinecfg, store, taskqueue
+from . import assign, bedstate, forecast, jobstate, mailer, pipeline, pipelinecfg, plates, store, taskqueue
 from .bedstate import BUSY
 
 log = logging.getLogger("allocator")
@@ -54,9 +54,12 @@ def waiting_reason(job: dict[str, Any]) -> str:
     if not can:
         return "No printer can print this part"
     why = []
+    free_ids = {f["id"] for f in free_printers()}
     for p in printers:
         if p["id"] not in can:
             continue
+        if p["id"] in free_ids:
+            return plates.hold_reason(job, time.time()) or "Starting soon"
         st = (p.get("status") or {}).get("state", "OFFLINE")
         bed = bedstate.get(p)["state"]
         if not p.get("enabled", True):
@@ -72,7 +75,7 @@ def waiting_reason(job: dict[str, Any]) -> str:
             why.append(f"{p['name']}: finished print still on the plate — confirm it is clear on the Fleet page")
         elif bed != "clear":
             why.append(f"{p['name']}: plate state unknown — confirm it is clear on the Fleet page")
-    return "; ".join(why) or "Starting soon"
+    return "; ".join(why) or plates.hold_reason(job, time.time()) or "Starting soon"
 
 
 def assign_pool() -> int:
@@ -82,8 +85,12 @@ def assign_pool() -> int:
             if w != j.get("waiting_for"):
                 store.jobs.update(j["id"], waiting_for=w)
     n = 0
+    now = time.time()
     pooled = sorted((j for j in store.jobs.all() if j.get("phase") == "pooled"), key=priority)
+    taken: set[str] = set()                      # jobs that joined another job's plate during this pass
     for job in pooled:
+        if job["id"] in taken:
+            continue
         free = free_printers()
         if not free:
             break
@@ -92,9 +99,18 @@ def assign_pool() -> int:
         if best is None:
             continue
         printer = store.printers.get(best.printer_id)
+        reason = "; ".join(best.reasons)
+        if job.get("allow_batching"):
+            partners = plates.find_partners(job, printer, [j for j in pooled if j["id"] not in taken], now)
+            if not partners and plates.hold_reason(job, now):
+                continue                         # keep the printer for others while this job waits for a partner
+            if partners:
+                plates.form(job, partners)
+                taken.update(p["id"] for p in partners)
+                reason += f"; shares the plate with {len(partners)} other job(s)"
         jobstate.transition(job["id"], "assigned", "allocator", printer_id=printer["id"], printer_name=printer["name"],
                             printer_model=best.model, bed_type=printer.get("bed_type"), loaded_slot=best.loaded_slot,
-                            candidates=[c.asdict() for c in ranked], reason="; ".join(best.reasons))
+                            candidates=[c.asdict() for c in ranked], reason=reason)
         jobstate.transition(job["id"], "slicing", "allocator", state="slicing")
         pipeline.request_slice(job["id"])
         n += 1
@@ -106,7 +122,8 @@ def expire_holds(now: float) -> int:
     hold = pipelinecfg.get()["ready_hold_min"] * 60
     n = 0
     for j in store.jobs.all():
-        if j.get("phase") == "ready" and j.get("pooled") and not j.get("auto_start") and now - (j.get("phase_at") or now) > hold:
+        if (j.get("phase") == "ready" and j.get("pooled") and not j.get("batch_lead") and not plates.auto_start(j)
+                and now - (j.get("phase_at") or now) > hold):
             jobstate.transition(j["id"], "pooled", "allocator", state="pooled", reason="not started within the hold time",
                                 printer_id=None, printer_name=None)
             n += 1

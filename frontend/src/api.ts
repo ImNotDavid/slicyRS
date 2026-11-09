@@ -51,6 +51,7 @@ export type Phase = "submitted" | "previewing" | "previewed" | "pooled" | "assig
 export type Job = {
   id: string; name: string; state: string; phase?: Phase; error?: string;
   pickup_by?: number | null; at_risk?: boolean; waiting_for?: string; submitted_at?: number | null; auto_start?: boolean;
+  allow_batching?: boolean; members?: string[]; batch_lead?: string | null; plate_share?: number | null;
   preview?: { time_s?: number; filament_g?: number; layers?: number };
   printer_id: string | null; printer_name: string | null; printer_model: string | null; filament: string; preset: string;
   queued: boolean; printed: boolean; created: number; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
@@ -60,7 +61,8 @@ export type Job = {
 };
 export type Forecast = { feasible: boolean; earliest_finish: number | null; jobs_ahead: number; printer_name: string | null; likely?: boolean };
 export type JobEvent = { id: string; kind: string; at: number; actor: string | null; data: Record<string, unknown> };
-export type PipelineSettings = { cooling_margin_min: number; operator_delay_min: number; ready_hold_min: number; estimate_buffer_pct: number; max_hold_h: number };
+export type PipelineSettings = { cooling_margin_min: number; operator_delay_min: number; ready_hold_min: number; estimate_buffer_pct: number; max_hold_h: number;
+  batch_slack_min: number; plate_max_parts: number; plate_max_h: number };
 export type Stats = {
   jobs: number; by_phase: Record<string, number>; events: number; tasks: Record<string, number>;
   by_user: Record<string, { jobs: number; finished: number; failed: number; print_s: number; filament_g: number }>;
@@ -118,7 +120,7 @@ export const api = {
   draft: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown> } & Transform) =>
     post("/api/jobs/preview", body).then(j<Job>),
   forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
-  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean }) => {
+  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean }) => {
     const res = await post(`/api/jobs/${id}/submit`, body);
     if (res.status === 409) { const d = await res.json().catch(() => ({})); if (d.earliest_pickup) throw Object.assign(new Error(d.detail), { earliest: d.earliest_pickup as number }); throw new Error(d.detail ?? "Cannot submit"); }
     return j<Job>(res);

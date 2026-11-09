@@ -28,6 +28,7 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
               <div className="fleet-main">
                 <strong>{j.name}</strong>
                 <span className="muted">{j.printer_name ?? "printer not chosen yet"} · {j.filament} · {j.preset}{showOwner && j.owner_email ? ` · ${j.owner_email}` : ""}{j.pickup_by ? ` · pickup by ${when(j.pickup_by)}` : ""}</span>
+                {(j.members?.length || j.batch_lead) && j.phase !== "pooled" ? <span className="muted">Shares a plate{j.members?.length ? ` with ${j.members.length} other part${j.members.length > 1 ? "s" : ""}` : " with another job"}</span> : null}
                 {j.phase === "pooled" && j.waiting_for && <span className="muted">{j.waiting_for}</span>}
                 {j.at_risk &&<span className="muted bad-text">may miss its pickup time</span>}
               </div>

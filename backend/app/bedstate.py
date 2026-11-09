@@ -68,16 +68,19 @@ def reset_all() -> None:
             set_state(p["id"], "unknown", "restart", confidence="low")
 
 
-def last_job(printer_id: str) -> dict[str, Any] | None:
+def last_plate(printer_id: str) -> list[dict[str, Any]]:
+    """The jobs on the printer's most recent plate: one, or several when owners shared it."""
     jobs = [j for j in store.jobs.all() if j.get("printer_id") == printer_id and j.get("started_at")]
-    return max(jobs, key=lambda j: j["started_at"]) if jobs else None
+    if not jobs:
+        return []
+    latest = max(j["started_at"] for j in jobs)
+    return [j for j in jobs if j["started_at"] == latest]
 
 
 def can_set(user: dict[str, Any], printer_id: str) -> bool:
     if user.get("role") == "admin" or user.get("operator"):
         return True
-    job = last_job(printer_id)
-    return bool(job and job.get("owner_id") == user["id"])
+    return any(j.get("owner_id") == user["id"] for j in last_plate(printer_id))   # any one owner may clear a shared plate
 
 
 def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bool]) -> dict[str, Any]:
@@ -89,8 +92,13 @@ def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bo
     p = store.printers.get(printer_id) or {}
     if (p.get("status") or {}).get("state") in BUSY:
         raise ValueError("The printer is printing; the plate cannot be clear")
+    others = {j["owner_email"] for j in last_plate(printer_id) if j.get("owner_email")} - {user["email"]}
     set_state(printer_id, "clear", "manual", by=user["email"])
     audit(user, "bed_clear", f"{p.get('name')}: confirmed clear")
+    from . import mailer
+    for email in others:                 # a shared plate: tell the other owners who cleared it, so they stop looking for their part
+        mailer.send_in_background(email, f"{p.get('name')} was cleared", f"{user['email']} confirmed the plate on {p.get('name')} is clear, "
+                                  "which included your part. You do not need to collect it from the printer.")
     return store.printers.get(printer_id)["bed"]
 
 
@@ -113,13 +121,13 @@ def reminders(now: float | None = None) -> int:
         bed = get(p)
         if bed["state"] != "occupied" or not bed.get("finished"):
             continue
-        job = last_job(p["id"])
         if not bed.get("owner_notified"):
             store.printers.update(p["id"], bed={**bed, "owner_notified": now})
-            if job and job.get("owner_email"):
-                mailer.send_in_background(job["owner_email"], f"Your print on {p['name']} has finished",
-                                          f"{job['name']} has finished on {p['name']}. Please collect it and confirm the build plate is clear.")
-                sent += 1
+            for j in last_plate(p["id"]):
+                if j.get("owner_email"):
+                    mailer.send_in_background(j["owner_email"], f"Your print on {p['name']} has finished",
+                                              f"{j['name']} has finished on {p['name']}. Please collect it and confirm the build plate is clear.")
+                    sent += 1
             bed = {**bed, "owner_notified": now}
         elif not bed.get("operators_notified") and now - bed["owner_notified"] >= cfg["operator_delay_min"] * 60:
             store.printers.update(p["id"], bed={**bed, "operators_notified": now})

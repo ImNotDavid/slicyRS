@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import trimesh
 
 from . import profiles
 from .catalog import FILAMENTS, PRINTER_MODELS
@@ -22,6 +23,10 @@ class SliceError(RuntimeError):
     pass
 
 
+class PlateOverflow(SliceError):
+    """The slicer's own arrange could not fit every object on one plate."""
+
+
 def _orca_value(key: str, value: Any) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
@@ -30,17 +35,19 @@ def _orca_value(key: str, value: Any) -> str:
     return str(value)
 
 
-def run(workdir: Path, model_path: Path, printer_model: str, preset: str, filament: str,
+def run(workdir: Path, model_path: Path | list[Path], printer_model: str, preset: str, filament: str,
         overrides: dict[str, Any]) -> dict[str, Any]:
+    """Slice one model, or several that share a plate (the slicer arranges them)."""
     workdir.mkdir(parents=True, exist_ok=True)
+    models = list(model_path) if isinstance(model_path, (list, tuple)) else [model_path]
     if SLICER_MODE == "orca":
-        return _run_orca(workdir, model_path, printer_model, preset, filament, overrides)
-    return _run_mock(workdir, model_path, printer_model, filament, overrides)
+        return _run_orca(workdir, models, printer_model, preset, filament, overrides)
+    return _run_mock(workdir, models, printer_model, filament, overrides)
 
 
 # ---------------------------------------------------------------- OrcaSlicer
 
-def _run_orca(workdir: Path, model_path: Path, printer_model: str, preset: str, filament: str,
+def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
               overrides: dict[str, Any]) -> dict[str, Any]:
     pm = PRINTER_MODELS[printer_model]
     machine = profiles.find(pm["machine"])
@@ -68,12 +75,15 @@ def _run_orca(workdir: Path, model_path: Path, printer_model: str, preset: str, 
     out.mkdir(exist_ok=True)
     cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "1",
            "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
-           "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", str(model_path.resolve())]
+           "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", *[str(m.resolve()) for m in models]]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SLICE_TIMEOUT_S, cwd=workdir)
     (workdir / "slicer.log").write_text(proc.stdout + "\n" + proc.stderr)
-    gcode = next(iter(sorted(out.glob("*.gcode"))), None)
+    gcodes = sorted(out.glob("*.gcode"))
+    gcode = gcodes[0] if gcodes else None
     if proc.returncode != 0 or gcode is None:
         raise SliceError(_failure_reason(proc, out))
+    if len(models) > 1 and len(gcodes) > 1:
+        raise PlateOverflow("The parts do not all fit on one plate")
     final = workdir / "model.gcode"
     gcode.replace(final)
     bundle = out / "sliced.gcode.3mf"
@@ -130,16 +140,22 @@ def parse_stats(gcode: Path) -> dict[str, Any]:
 
 # ---------------------------------------------------------------------- mock
 
-def _run_mock(workdir: Path, model_path: Path, printer_model: str, filament: str,
+def _run_mock(workdir: Path, models: list[Path], printer_model: str, filament: str,
               overrides: dict[str, Any]) -> dict[str, Any]:
     """Perimeter-only slicer: good enough to drive and demo the G-code viewer."""
     lh = float(overrides.get("layer_height", 0.2))
     width = float(overrides.get("line_width", 0.42))
     speed = float(overrides.get("outer_wall_speed", 200))
-    mesh = load_mesh(model_path)
-    mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2,
-                            -(mesh.bounds[0][1] + mesh.bounds[1][1]) / 2, -mesh.bounds[0][2]])
     bed = PRINTER_MODELS[printer_model]["bed"]
+    meshes = [load_mesh(m) for m in models]
+    x = 0.0                                   # mock arrange: parts side by side along X, 10 mm apart
+    for mesh in meshes:
+        mesh.apply_translation([x - mesh.bounds[0][0], -(mesh.bounds[0][1] + mesh.bounds[1][1]) / 2, -mesh.bounds[0][2]])
+        x = mesh.bounds[1][0] + 10
+    if len(meshes) > 1 and x - 10 > bed[0]:
+        raise PlateOverflow("The parts do not all fit on one plate")
+    mesh = trimesh.util.concatenate(meshes)
+    mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2, 0, 0])
     cx, cy = bed[0] / 2, bed[1] / 2
     height = float(mesh.bounds[1][2])
     n_layers = max(1, int(math.ceil(height / lh)))

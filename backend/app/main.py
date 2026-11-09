@@ -527,6 +527,9 @@ def get_job(job_id: str, user: dict = User):
 
 def _job_file(job_id: str, key: str, user: dict[str, Any]) -> Path:
     job = _owned_job(job_id, user)
+    if job.get("batch_lead"):                       # a part on a shared plate: the plate's files belong to its lead job
+        job = store.jobs.get(job["batch_lead"]) or job
+        job_id = job["id"]
     if job.get("files_deleted_at"):
         raise HTTPException(410, "The files for this job were deleted to save space. Slice the part again to get new ones.")
     if job["state"] != "done" or not job.get(key):
@@ -562,6 +565,8 @@ def _remote_name(job: dict[str, Any]) -> str:
 def print_job(job_id: str, user: dict = User):
     job = _owned_job(job_id, user)
     bundle = _job_file(job_id, "bundle", user)
+    if job.get("batch_lead"):                       # any owner on a shared plate may start it
+        job = store.jobs.get(job["batch_lead"]) or job
     try:
         return printing.start(job, bundle, user)
     except printing.PrintBlocked as e:
@@ -627,6 +632,7 @@ class SubmitIn(BaseModel):
     pickup_by: float | None = None           # epoch seconds; None = whenever
     colour: str = Field("any", max_length=40)  # recorded for later colour matching
     auto_start: bool = False                 # start printing as soon as it is sliced and the plate is clear
+    allow_batching: bool = False             # may share a plate with other people's parts (they wait for a partner while there is time)
 
 
 @app.post("/api/jobs/{job_id}/submit")
@@ -648,7 +654,7 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
                                        "Choose a later time or submit without one.",
                              "earliest_pickup": check["earliest_finish"]}, status_code=409)
     jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, submitted_at=now, pickup_by=body.pickup_by,
-                        colour=body.colour, auto_start=body.auto_start, at_risk=False)
+                        colour=body.colour, auto_start=body.auto_start, allow_batching=body.allow_batching, at_risk=False)
     audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
     allocator.tick()
     return store.jobs.get(job_id)

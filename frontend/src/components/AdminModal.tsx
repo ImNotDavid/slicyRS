@@ -206,7 +206,10 @@ const PIPE_FIELDS: [keyof PipelineSettings, string, string][] = [
   ["operator_delay_min", "Wait before telling operators (minutes)", "A finished print waits this long for its owner to clear the plate."],
   ["ready_hold_min", "Hold a sliced job for its owner (minutes)", "After this a job that nobody started goes back to the pool and frees the printer."],
   ["estimate_buffer_pct", "Slack on time estimates (%)", "Slicer estimates run short; this is added when forecasting a pickup time."],
-  ["max_hold_h", "Longest wait for batching partners (hours)", "For plate sharing, which is not built yet."],
+  ["max_hold_h", "Longest wait for a plate partner (hours)", "A job that agreed to share a plate waits this long at most for another part."],
+  ["batch_slack_min", "Spare time before waiting stops (minutes)", "A job with a pickup time stops waiting for a partner when less than this is left."],
+  ["plate_max_parts", "Most parts on a shared plate", "Jobs from different people printed together."],
+  ["plate_max_h", "Longest shared plate (hours)", "Sum of the parts' estimated print times."],
 ];
 
 function PipelineTab() {

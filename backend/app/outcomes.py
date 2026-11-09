@@ -58,7 +58,8 @@ def _summary(outcome: str, job: dict[str, Any], r: dict[str, Any]) -> str:
 def _find_job(printer_id: str, subtask_name: str) -> dict[str, Any] | None:
     for j in store.jobs.all():
         remote = (j.get("remote_name") or "").removesuffix(".gcode.3mf")
-        if j.get("printer_id") == printer_id and j.get("printed") and not j.get("result") and remote and remote == subtask_name:
+        if (j.get("printer_id") == printer_id and j.get("printed") and not j.get("result") and remote and remote == subtask_name
+                and not j.get("batch_lead")):
             return j
     return None
 
@@ -82,7 +83,8 @@ def mark_unknown(job: dict[str, Any], reason: str) -> None:
 
 
 def _unresolved(printer_id: str | None = None) -> list[dict[str, Any]]:
-    return [j for j in store.jobs.all() if j.get("printed") and not j.get("result") and (printer_id is None or j.get("printer_id") == printer_id)]
+    return [j for j in store.jobs.all() if j.get("printed") and not j.get("result") and not j.get("batch_lead")
+            and (printer_id is None or j.get("printer_id") == printer_id)]
 
 
 def sweep(now: float | None = None) -> int:

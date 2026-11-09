@@ -66,3 +66,12 @@ def test_textured_pei_works_for_abs_and_petg(engine, tmp_path):
         r = engine.run(tmp_path / fil, FIX / "cube_binary.stl", "A1 mini", "0.20mm Standard", fil,
                        {**preset_defaults("0.20mm Standard"), "curr_bed_type": "Textured PEI Plate"})
         assert r["layers"] == 100
+
+
+def test_several_parts_share_one_plate_and_too_many_are_refused(engine, tmp_path):
+    cube, sphere = FIX / "cube_binary.stl", FIX / "sphere.stl"
+    alone = engine.run(tmp_path / "one", [cube], "A1 mini", "0.20mm Standard", "PLA", {})
+    both = engine.run(tmp_path / "two", [cube, sphere], "A1 mini", "0.20mm Standard", "PLA", {})
+    assert both["time_s"] > alone["time_s"] and both["filament_g"] > alone["filament_g"]     # one plate carrying both parts
+    with pytest.raises(engine.SliceError):                                                  # two 250 mm plates cannot share a 256 mm bed
+        engine.run(tmp_path / "big", [FIX / "plate_250.stl"] * 2, "X1C", "0.20mm Standard", "PLA", {})

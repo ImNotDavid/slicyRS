@@ -9,7 +9,7 @@ Cloud slicer for Bambu Lab printers. FastAPI backend with a SQLite JSON store, R
 ## Where Milestone A stands
 
 Done: A.1 job states/events/preview, A.2 pool/allocator/pickup forecast, A.3 build-plate state, A.4 printer adapter interface, A.5 slice task queue and worker, A.8 statistics and admin Pipeline tab.
-Not started: A.6 plates and batching, A.7 separate printer gateway process, A.9 storage interfaces. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
+A.6 plates and batching is done (see below). Not started: A.7 separate printer gateway process, A.9 storage interfaces. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
 
 ## How the pool works (read before changing it)
 
@@ -20,6 +20,15 @@ Not started: A.6 plates and batching, A.7 separate printer gateway process, A.9 
 - Plate state: `occupied`, `clear` or `unknown` per printer. **After every server restart all plates are `unknown`** and must be confirmed on the Fleet page (admin, operator, or owner of the last print) before the allocator will use that printer.
 - Pooled jobs now carry `waiting_for` text (set in `allocator.waiting_reason`) shown in the Jobs list.
 - Slicing runs through the `tasks` table. Workers are embedded (`EMBED_WORKERS`, default 2) or standalone (`python -m app.worker` with `EMBED_WORKERS=0` on the web process).
+
+## Plates and batching (A.6)
+
+- Opt-in per job (`allow_batching`, a checkbox in the submit dialog). A plate is a **lead** job plus **members** (`members` on the lead, `batch_lead` on each member). The lead carries the slice, printer and print; members mirror its phase and result (`backend/app/plates.py`, hooked into `jobstate.transition`).
+- Partners must have the same filament and slicer settings, compatible colours, fit on the chosen printer (shelf packing of bounding boxes, `footprints_fit`), and stay within `plate_max_parts`, `plate_max_h` and every pickup time. The slicer's arrange is the authority: if the sliced plate fails, the last job added goes back to the pool (never to pair with these again) and the plate is sliced again.
+- A lone opted-in job waits for a partner (`plates.hold_reason`) up to `max_hold_h`, or until a pickup time leaves less than `batch_slack_min` spare. It does not hold the printer while waiting.
+- Cancelling a job, or an unstarted plate timing out, dissolves the plate: the other jobs return to the pool. A plate auto-starts only if every job asked for that. Any owner may start or clear it; the others are emailed.
+- Statistics split filament and time by `plate_share` (part volume); the plate counts once for the printer.
+- Tested in `test_batching.py` (mock slicer) and one real-engine test. Not yet tried with a real printer or in the browser.
 
 ## Key files
 

@@ -33,21 +33,25 @@ def summary(since: float | None = None) -> dict[str, Any]:
         outcome = res.get("outcome")
         u = by_user[j.get("owner_email") or "?"]
         u["jobs"] += 1
+        share = j.get("plate_share") or 1.0
+        member = bool(j.get("batch_lead"))               # a plate is one print on the printer, however many owners it has
         if outcome == "finished":
             u["finished"] += 1
-            u["filament_g"] += float((j.get("stats") or {}).get("filament_g") or 0)
+            u["filament_g"] += float((j.get("stats") or {}).get("filament_g") or 0) * share
         elif outcome == "failed":
             u["failed"] += 1
         dur = res.get("duration_s")
         if j.get("printer_id") and outcome in ("finished", "failed"):
-            p = by_printer[j["printer_id"]]
-            p["name"] = j.get("printer_name")
-            p["jobs"] += 1
-            p["finished" if outcome == "finished" else "failed"] += 1
+            if not member:
+                p = by_printer[j["printer_id"]]
+                p["name"] = j.get("printer_name")
+                p["jobs"] += 1
+                p["finished" if outcome == "finished" else "failed"] += 1
+                if dur:
+                    p["print_s"] += dur
             if dur:
-                p["print_s"] += dur
-                u["print_s"] += dur
-        if outcome == "finished" and dur:                       # estimate accuracy: actual / estimated
+                u["print_s"] += dur * share
+        if outcome == "finished" and dur and not member:        # estimate accuracy: actual / estimated
             if (j.get("preview") or {}).get("time_s"):
                 ratios_preview.append(dur / j["preview"]["time_s"])
             if (j.get("stats") or {}).get("time_s"):
