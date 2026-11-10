@@ -119,13 +119,13 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | 1.1 | **Full settings coverage**, generated from the engine's own profiles instead of the hand-written list | L | Biggest item. Correct defaults, units and descriptions for every setting; stays correct when profiles update. |
-| 1.2 | **Auto-orient and lay flat**, then manual **move and auto-arrange** | M | Auto-orient picks the face down that minimises overhangs and supports. Needs position sent to the slicer, not just rotation and scale. |
+| 1.2 | **PARTLY DONE: auto-orient and lay flat** (`orient.py`, buttons under Rotate). **Still to do: manual move and auto-arrange** | M | Auto-orient picks the face down that minimises overhangs and supports. Needs position sent to the slicer, not just rotation and scale. |
 | 1.3 | **Sensible presets by goal**: "Fast draft", "Standard", "Strong", "Fine detail", with material-aware defaults | M | Gives beginners one choice instead of 500. Advanced users keep full control. |
 | 1.4 | **Supports**: preview where supports go, on/off per region (block/enforce), tree vs normal | L | Today only the on/off and type settings exist. |
 | 1.5 | **Saved user presets** and admin-published shared presets | M | |
 | 1.6 | **Multiple parts on one plate**, per-object settings | L | Builds on 1.2. |
-| 1.7 | **Print-readiness checks on upload**: thin walls, steep overhangs, non-manifold geometry, parts too big, with plain-language advice | M | Warnings before slicing, using the same checks that already run during assignment plus mesh analysis. Also reduces failed prints. |
-| 1.8 | **Mesh repair** on upload | M | Common cause of bad slices from CAD exports. |
+| 1.7 | **PARTLY DONE** (holes, tiny size, steep overhang share, little bed contact, several pieces: `meshcheck.py`, shown under the part). **Still to do: thin walls.** **Print-readiness checks on upload**: thin walls, steep overhangs, non-manifold geometry, parts too big, with plain-language advice | M | Warnings before slicing, using the same checks that already run during assignment plus mesh analysis. Also reduces failed prints. |
+| 1.8 | **DONE for the common faults** (duplicate vertices, zero-area and flipped faces, small holes, applied whenever a model is loaded; reported on upload). **Mesh repair** on upload | M | Common cause of bad slices from CAD exports. |
 | 1.9 | **Better G-code viewer**: colour by speed/flow/temperature, layer scrubber, travel moves, animation | M | |
 | 1.10 | **Nozzle sizes and more materials** (0.2, 0.6, 0.8 mm; extra filament profiles) | M | Printer record gets a nozzle size; assignment checks it. |
 | 1.11 | **Plate thumbnail and name on the printer's screen** | S | Bambu Studio's bundle carries images; verify they show on the printer. |

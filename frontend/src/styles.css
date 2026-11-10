@@ -267,3 +267,5 @@ ul.history { margin: 4px 0 0; padding-left: 18px; }
   :root:not([data-theme="light"]) .pill.bed-occupied { background: #78350f; color: #fde68a; }
   :root:not([data-theme="light"]) .bad-text { color: #fca5a5; }
 }
+.checks p { margin: 0 0 6px; font-size: 13px; line-height: 1.4; }
+.checks p:last-child { margin-bottom: 0; }

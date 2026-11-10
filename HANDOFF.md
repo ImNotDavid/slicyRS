@@ -32,6 +32,11 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 - Statistics split filament and time by `plate_share` (part volume); the plate counts once for the printer.
 - Tested in `test_batching.py` (mock slicer) and one real-engine test. Not yet tried with a real printer or in the browser.
 
+## Model preparation (Milestone 1, partly)
+
+- Every model is repaired when loaded (`meshio.load_mesh` calls `meshcheck.repair`: duplicate vertices, zero-area and flipped faces, small holes) and the upload reply carries plain-language `checks`, shown in the left panel. `POST /api/models/{id}/orient` (`orient.py`) returns the rotation for "flat" (largest face down) or "auto" (least support); buttons are in the Rotate popover.
+- **Not looked at in a browser**: the built-in browser pane here has no WebGL, so the main screen does not render. Backend behaviour is covered by `test_orient.py`; try the buttons and the advice text by hand.
+
 ## Printer gateway (A.7)
 
 - A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.

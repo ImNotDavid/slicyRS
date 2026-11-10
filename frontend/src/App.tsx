@@ -3,7 +3,7 @@ import {
   Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
-import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type Printer, type Transform, type User } from "./api";
+import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type ModelCheck, type Printer, type Transform, type User } from "./api";
 import Viewport from "./components/Viewport";
 import SettingsPanel from "./components/SettingsPanel";
 import FleetModal from "./components/FleetModal";
@@ -17,7 +17,7 @@ const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1 };
 export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
-  const [model, setModel] = useState<{ id: string; name: string; dims: [number, number, number] } | null>(null);
+  const [model, setModel] = useState<{ id: string; name: string; dims: [number, number, number]; checks?: ModelCheck[] } | null>(null);
   const [filament, setFilament] = useState("PLA");
   const [preset, setPreset] = useState("0.20mm Standard");
   const [settings, setSettings] = useState<Record<string, Value>>({});
@@ -107,6 +107,18 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     setBusy(false);
   };
 
+  const orientTo = async (mode: "flat" | "auto") => {
+    if (!model) return;
+    setBusy(true);
+    try {
+      const r = await api.orient(model.id, mode);
+      setTransform({ ...transform, rotation: r.rotation });
+      setMessage({ kind: "ok", text: mode === "flat" ? "Laid flat on its largest face" : r.before.overhang_percent - r.after.overhang_percent > 0.5
+        ? `Turned to need less support (overhang ${Math.round(r.before.overhang_percent)}% → ${Math.round(r.after.overhang_percent)}%)` : "Already a good orientation" });
+    } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
+    setBusy(false);
+  };
+
   const queue = async () => { if (job) { setJob(await api.queue(job.id)); setMessage({ kind: "ok", text: `Queued on ${job.printer_name}` }); refreshPrinters(); } };
   const print = async () => {
     if (!job) return;
@@ -175,6 +187,12 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
       <aside className="panel">
         <div className="card select-card"><span className="engine">{catalog.engine}</span><ChevronDown size={18} /></div>
+
+        {model?.checks?.length ? (
+          <div className="card checks" aria-label="Checks on the uploaded model">
+            {model.checks.map((c) => <p key={c.text} className={c.level === "warn" ? "form-error" : "muted"}>{c.level === "warn" ? "Check: " : ""}{c.text}</p>)}
+          </div>
+        ) : null}
 
         <div className="card">
           <div className="printer-head">
@@ -266,6 +284,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
                     <button className="mini" onClick={() => { const r = [...transform.rotation] as [number, number, number]; r[i] = (r[i] + 90) % 360; setTransform({ ...transform, rotation: r }); }}>+90°</button>
                   </label>
                 ))}
+                <button className="mini" disabled={busy} title="Put the largest flat face on the bed" onClick={() => orientTo("flat")}>Lay flat</button>
+                <button className="mini" disabled={busy} title="Turn the part to need the least support" onClick={() => orientTo("auto")}>Auto-orient</button>
                 <button className="mini" onClick={() => setTransform(IDENTITY)}>Reset</button>
               </div>
             )}

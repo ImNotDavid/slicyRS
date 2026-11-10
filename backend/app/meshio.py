@@ -24,6 +24,8 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
         loaded.apply_scale(1000.0)  # cascadio emits metres; slicing works in mm
     if not isinstance(loaded, trimesh.Trimesh) or len(loaded.faces) == 0:
         raise ValueError("File contains no printable geometry")
+    from . import meshcheck   # late import: meshcheck uses this package's helpers
+    loaded.metadata["repairs"] = meshcheck.repair(loaded)
     return loaded
 
 

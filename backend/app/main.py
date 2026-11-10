@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, gateways, jobstate, meshio, outcomes, pipeline, pipelinecfg,
+from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, gateways, jobstate, meshcheck, meshio, orient, outcomes, pipeline,
+               pipelinecfg,
                printing, retention, sessions, slicer, stats, store, taskqueue, worker)
 from .adapter import AdapterError
 from .auth import audit, current_user, is_admin, require_admin
@@ -179,7 +180,18 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
     files.publish(MODELS, model_id)
     store.models.put(model_id, {"id": model_id, "owner_id": user["id"], "name": file.filename, "created": time.time()})
     return {"id": model_id, "name": file.filename, "dims": meshio.dims(mesh),
-            "triangles": int(len(mesh.faces))}
+            "triangles": int(len(mesh.faces)), "checks": meshcheck.report(mesh)}
+
+
+class OrientIn(BaseModel):
+    mode: str = Field("auto", pattern="^(flat|auto)$")
+
+
+@app.post("/api/models/{model_id}/orient")
+def orient_model(model_id: str, body: OrientIn, user: dict = User):
+    """Rotation (degrees) that lays the part on its largest flat face ("flat") or needs the least support ("auto")."""
+    mesh = meshio.load_mesh(_source_file(model_id, user))
+    return orient.suggest(mesh, body.mode)
 
 
 @app.get("/api/models/{model_id}/preview.stl")

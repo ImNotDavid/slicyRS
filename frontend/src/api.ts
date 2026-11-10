@@ -71,6 +71,7 @@ export type Stats = {
   estimate_accuracy: { samples: number; sliced_median_ratio: number | null; preview_median_ratio: number | null; preview_samples: number };
   queue_wait_s: { samples: number; median: number | null; max: number | null }; pickup: { met: number; missed: number };
 };
+export type ModelCheck = { level: "info" | "warn"; text: string };
 export type Transform = { rotation: [number, number, number]; scale: number };
 
 async function j<T>(res: Response): Promise<T> {
@@ -112,8 +113,10 @@ export const api = {
   upload: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch("/api/models", { method: "POST", body: fd }).then(j<{ id: string; name: string; dims: [number, number, number]; triangles: number }>);
+    return fetch("/api/models", { method: "POST", body: fd }).then(j<{ id: string; name: string; dims: [number, number, number]; triangles: number; checks: ModelCheck[] }>);
   },
+  orient: (model_id: string, mode: "flat" | "auto") =>
+    post(`/api/models/${model_id}/orient`, { mode }).then(j<{ rotation: [number, number, number]; dims: [number, number, number]; before: { overhang_percent: number }; after: { overhang_percent: number; contact_mm2: number } }>),
   assign: (model_id: string, filament: string, t: Transform) =>
     post("/api/assign", { model_id, filament, ...t }).then(j<AssignResult>),
   slice: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string } & Transform) =>
