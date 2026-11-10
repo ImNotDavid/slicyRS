@@ -13,8 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, jobstate, meshio, outcomes, pipeline, pipelinecfg,
+from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, gateways, jobstate, meshio, outcomes, pipeline, pipelinecfg,
                printing, retention, sessions, slicer, stats, store, taskqueue, worker)
+from .adapter import AdapterError
 from .auth import audit, current_user, is_admin, require_admin
 from .bambu import PrinterError, check_host, links, probe
 from .defaults import effective_overrides, ui_defaults
@@ -29,6 +30,7 @@ pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, https_only=COOKIE_SECURE, same_site="lax",
                    max_age=SESSION_HOURS * 3600, session_cookie="slicyrs_session")
 app.include_router(auth.router)
+app.include_router(gateways.router)
 User = Depends(current_user)
 
 
@@ -75,7 +77,7 @@ def _public_printer(p: dict[str, Any], admin: bool) -> dict[str, Any]:
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host"))}
     if admin:
         out.update(host=p.get("host"), port=p.get("port") or 8883, serial=p.get("serial"),
-                   has_access_code=bool(p.get("access_code")), demo=p.get("demo", False))
+                   has_access_code=bool(p.get("access_code")), demo=p.get("demo", False), gateway=p.get("gateway"))
     return out
 
 
@@ -224,6 +226,7 @@ class PrinterIn(BaseModel):
     hardened_nozzle: bool = False
     enabled: bool = True
     bed_type: str = DEFAULT_BED_TYPE  # the build plate fitted to this printer (admin-managed)
+    gateway: str | None = None        # id of the remote gateway that reaches this printer; empty = this server connects directly
     status: dict[str, Any] | None = None
 
 
@@ -232,9 +235,12 @@ def _validate_printer(body: PrinterIn) -> None:
         raise HTTPException(400, "Unknown printer model")
     if body.bed_type not in BED_TYPES:
         raise HTTPException(400, f"Unknown build plate. Choose one of: {', '.join(BED_TYPES)}")
+    body.gateway = body.gateway or None
+    if body.gateway and not store.gateways.get(body.gateway):
+        raise HTTPException(400, "Unknown gateway")
     if body.host:
         try:
-            check_host(body.host)
+            check_host(body.host, resolve=not body.gateway)   # a host name behind a gateway only resolves on the gateway's network
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -286,6 +292,7 @@ class ProbeIn(BaseModel):
     serial: str = Field(min_length=1)
     access_code: str | None = None
     printer_id: str | None = None  # use the stored access code of this printer when blank
+    gateway: str | None = None     # test through this gateway instead of from the server
 
 
 @app.post("/api/admin/printers/test")
@@ -296,9 +303,15 @@ def test_printer(body: ProbeIn, admin: dict = Depends(require_admin)):
     if not code:
         raise HTTPException(400, "An access code is required")
     try:
-        result = probe(body.host, body.port, body.serial, code)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+        if body.gateway:
+            if not store.gateways.get(body.gateway):
+                raise HTTPException(400, "Unknown gateway")
+            check_host(body.host, resolve=False)
+            result = gateways.probe(body.gateway, body.host, body.port, body.serial, code)
+        else:
+            result = probe(body.host, body.port, body.serial, code)
+    except (ValueError, AdapterError) as e:
+        raise HTTPException(400 if isinstance(e, ValueError) else 502, str(e))
     audit(admin, "printer_test", f"{body.host}: {'ok' if result['ok'] else result['error']}")
     return result
 

@@ -1,0 +1,13 @@
+# Run on a machine on the printers' network (a Raspberry Pi is enough):
+#   CORE_URL=https://slicy.example.org GATEWAY_TOKEN=gw_xxxx docker compose -f deploy/docker-compose.gateway.yml up -d --build
+# Create the token on the server: Admin > Gateways > Create gateway. Then set each printer's "Connected through" to this gateway.
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    environment:
+      CORE_URL: ${CORE_URL:?set CORE_URL to the server address, e.g. https://slicy.example.org}
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN:?create a token under Admin > Gateways}
+      GATEWAY_NAME: ${GATEWAY_NAME:-}

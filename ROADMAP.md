@@ -100,11 +100,11 @@ Design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Three deployables (Core,
 | A.4 | **DONE (interface and one adapter; Core still runs in the same process as the Bambu connector).** **Printer interface boundary** (adapter interface; today's Bambu code becomes the first adapter) | M | Core only talks to printers through the interface. |
 | A.5 | **DONE.** **Separate slicer worker process** with a database-backed task queue | M | Slicing runs outside the web process, retries safely, and can run more than one worker. |
 | A.6 | **DONE.** **Plates and batching**: opt-in, across users, footprint packing check, slicer arrange as authority, wait-for-partners using slack | XL | Two users' compatible parts print on one plate, and a failed plate returns both jobs to the pool. |
-| A.7 | **Printer gateway as its own process** that connects out to Core | L | Core runs anywhere with no LAN access to printers; the gateway runs on-site. |
+| A.7 | **DONE.** **Printer gateway as its own process** that connects out to Core | L | Core runs anywhere with no LAN access to printers; the gateway runs on-site. |
 | A.8 | **DONE (API and an Admin > Pipeline view; no charts or export yet).** **Statistics from the event log**, including estimate versus actual print time | M | Admins can see usage by user, group and printer, and how accurate the preview estimate is. |
 | A.9 | **DONE.** **Storage interfaces** (database and files) so Postgres and object storage are a contained change later | M | Switching backends needs no changes outside the storage layer. |
 
-**Not started:** A.7 (printer gateway as its own process), A.9 (storage interfaces). The exit check below is met.
+**Not started:** nothing; Milestone A is built. What remains is running it on real printers, including through a gateway. The exit check below is met.
 
 **Exit check:** a user submits a part with a pickup time, sees an estimate, and the part is allocated, sliced for the chosen printer, and printed with no manual choice of printer; two opted-in jobs share a plate; and killing a slicer worker mid-slice does not lose the job.
 
@@ -197,7 +197,8 @@ Camera and timelapse notes (to verify on your own printers before committing): B
 | **Multi-colour and AMS** (colour per part, painting, slot mapping, prime tower) | XL | Users regularly ask for multi-colour prints. |
 | **Open and export Bambu Studio `.3mf` projects with settings intact** | L | More people start bringing prepared projects. |
 | **Postgres and separate slicer workers**, with a job queue such as Redis, and object storage for files | L | Slicing queues exceed a minute at busy times, or you need more than one server. |
-| **On-site agent** connecting out from the printers' network, instead of a VPN | XL | The server must run somewhere that cannot reach the printers. |
+| ~~**On-site agent** connecting out from the printers' network, instead of a VPN~~ | XL | **Done as the printer gateway (A.7).** |
+| **Fully separate gateway component**: a top-level `gateway/` folder with its own package, requirements, image, version and tests that imports nothing from `backend/app`; the Bambu LAN connector and its tests move there; the message format becomes a written, versioned contract with shared contract tests; the server refuses a gateway version it does not support; the server drops direct printer connections, so a single-machine setup runs the gateway as a second compose service (breaking change for the live stack) | L | The gateway and the backend start being developed or released independently, or a second printer brand or transport is added. Until then the gateway shares `bambulan.py`, `adapter.py` and `catalog.py` with the backend, and `Dockerfile.gateway` copies those files. |
 | **Observability**: structured logs, metrics, error tracking, uptime alerts | M | Before the user count passes about 100, or earlier if outages hurt. |
 | **Accessibility and mobile review**, plus the display typeface if you hold the licence | M | Before a wide launch. |
 | **Installable mobile app (PWA) with push notifications** | M | Not selected for now; revisit after notifications (2.3) are in use. |

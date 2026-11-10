@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
-import { api, type AuditEntry, type Catalog, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
+import { api, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose: () => void; onPrintersChanged: () => void };
-type Tab = "printers" | "users" | "storage" | "pipeline" | "audit";
+type Tab = "printers" | "gateways" | "users" | "storage" | "pipeline" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -15,7 +15,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
         <header>
           <h3>Admin</h3>
           <div className="tabs inline">
-            {(["printers", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
+            {(["printers", "gateways", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
             ))}
           </div>
@@ -23,6 +23,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: 
         </header>
         <div className="modal-body">
           {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
+          {tab === "gateways" && <GatewaysTab />}
           {tab === "users" && <UsersTab me={me} />}
           {tab === "storage" && <StorageTab />}
           {tab === "pipeline" && <PipelineTab />}
@@ -46,14 +47,14 @@ function PrintersTab({ catalog, onChanged }: { catalog: Catalog; onChanged: () =
 
   return (
     <>
-      <p className="muted">Printers connect over LAN-mode MQTT (port 8883) from this server, so each must be reachable from it (same network or VPN).
-        Access codes are stored encrypted and are never shown again.</p>
+      <p className="muted">Printers connect over LAN-mode MQTT (port 8883), either from this server (it must reach them) or through a gateway running
+        on their network (see Gateways). Access codes are stored encrypted and are never shown again.</p>
       {printers.map((p) => (
         <div key={p.id} className="admin-printer">
           <div className="fleet-row">
             <div className="fleet-main">
               <strong>{p.name}{!p.enabled && <span className="pill offline">disabled</span>}</strong>
-              <span className="muted">{p.model} · {p.bed_type} · {p.host ? `${p.host}:${p.port}` : "manual (no connection)"}{p.has_access_code ? " · code saved" : ""}</span>
+              <span className="muted">{p.model} · {p.bed_type} · {p.host ? `${p.host}:${p.port}` : "manual (no connection)"}{p.gateway ? " · via gateway" : ""}{p.has_access_code ? " · code saved" : ""}</span>
               {p.status.error && <span className="form-error">{p.status.error}</span>}
             </div>
             <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
@@ -74,12 +75,14 @@ function PrintersTab({ catalog, onChanged }: { catalog: Catalog; onChanged: () =
 }
 
 function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?: Printer; onDone: () => void }) {
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  useEffect(() => { api.gateways().then(setGateways).catch(() => undefined); }, []);
   const models = Object.keys(catalog.printer_models);
   const filaments = Object.keys(catalog.filaments);
   const [f, setF] = useState({
     ...EMPTY, model: printer?.model ?? models[0], name: printer?.name ?? "", host: printer?.host ?? "", port: printer?.port ?? 8883,
     serial: printer?.serial ?? "", hardened_nozzle: !!printer?.hardened_nozzle, enabled: printer?.enabled ?? true,
-    bed_type: printer?.bed_type ?? catalog.default_bed_type,
+    bed_type: printer?.bed_type ?? catalog.default_bed_type, gateway: printer?.gateway ?? "",
   });
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<ProbeResult | "testing" | null>(null);
@@ -87,7 +90,7 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
 
   const body = (): PrinterInput => ({
     name: f.name, model: f.model, host: f.host || null, port: Number(f.port) || 8883, serial: f.serial || null,
-    access_code: f.access_code || null, hardened_nozzle: f.hardened_nozzle, enabled: f.enabled, bed_type: f.bed_type,
+    access_code: f.access_code || null, hardened_nozzle: f.hardened_nozzle, enabled: f.enabled, bed_type: f.bed_type, gateway: f.gateway || null,
   });
   const save = async () => {
     setErr("");
@@ -97,7 +100,7 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
   const test = async () => {
     setErr(""); setProbe("testing");
     try {
-      setProbe(await api.testPrinter({ host: f.host, port: Number(f.port) || 8883, serial: f.serial, access_code: f.access_code || undefined, printer_id: printer?.id }));
+      setProbe(await api.testPrinter({ host: f.host, port: Number(f.port) || 8883, serial: f.serial, access_code: f.access_code || undefined, printer_id: printer?.id, gateway: f.gateway || undefined }));
     } catch (e) { setProbe(null); setErr((e as Error).message); }
   };
   const patchManual = async (status: Printer["status"]) => {
@@ -120,6 +123,12 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
         <label className="plate-field">Build plate
           <select value={f.bed_type} onChange={(e) => set("bed_type", e.target.value)} aria-label="Build plate">
             {catalog.bed_types.map((b) => <option key={b}>{b}</option>)}
+          </select>
+        </label>
+        <label className="plate-field">Connected through
+          <select value={f.gateway} onChange={(e) => set("gateway", e.target.value)} aria-label="Connected through">
+            <option value="">This server (direct)</option>
+            {gateways.map((g) => <option key={g.id} value={g.id}>{g.name}{g.online ? "" : " (offline)"}</option>)}
           </select>
         </label>
         <label className="check"><input type="checkbox" checked={f.hardened_nozzle} onChange={(e) => set("hardened_nozzle", e.target.checked)} /> Hardened nozzle</label>
@@ -147,6 +156,55 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
         {printer && <button className="btn danger" onClick={async () => { if (confirm(`Remove ${printer.name}?`)) { await api.deletePrinter(printer.id); onDone(); } }}><Trash2 size={14} /> Remove</button>}
       </div>
     </div>
+  );
+}
+
+// --------------------------------------------------------------------- gateways
+
+function GatewaysTab() {
+  const [list, setList] = useState<Gateway[]>([]);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState<{ name: string; token: string } | null>(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => api.gateways().then(setList).catch((e) => setErr(e.message)), []);
+  useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, [load]);
+  const add = async () => {
+    setErr("");
+    try { const g = await api.addGateway(name.trim()); setFresh({ name: g.name, token: g.token }); setName(""); load(); }
+    catch (e) { setErr((e as Error).message); }
+  };
+  const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
+  return (
+    <>
+      <p className="muted">A gateway is a small program that runs on the printers' own network and connects out to this server, so this server
+        needs no route to the printers. Create one here, then run it with the token shown (it is shown once):
+        <code> CORE_URL={window.location.origin} GATEWAY_TOKEN=… python -m app.gateway_agent</code></p>
+      {fresh && (
+        <div className="manual" role="status">
+          <strong>Token for {fresh.name}</strong>
+          <code style={{ wordBreak: "break-all" }}>{fresh.token}</code>
+          <button className="btn" onClick={() => navigator.clipboard?.writeText(fresh.token)}>Copy</button>
+          <button className="btn" onClick={() => setFresh(null)}>I have saved it</button>
+        </div>
+      )}
+      {list.map((g) => (
+        <div className="fleet-row" key={g.id}>
+          <div className="fleet-main">
+            <strong>{g.name}</strong>
+            <span className="muted">{g.printers.length} printer{g.printers.length === 1 ? "" : "s"} · last seen {g.online ? "now" : when(g.last_seen)}{g.version ? ` · v${g.version}` : ""}</span>
+          </div>
+          <span className={"pill " + (g.online ? "idle" : "offline")}>{g.online ? "online" : "offline"}</span>
+          <button className="btn danger" disabled={g.printers.length > 0} title={g.printers.length ? "Move its printers first" : ""}
+            onClick={async () => { if (confirm(`Remove gateway ${g.name}?`)) { try { await api.deleteGateway(g.id); load(); } catch (e) { setErr((e as Error).message); } } }}><Trash2 size={14} /> Remove</button>
+        </div>
+      ))}
+      {!list.length && <p className="muted">No gateways yet. Printers are connected directly from this server.</p>}
+      <div className="row-actions">
+        <input placeholder="Gateway name (e.g. Makerspace)" value={name} onChange={(e) => setName(e.target.value)} aria-label="Gateway name" />
+        <button className="btn primary" disabled={!name.trim()} onClick={add}>Create gateway</button>
+      </div>
+      {err && <p className="form-error" role="alert">{err}</p>}
+    </>
   );
 }
 

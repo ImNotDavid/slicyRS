@@ -1,0 +1,12 @@
+# Printer gateway (A.7): runs on the printers' own network and connects out to the server. Build from the repository root:
+#   docker build -f Dockerfile.gateway -t slicyrs-gateway .
+#   docker run -d --restart unless-stopped -e CORE_URL=https://slicy.example.org -e GATEWAY_TOKEN=gw_... slicyrs-gateway
+# It needs a route to the printers (the same LAN) and to the server; it listens on nothing.
+FROM python:3.12-slim
+RUN pip install --no-cache-dir paho-mqtt==2.1.0 websockets==16.1.1
+WORKDIR /srv/gateway
+COPY backend/app/__init__.py backend/app/adapter.py backend/app/bambulan.py backend/app/catalog.py backend/app/gateway_agent.py app/
+RUN useradd --system --no-create-home gateway
+USER gateway
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "-m", "app.gateway_agent"]

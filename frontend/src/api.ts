@@ -24,11 +24,12 @@ export type Printer = {
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null };
   // admin only
-  host?: string | null; port?: number; serial?: string | null; has_access_code?: boolean; demo?: boolean;
+  host?: string | null; port?: number; serial?: string | null; has_access_code?: boolean; demo?: boolean; gateway?: string | null;
 };
+export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
-  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; status?: Printer["status"];
+  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; gateway?: string | null; status?: Printer["status"];
 };
 export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
@@ -105,7 +106,7 @@ export const api = {
   saveStorage: (s: Partial<StorageInfo["settings"]>) => send("PUT", "/api/admin/storage/settings", s).then(j<StorageInfo["settings"]>),
   cleanup: (dry: boolean) => send("POST", `/api/admin/storage/cleanup?dry_run=${dry}`).then(j<CleanupReport>),
   audit: () => fetch("/api/admin/audit?limit=100").then(j<AuditEntry[]>),
-  testPrinter: (p: { host: string; port: number; serial: string; access_code?: string; printer_id?: string }) =>
+  testPrinter: (p: { host: string; port: number; serial: string; access_code?: string; printer_id?: string; gateway?: string }) =>
     send("POST", "/api/admin/printers/test", p).then(j<ProbeResult>),
   catalog: () => fetch("/api/catalog").then(j<Catalog>),
   upload: (file: File) => {
@@ -138,6 +139,9 @@ export const api = {
   queue: (id: string) => post(`/api/jobs/${id}/queue`).then(j<Job>),
   print: (id: string) => post(`/api/jobs/${id}/print`).then(j<{ ok: boolean; started: boolean; file: string }>),
   printers: () => fetch("/api/printers").then(j<Printer[]>),
+  gateways: () => fetch("/api/admin/gateways").then(j<Gateway[]>),
+  addGateway: (name: string) => send("POST", "/api/admin/gateways", { name }).then(j<Gateway & { token: string }>),
+  deleteGateway: (id: string) => send("DELETE", `/api/admin/gateways/${id}`).then(j<{ ok: boolean }>),
   addPrinter: (p: PrinterInput) => send("POST", "/api/admin/printers", p).then(j<Printer>),
   updatePrinter: (id: string, p: PrinterInput) => send("PUT", `/api/admin/printers/${id}`, p).then(j<Printer>),
   deletePrinter: (id: string) => send("DELETE", `/api/admin/printers/${id}`).then(j<{ ok: boolean }>),

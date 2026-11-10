@@ -22,7 +22,10 @@ class PrinterAdapter(Protocol):
 
 def get(printer_id: str) -> PrinterAdapter | None:
     """The live adapter for a printer, or None for a manual printer (no connection details)."""
+    from . import gateways, store
     from .bambu import links
+    if (store.printers.get(printer_id) or {}).get("gateway"):
+        return gateways.link_for(printer_id)
     return links.get(printer_id)
 
 

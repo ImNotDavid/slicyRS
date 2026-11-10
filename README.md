@@ -82,8 +82,10 @@ clear with a three-item checklist (Fleet page). Operators are chosen by an admin
 
 Slicing for the pool runs through a database task queue. By default the web process runs the workers itself (`SLICE_WORKERS`, default 2). For a separate worker,
 set `EMBED_WORKERS=0` on the web process and run `python -m app.worker` against the same data directory; a worker that dies mid-slice loses nothing (its task
-is handed on, and fails the job after three attempts). `ALLOCATOR_INTERVAL_S` (default 5) sets how often the pool is checked. Not built yet: plate sharing
-between users, a printer gateway as its own process, storage interfaces for Postgres (see `ROADMAP.md`).
+is handed on, and fails the job after three attempts). `ALLOCATOR_INTERVAL_S` (default 5) sets how often the pool is checked. Plate sharing between users, the printer gateway and the storage interfaces are built; a Postgres or
+object-storage backend is not (see `ROADMAP.md`).
+
+**Printer gateway.** If the server cannot reach the printers (for example it runs in the cloud), run a gateway on their network: create it under Admin > Gateways, then `CORE_URL=https://your.server GATEWAY_TOKEN=gw_… docker compose -f deploy/docker-compose.gateway.yml up -d --build` on any machine there, and set each printer's "Connected through" to it. The gateway connects out; nothing needs to be opened on either side.
 
 ## Cloud service: accounts, SSO, admin
 

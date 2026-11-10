@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import bambu, crypto, main as app_main, store
+from app import bambu, bambulan, crypto, main as app_main, store
 from app.bambu import PrinterError, PrinterLink
 from app.storage import JOBS, files
 from conftest import VALID, upload, wait_job
@@ -70,7 +70,7 @@ def make_link(ftps_port, state="IDLE", connected=True, starts=True, code=CODE, p
 
 @pytest.fixture(autouse=True)
 def fast_start(monkeypatch):
-    monkeypatch.setattr(bambu, "START_WAIT_S", 3)
+    monkeypatch.setattr(bambulan, "START_WAIT_S", 3)
 
 
 # ------------------------------------------------------------- connector

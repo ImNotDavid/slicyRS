@@ -9,7 +9,7 @@ Cloud slicer for Bambu Lab printers. FastAPI backend with a SQLite JSON store, R
 ## Where Milestone A stands
 
 Done: A.1 job states/events/preview, A.2 pool/allocator/pickup forecast, A.3 build-plate state, A.4 printer adapter interface, A.5 slice task queue and worker, A.8 statistics and admin Pipeline tab.
-A.6 plates and batching and A.9 storage interfaces are done (see below). Not started: A.7 separate printer gateway process. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
+A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done (see below). Milestone A is complete once it has been run on real printers. Colour is recorded on a job but not matched. The preview slices on X1C because there is no P2S model in the catalog.
 
 ## How the pool works (read before changing it)
 
@@ -31,6 +31,15 @@ A.6 plates and batching and A.9 storage interfaces are done (see below). Not sta
 - Cancelling a job, or an unstarted plate timing out, dissolves the plate: the other jobs return to the pool. A plate auto-starts only if every job asked for that. Any owner may start or clear it; the others are emailed.
 - Statistics split filament and time by `plate_share` (part volume); the plate counts once for the printer.
 - Tested in `test_batching.py` (mock slicer) and one real-engine test. Not yet tried with a real printer or in the browser.
+
+## Printer gateway (A.7)
+
+- A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.
+- Admin > Gateways creates a gateway and shows its token once (only a hash is stored). A printer's "Connected through" setting assigns it (`printer.gateway`); empty means direct. Protocol and trust model: top of `backend/app/gateways.py`.
+- The server sends the gateway its printers (with decrypted access codes, over the socket only); the gateway reports status, which goes through the same `printerstate.apply` as direct links, so bed state, results and the allocator are unchanged (bed state stays in the server, not the gateway). Prints: the server offers the sliced file at a one-use URL; the gateway downloads it, uploads to the printer and answers with the printer's own error text. A dropped gateway turns its printers OFFLINE and a print then says the gateway is offline.
+- Parked on purpose: making the gateway a fully separate component (own folder, versioned protocol contract, no shared code). See "Later" in `ROADMAP.md` for the trigger.
+- The LAN connector moved to `bambulan.py` (no database dependency, shared by both sides); `bambu.py` is the server-side wiring.
+- Tested with a live server and a real agent (fake printer links) in `test_gateway.py`, and by hand with two containers on a Docker network (connect, status, reconnect after a server restart). **Never run against a real printer through a gateway.**
 
 ## Storage (A.9)
 
