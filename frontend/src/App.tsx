@@ -6,6 +6,7 @@ import {
 import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type ModelCheck, type Printer, type Transform, type User } from "./api";
 import Viewport from "./components/Viewport";
 import SettingsPanel from "./components/SettingsPanel";
+import SavedPresets from "./components/SavedPresets";
 import FleetModal from "./components/FleetModal";
 import AdminModal from "./components/AdminModal";
 import JobsModal, { fmtTime } from "./components/JobsModal";
@@ -270,6 +271,9 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
             disabled={JSON.stringify(settings) === JSON.stringify(catalog.preset_defaults[preset])}
             onClick={() => { setGoal(null); setSettings(catalog.preset_defaults[preset]); }}><RotateCcw size={18} /></button>
         </div>
+
+        <SavedPresets catalog={catalog} user={user} current={{ preset, filament, settings }}
+          onApply={(p) => { setGoal(null); setFilament(p.filament); setPreset(p.preset); setSettings({ ...catalog.preset_defaults[p.preset], ...p.settings }); }} />
 
         <SettingsPanel catalog={catalog} values={settings} baseline={catalog.preset_defaults[preset]}
           onChange={(k, v) => { setGoal(null); setSettings((s) => ({ ...s, [k]: v })); }} />

@@ -72,6 +72,7 @@ export type Stats = {
   estimate_accuracy: { samples: number; sliced_median_ratio: number | null; preview_median_ratio: number | null; preview_samples: number };
   queue_wait_s: { samples: number; median: number | null; max: number | null }; pickup: { met: number; missed: number };
 };
+export type SavedPreset = { id: string; name: string; scope: "user" | "shared"; owner_email: string; preset: string; filament: string; settings: Record<string, number | string | boolean> };
 export type ModelCheck = { level: "info" | "warn"; text: string };
 export type Transform = { rotation: [number, number, number]; scale: number };
 
@@ -112,6 +113,10 @@ export const api = {
     send("POST", "/api/admin/printers/test", p).then(j<ProbeResult>),
   goal: (id: string, filament: string) =>
     fetch(`/api/goals/${id}?filament=${encodeURIComponent(filament)}`).then(j<{ goal: string; preset: string; settings: Record<string, number | string | boolean>; notes: string[] }>),
+  presets: () => fetch("/api/presets").then(j<SavedPreset[]>),
+  savePreset: (p: { name: string; preset: string; filament: string; settings: Record<string, number | string | boolean>; shared: boolean }) =>
+    post("/api/presets", p).then(j<SavedPreset>),
+  deletePreset: (id: string) => send("DELETE", `/api/presets/${id}`).then(j<{ ok: boolean }>),
   catalog: () => fetch("/api/catalog").then(j<Catalog>),
   upload: (file: File) => {
     const fd = new FormData();

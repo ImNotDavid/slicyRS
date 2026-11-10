@@ -39,6 +39,8 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 
 - Print goals (`goals.py`): four buttons in the settings panel choose a process preset plus a few settings for the selected material (`GET /api/goals/{id}?filament=`); the result is ordinary editable settings, and any manual edit clears the highlighted goal. Switching filament re-applies the goal. Not yet looked at in a browser.
 
+- Saved presets (`presets.py`, `SavedPresets.tsx`): a person's named settings (process preset, material, panel values), private to them; admins can share one with everyone. Applying one fills the panel; the selection clears itself once the panel no longer matches it. Not yet looked at in a browser.
+
 ## Printer gateway (A.7)
 
 - A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.

@@ -281,3 +281,8 @@ ul.history { margin: 4px 0 0; padding-left: 18px; }
 .goal:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 1px; }
 .goal.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--brand-primary-contrast); }
 .goal-note { margin: 0; font-size: 12px; line-height: 1.4; }
+.saved { display: flex; flex-direction: column; gap: 6px; }
+.saved-row { display: flex; gap: 6px; }
+.saved-row select { flex: 1; min-width: 0; }
+.saved-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.saved-form input[type="text"], .saved-form input:not([type]) { padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
