@@ -275,3 +275,9 @@ ul.history { margin: 4px 0 0; padding-left: 18px; }
 }
 .checks p { margin: 0 0 6px; font-size: 13px; line-height: 1.4; }
 .checks p:last-child { margin-bottom: 0; }
+.goals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.goal { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 7px 4px; font-size: 12px; font-weight: 600; line-height: 1.2; }
+.goal:hover { border-color: var(--brand-primary); }
+.goal:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 1px; }
+.goal.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--brand-primary-contrast); }
+.goal-note { margin: 0; font-size: 12px; line-height: 1.4; }

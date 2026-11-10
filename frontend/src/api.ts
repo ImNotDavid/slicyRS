@@ -12,6 +12,7 @@ export type Catalog = {
   process_presets: { id: string; layer_height: number }[];
   settings_schema: Tab[];
   preset_defaults: Record<string, Record<string, number | string | boolean>>;
+  goals: { id: string; name: string; preset: string; description: string }[];
   slicer_mode: string;
   engine: string;
   bed_types: string[];
@@ -109,6 +110,8 @@ export const api = {
   audit: () => fetch("/api/admin/audit?limit=100").then(j<AuditEntry[]>),
   testPrinter: (p: { host: string; port: number; serial: string; access_code?: string; printer_id?: string; gateway?: string }) =>
     send("POST", "/api/admin/printers/test", p).then(j<ProbeResult>),
+  goal: (id: string, filament: string) =>
+    fetch(`/api/goals/${id}?filament=${encodeURIComponent(filament)}`).then(j<{ goal: string; preset: string; settings: Record<string, number | string | boolean>; notes: string[] }>),
   catalog: () => fetch("/api/catalog").then(j<Catalog>),
   upload: (file: File) => {
     const fd = new FormData();

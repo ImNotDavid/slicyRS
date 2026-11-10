@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, gateways, jobstate, meshcheck, meshio, orient, outcomes, pipeline,
+from . import (adapter, allocator, assign, auth, bedstate, crypto, forecast, gateways, goals, jobstate, meshcheck, meshio, orient, outcomes, pipeline,
                pipelinecfg,
                printing, retention, sessions, slicer, stats, store, taskqueue, worker)
 from .adapter import AdapterError
@@ -145,6 +145,7 @@ def catalog(user: dict = User):
         "printer_models": {k: {**v, "bed": list(v["bed"])} for k, v in PRINTER_MODELS.items()},
         "filaments": FILAMENTS,
         "process_presets": PROCESS_PRESETS,
+        "goals": goals.public(),
         "settings_schema": SETTINGS_SCHEMA,
         "preset_defaults": {p["id"]: ui_defaults(p["id"]) for p in PROCESS_PRESETS},
         "bed_types": list(BED_TYPES),
@@ -153,6 +154,17 @@ def catalog(user: dict = User):
         "engine": ("Mock slicer" if SLICER_MODE == "mock"
                    else os.environ.get("SLICER_NAME") or ("Bambu Studio" if "bambu" in ORCA_BIN.lower() else "OrcaSlicer")),
     }
+
+
+@app.get("/api/goals/{goal_id}")
+def goal(goal_id: str, filament: str = "PLA", user: dict = User):
+    """The preset and settings a print goal means for a material."""
+    try:
+        return goals.resolve(goal_id, filament)
+    except KeyError:
+        raise HTTPException(404, "Unknown goal")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ------------------------------------------------------------------- models

@@ -37,6 +37,8 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 - Every model is repaired when loaded (`meshio.load_mesh` calls `meshcheck.repair`: duplicate vertices, zero-area and flipped faces, small holes) and the upload reply carries plain-language `checks`, shown in the left panel. `POST /api/models/{id}/orient` (`orient.py`) returns the rotation for "flat" (largest face down) or "auto" (least support); buttons are in the Rotate popover.
 - **Not looked at in a browser**: the built-in browser pane here has no WebGL, so the main screen does not render. Backend behaviour is covered by `test_orient.py`; try the buttons and the advice text by hand.
 
+- Print goals (`goals.py`): four buttons in the settings panel choose a process preset plus a few settings for the selected material (`GET /api/goals/{id}?filament=`); the result is ordinary editable settings, and any manual edit clears the highlighted goal. Switching filament re-applies the goal. Not yet looked at in a browser.
+
 ## Printer gateway (A.7)
 
 - A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.

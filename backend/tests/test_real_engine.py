@@ -119,3 +119,14 @@ def test_each_part_gets_its_own_settings_in_the_order_given(engine, tmp_path):
     # the cube (first) is the bigger part, so solid infill on it costs more filament than on the sphere (second)
     assert first["filament_g"] - base["filament_g"] > second["filament_g"] - base["filament_g"] + 3
     assert second["filament_g"] > base["filament_g"] + 3
+
+
+@pytest.mark.parametrize("filament", ["PLA", "TPU", "ABS"])
+def test_every_print_goal_slices_with_the_real_engine(engine, tmp_path, filament):
+    from app import goals
+    from app.defaults import effective_overrides
+    for g in goals.GOALS:
+        r = goals.resolve(g["id"], filament)
+        got = engine.run(tmp_path / f"{g['id']}-{filament}", FIX / "cube_binary.stl", "P1S", r["preset"], filament,
+                         effective_overrides(r["preset"], r["settings"], "Textured PEI Plate"))
+        assert got["time_s"] > 0 and got["filament_g"] > 0

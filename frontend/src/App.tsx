@@ -24,6 +24,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [transform, setTransform] = useState<Transform>(IDENTITY);
   const [tool, setTool] = useState<"rotate" | "scale" | null>(null);
   const [pickFace, setPickFace] = useState(false);
+  const [goal, setGoal] = useState<string | null>("standard");
+  const [goalNotes, setGoalNotes] = useState<string[]>([]);
   const [assignment, setAssignment] = useState<AssignResult | null>(null);
   const [manualPrinter, setManualPrinter] = useState("");
   const [job, setJob] = useState<Job | null>(null);
@@ -50,9 +52,19 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   }, [refreshPrinters]);
 
   const changePreset = (id: string) => {
+    setGoal(null);
     setPreset(id);
     if (catalog) setSettings(catalog.preset_defaults[id]);
   };
+
+  const applyGoal = async (id: string, material = filament) => {
+    try {
+      const r = await api.goal(id, material);
+      setPreset(r.preset); setSettings(r.settings); setGoal(id); setGoalNotes(r.notes);
+    } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
+  };
+  // a goal follows the material: switching filament re-applies it with that material's adjustments
+  useEffect(() => { if (goal && catalog) applyGoal(goal, filament); }, [filament]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-run printer assignment whenever the part, material, transform or fleet changes.
   const fleetKey = JSON.stringify(printers.map((p) => [p.id, p.status.state, p.queue_depth, p.status.ams]));
@@ -240,17 +252,27 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
           </select>
         </div>
 
+        <div className="goals" role="group" aria-label="Print goal">
+          {catalog.goals.map((g) => (
+            <button key={g.id} className={"goal" + (goal === g.id ? " on" : "")} aria-pressed={goal === g.id} title={g.description}
+              onClick={() => applyGoal(g.id)}>{g.name}</button>
+          ))}
+        </div>
+        {goal && (
+          <p className="goal-note muted">{catalog.goals.find((g) => g.id === goal)?.description}{goalNotes.length ? " " + goalNotes.join(" ") : ""}</p>
+        )}
+
         <div className="preset-row">
           <select value={preset} onChange={(e) => changePreset(e.target.value)}>
             {catalog.process_presets.map((p) => <option key={p.id}>{p.id}</option>)}
           </select>
           <button className="icon-btn" title="Reset settings to preset" aria-label="Reset settings to preset"
             disabled={JSON.stringify(settings) === JSON.stringify(catalog.preset_defaults[preset])}
-            onClick={() => setSettings(catalog.preset_defaults[preset])}><RotateCcw size={18} /></button>
+            onClick={() => { setGoal(null); setSettings(catalog.preset_defaults[preset]); }}><RotateCcw size={18} /></button>
         </div>
 
         <SettingsPanel catalog={catalog} values={settings} baseline={catalog.preset_defaults[preset]}
-          onChange={(k, v) => setSettings((s) => ({ ...s, [k]: v }))} />
+          onChange={(k, v) => { setGoal(null); setSettings((s) => ({ ...s, [k]: v })); }} />
       </aside>
 
       <main className="viewport">

@@ -120,7 +120,7 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 |---|------|--------|-------|
 | 1.1 | **Full settings coverage**, generated from the engine's own profiles instead of the hand-written list | L | Biggest item. Correct defaults, units and descriptions for every setting; stays correct when profiles update. |
 | 1.2 | **PARTLY DONE: auto-orient and lay flat** (`orient.py`, buttons under Rotate). **Still to do: manual move and auto-arrange** | M | Auto-orient picks the face down that minimises overhangs and supports. Needs position sent to the slicer, not just rotation and scale. |
-| 1.3 | **Sensible presets by goal**: "Fast draft", "Standard", "Strong", "Fine detail", with material-aware defaults | M | Gives beginners one choice instead of 500. Advanced users keep full control. |
+| 1.3 | **DONE** (`goals.py`: Fast draft, Standard, Strong, Fine detail as one-click buttons above the preset menu; flexible filament is slowed, warp-prone materials get a brim; every goal and material is checked against the real slicer). **Sensible presets by goal**: "Fast draft", "Standard", "Strong", "Fine detail", with material-aware defaults | M | Gives beginners one choice instead of 500. Advanced users keep full control. |
 | 1.4 | **Supports**: preview where supports go, on/off per region (block/enforce), tree vs normal | L | Today only the on/off and type settings exist. |
 | 1.5 | **Saved user presets** and admin-published shared presets | M | |
 | 1.6 | **Multiple parts on one plate**, per-object settings | L | Builds on 1.2. |
