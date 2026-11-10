@@ -23,6 +23,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [settings, setSettings] = useState<Record<string, Value>>({});
   const [transform, setTransform] = useState<Transform>(IDENTITY);
   const [tool, setTool] = useState<"rotate" | "scale" | null>(null);
+  const [pickFace, setPickFace] = useState(false);
   const [assignment, setAssignment] = useState<AssignResult | null>(null);
   const [manualPrinter, setManualPrinter] = useState("");
   const [job, setJob] = useState<Job | null>(null);
@@ -107,13 +108,13 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     setBusy(false);
   };
 
-  const orientTo = async (mode: "flat" | "auto") => {
+  const orientTo = async (mode: "flat" | "auto" | "face", normal?: [number, number, number]) => {
     if (!model) return;
     setBusy(true);
     try {
-      const r = await api.orient(model.id, mode);
+      const r = await api.orient(model.id, mode, normal);
       setTransform({ ...transform, rotation: r.rotation });
-      setMessage({ kind: "ok", text: mode === "flat" ? "Laid flat on its largest face" : r.before.overhang_percent - r.after.overhang_percent > 0.5
+      setMessage({ kind: "ok", text: mode === "face" ? "Laid on the face you picked" : mode === "flat" ? "Laid flat on its largest face" : r.before.overhang_percent - r.after.overhang_percent > 0.5
         ? `Turned to need less support (overhang ${Math.round(r.before.overhang_percent)}% → ${Math.round(r.after.overhang_percent)}%)` : "Already a good orientation" });
     } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
     setBusy(false);
@@ -133,7 +134,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setModal(null); setTool(null); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setModal(null); setTool(null); setPickFace(false); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -143,6 +144,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     const t = setTimeout(() => setMessage(null), 5000);
     return () => clearTimeout(t);
   }, [message]);
+
+  useEffect(() => { if (tool !== "rotate" || mode !== "prepare") setPickFace(false); }, [tool, mode]);
 
   const onLayerCount = useCallback((n: number) => { setLayerCount(n); setLayerRange([0, Math.max(0, n - 1)]); }, []);
 
@@ -252,7 +255,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
       <main className="viewport">
         <Viewport modelUrl={model ? modelUrl(model.id) : null} bed={bed} transform={transform} gcode={gcode} mode={mode}
-          layerRange={layerRange} onLayerCount={onLayerCount} fitSignal={fitSignal} />
+          layerRange={layerRange} onLayerCount={onLayerCount} fitSignal={fitSignal}
+          pickFace={pickFace} onPickFace={(n) => { setPickFace(false); orientTo("face", n); }} />
 
         <div className="mode-toggle">
           <button className={mode === "prepare" ? "btn primary" : "btn"} onClick={() => setMode("prepare")}>PREPARE</button>
@@ -284,9 +288,13 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
                     <button className="mini" onClick={() => { const r = [...transform.rotation] as [number, number, number]; r[i] = (r[i] + 90) % 360; setTransform({ ...transform, rotation: r }); }}>+90°</button>
                   </label>
                 ))}
-                <button className="mini" disabled={busy} title="Put the largest flat face on the bed" onClick={() => orientTo("flat")}>Lay flat</button>
-                <button className="mini" disabled={busy} title="Turn the part to need the least support" onClick={() => orientTo("auto")}>Auto-orient</button>
-                <button className="mini" onClick={() => setTransform(IDENTITY)}>Reset</button>
+                <div className="actions">
+                  <button className={"mini" + (pickFace ? " on" : "")} aria-pressed={pickFace} disabled={busy}
+                    title="Then click the face of the part that should lie on the bed" onClick={() => setPickFace(!pickFace)}>Lay flat</button>
+                  <button className="mini" disabled={busy} title="Turn the part to need the least support" onClick={() => orientTo("auto")}>Auto-orient</button>
+                  <button className="mini" disabled={busy} onClick={() => setTransform(IDENTITY)}>Reset</button>
+                </div>
+                {pickFace && <p className="hint">Click the face that should lie on the bed.</p>}
               </div>
             )}
             {tool === "scale" && (

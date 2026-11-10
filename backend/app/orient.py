@@ -55,6 +55,17 @@ def _score(m: dict[str, float]) -> float:
     return m["overhang_mm2"] - 0.25 * m["contact_mm2"] + 0.05 * m["height_mm"]
 
 
+def face_down(mesh: trimesh.Trimesh, normal: list[float]) -> dict[str, Any]:
+    """Turn the part so the face with this outward normal (in the part's own frame, as uploaded) lies on the bed."""
+    n = np.asarray(normal, dtype=float)
+    if n.shape != (3,) or not np.all(np.isfinite(n)) or np.linalg.norm(n) < 1e-9:
+        raise ValueError("A face direction (three numbers) is required")
+    R = _rotation_for(n / np.linalg.norm(n))
+    rotation = _euler_degrees(R)
+    return {"rotation": rotation, "dims": meshio.dims(meshio.apply_transform(mesh, rotation, 1.0)),
+            "before": measure(mesh, np.eye(3)), "after": measure(mesh, R)}
+
+
 def suggest(mesh: trimesh.Trimesh, mode: str) -> dict[str, Any]:
     """mode: "flat" (largest flat face on the bed) or "auto" (least support). `mesh` is the part as uploaded."""
     before = measure(mesh, np.eye(3))

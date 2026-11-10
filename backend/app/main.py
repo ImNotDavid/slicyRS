@@ -184,13 +184,20 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
 
 
 class OrientIn(BaseModel):
-    mode: str = Field("auto", pattern="^(flat|auto)$")
+    mode: str = Field("auto", pattern="^(flat|auto|face)$")
+    normal: list[float] | None = Field(None, min_length=3, max_length=3)   # mode "face": outward normal of the face to lay on the bed
 
 
 @app.post("/api/models/{model_id}/orient")
 def orient_model(model_id: str, body: OrientIn, user: dict = User):
-    """Rotation (degrees) that lays the part on its largest flat face ("flat") or needs the least support ("auto")."""
+    """Rotation (degrees) that lays the part on its largest flat face ("flat"), on the face the user picked ("face"), or needs the least
+    support ("auto")."""
     mesh = meshio.load_mesh(_source_file(model_id, user))
+    if body.mode == "face":
+        try:
+            return orient.face_down(mesh, body.normal or [])
+        except ValueError as e:
+            raise HTTPException(422, str(e))
     return orient.suggest(mesh, body.mode)
 
 

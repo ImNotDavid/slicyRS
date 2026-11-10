@@ -38,6 +38,36 @@ def test_auto_orient_turns_a_mushroom_cap_down_and_removes_the_overhang():
     assert meshio.dims(turned) == pytest.approx((40, 40, 24), abs=0.1)
 
 
+@pytest.mark.parametrize("tilt", [(0, 0, 0), (40, 25, 80)])
+def test_a_picked_face_is_the_one_that_ends_up_on_the_bed(tilt):
+    box = trimesh.creation.box((10, 20, 40))
+    for normal, area in (([0, 0, 1], 200), ([0, 1, 0], 400), ([-1, 0, 0], 800), ([0, 0, -1], 200)):
+        r = orient.face_down(box, normal)
+        turned = on_bed(box, r["rotation"])
+        assert orient.measure(turned, np.eye(3))["contact_mm2"] == pytest.approx(area, rel=0.01), normal
+        assert r["after"]["contact_mm2"] == pytest.approx(area, rel=0.01)
+
+
+def test_a_direction_that_is_not_a_face_balances_the_part_and_nonsense_is_refused():
+    wedge = trimesh.creation.box((20, 20, 20))
+    slant = np.array([1.0, 0.0, 1.0]) / np.sqrt(2)
+    turned = on_bed(wedge, orient.face_down(wedge, slant.tolist())["rotation"])
+    top = turned.vertices @ np.array([0, 0, 1.0])
+    assert top.min() == pytest.approx(0, abs=1e-6) and meshio.dims(turned)[2] == pytest.approx(20 * np.sqrt(2), abs=0.05)   # balanced on an edge
+    for bad in ([0, 0, 0], [1, 2], [float("nan"), 0, 1]):
+        with pytest.raises(ValueError):
+            orient.face_down(wedge, bad)
+
+
+def test_the_orient_endpoint_takes_a_picked_face(client):
+    from pathlib import Path
+    m = upload(client, Path(__file__).parent / "fixtures" / "valid" / "cube_binary.stl").json()
+    r = client.post(f"/api/models/{m['id']}/orient", json={"mode": "face", "normal": [0, 1, 0]})
+    assert r.status_code == 200 and r.json()["after"]["contact_mm2"] > 0
+    assert client.post(f"/api/models/{m['id']}/orient", json={"mode": "face"}).status_code == 422
+    assert client.post(f"/api/models/{m['id']}/orient", json={"mode": "face", "normal": [0, 0, 0]}).status_code == 422
+
+
 def test_auto_orient_leaves_a_good_orientation_alone():
     assert orient.suggest(trimesh.creation.box((30, 20, 10)), "auto")["rotation"] == [0, 0, 0]
 

@@ -115,8 +115,8 @@ export const api = {
     fd.append("file", file);
     return fetch("/api/models", { method: "POST", body: fd }).then(j<{ id: string; name: string; dims: [number, number, number]; triangles: number; checks: ModelCheck[] }>);
   },
-  orient: (model_id: string, mode: "flat" | "auto") =>
-    post(`/api/models/${model_id}/orient`, { mode }).then(j<{ rotation: [number, number, number]; dims: [number, number, number]; before: { overhang_percent: number }; after: { overhang_percent: number; contact_mm2: number } }>),
+  orient: (model_id: string, mode: "flat" | "auto" | "face", normal?: [number, number, number]) =>
+    post(`/api/models/${model_id}/orient`, { mode, normal }).then(j<{ rotation: [number, number, number]; dims: [number, number, number]; before: { overhang_percent: number }; after: { overhang_percent: number; contact_mm2: number } }>),
   assign: (model_id: string, filament: string, t: Transform) =>
     post("/api/assign", { model_id, filament, ...t }).then(j<AssignResult>),
   slice: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string } & Transform) =>

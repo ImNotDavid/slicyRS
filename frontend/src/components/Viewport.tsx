@@ -4,6 +4,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { Transform } from "../api";
 import { parseGcode, type GcodeLayers } from "../gcode";
+import { buildTopology, faceRegion, regionNormal, type Topology } from "../faceRegion";
 
 type Props = {
   modelUrl: string | null;
@@ -14,12 +15,16 @@ type Props = {
   layerRange: [number, number];
   onLayerCount: (n: number) => void;
   fitSignal: number;
+  pickFace?: boolean;                                        // hover highlights the flat face under the cursor; a click picks it
+  onPickFace?: (normal: [number, number, number]) => void;  // outward normal of the picked face, in the model's own frame
 };
 
 export default function Viewport(p: Props) {
   const host = useRef<HTMLDivElement>(null);
   const bedRef = useRef(p.bed);
   bedRef.current = p.bed;
+  const onPickRef = useRef(p.onPickFace);
+  onPickRef.current = p.onPickFace;
   const userMoved = useRef(false); // once the user orbits, window resizes stop re-framing
   const three = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls; renderer: THREE.WebGLRenderer;
@@ -110,6 +115,64 @@ export default function Viewport(p: Props) {
     const m = three.current?.model;
     if (m) place(m, p.transform, p.bed);
   }, [p.transform, p.bed]);
+
+  // pick a face to lay on the bed
+  useEffect(() => {
+    const t = three.current!;
+    const el = t.renderer.domElement;
+    if (!p.pickFace) return;
+    el.style.cursor = "crosshair";
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    let overlay: THREE.Mesh | undefined;
+    let current: { seed: number; normal: [number, number, number] } | null = null;
+    let down: [number, number] | null = null;
+    let last = 0;
+    const clear = () => { if (overlay) { overlay.parent?.remove(overlay); overlay.geometry.dispose(); overlay = undefined; } current = null; };
+    const hit = (e: PointerEvent) => {
+      const m = t.model;
+      if (!m || !m.visible) return undefined;
+      const r = el.getBoundingClientRect();
+      ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, t.camera);
+      return ray.intersectObject(m, false)[0];
+    };
+    const move = (e: PointerEvent) => {
+      if (e.buttons || performance.now() - last < 30) return;
+      last = performance.now();
+      const h = hit(e);
+      const m = t.model;
+      if (!h || h.faceIndex == null || !m) { clear(); return; }
+      if (current && current.seed === h.faceIndex) return;
+      const topo: Topology = (m.userData.topo ??= buildTopology(m.geometry.getAttribute("position").array));
+      const tris = faceRegion(topo, h.faceIndex);
+      clear();
+      const src = m.geometry.getAttribute("position").array;
+      const out = new Float32Array(tris.length * 9);
+      tris.forEach((tri, i) => out.set((src as Float32Array).subarray(tri * 9, tri * 9 + 9), i * 9));
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(out, 3));
+      overlay = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.8, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      m.add(overlay);
+      current = { seed: h.faceIndex, normal: regionNormal(topo, tris) };
+    };
+    const downEv = (e: PointerEvent) => { down = [e.clientX, e.clientY]; };
+    const up = (e: PointerEvent) => {
+      const d = down; down = null;
+      if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) return;   // a drag is an orbit, not a pick
+      const h = hit(e);
+      if (h && current) onPickRef.current?.(current.normal);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerdown", downEv);
+    el.addEventListener("pointerup", up);
+    return () => {
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerdown", downEv); el.removeEventListener("pointerup", up);
+      el.style.cursor = "";
+      clear();
+    };
+  }, [p.pickFace, p.modelUrl]);
 
   // G-code load
   useEffect(() => {
