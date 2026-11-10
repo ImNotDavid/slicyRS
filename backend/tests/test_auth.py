@@ -229,7 +229,7 @@ def test_connection_test_endpoint(client, fleet, monkeypatch):
         seen.update(host=host, port=port, serial=serial, code=code)
         return {"ok": True, "error": None, "state": "IDLE", "ams": []}
 
-    monkeypatch.setattr(app_main, "probe", fake_probe)
+    monkeypatch.setattr(app_main.printers, "probe", fake_probe)
     r = client.post("/api/admin/printers/test", json={"host": "192.168.1.9", "serial": "SN", "access_code": "11112222"})
     assert r.json()["ok"] is True and seen["code"] == "11112222"
     p = client.post("/api/admin/printers", json={"name": "P", "model": "P1S", "host": "192.168.1.9", "serial": "SN", "access_code": "STORED99"}).json()

@@ -59,7 +59,8 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 
 ## Key files
 
-`backend/app/`: `main.py` (endpoints), `jobstate.py`, `allocator.py`, `forecast.py`, `pipeline.py`, `taskqueue.py`, `worker.py`, `bedstate.py`, `printing.py`, `adapter.py`, `bambu.py`, `assign.py`, `outcomes.py`, `stats.py`, `pipelinecfg.py`.
+How to run development as a coordinator with subagents, and the safety rules: `docs/COORDINATION.md`.
+`backend/app/`: `main.py` (assembles the app), `routes/` (HTTP endpoints by area), `jobstate.py`, `allocator.py`, `forecast.py`, `pipeline.py`, `taskqueue.py`, `worker.py`, `bedstate.py`, `printing.py`, `adapter.py`, `bambu.py`, `assign.py`, `outcomes.py`, `stats.py`, `pipelinecfg.py`.
 `frontend/src/`: `api.ts`, `App.tsx`, `components/{SubmitModal,FleetModal,JobsModal,AdminModal}.tsx`.
 Tests: `backend/tests/` (`test_pipeline.py` is the Milestone A suite).
 

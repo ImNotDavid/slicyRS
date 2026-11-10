@@ -45,7 +45,7 @@ def test_upload_invalid_is_clean_4xx(client, name):
 
 
 def test_upload_too_large(client, monkeypatch):
-    monkeypatch.setattr(app_main, "MAX_UPLOAD_MB", 0)
+    monkeypatch.setattr(app_main.models, "MAX_UPLOAD_MB", 0)
     r = upload(client, VALID / "cube_binary.stl")
     assert r.status_code == 413
 
