@@ -253,3 +253,12 @@ def test_the_admin_connection_test_can_run_from_the_gateway(client, live):
     finally:
         run.stop()
         wait_for(lambda: not gateways.hub.online(g["id"]))
+
+
+def test_a_gateway_can_only_store_known_status_fields_and_not_huge_ones(client, site):
+    assert gateways.clean_status({"state": "IDLE", "evil": "x", "nozzle_c": 200}) == {"state": "IDLE", "nozzle_c": 200}
+    assert gateways.clean_status({"hms": ["x" * 30_000]}) == {} and gateways.clean_status("nope") == {}
+    site.run.agent.on_status(site.pid, {"state": "IDLE", "access_code": "stolen", "host": "10.0.0.1"})
+    wait_for(lambda: store.printers.get(site.pid)["status"].get("state") == "IDLE")
+    rec = store.printers.get(site.pid)
+    assert "access_code" not in rec["status"] and "host" not in rec["status"] and rec["host"] == "192.168.1.50"

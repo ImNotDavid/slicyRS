@@ -130,3 +130,17 @@ def test_every_print_goal_slices_with_the_real_engine(engine, tmp_path, filament
         got = engine.run(tmp_path / f"{g['id']}-{filament}", FIX / "cube_binary.stl", "P1S", r["preset"], filament,
                          effective_overrides(r["preset"], r["settings"], "Textured PEI Plate"))
         assert got["time_s"] > 0 and got["filament_g"] > 0
+
+
+def test_a_thumbnail_added_to_a_real_bundle_leaves_it_valid(engine, tmp_path):
+    import zipfile
+    from app import thumbnail
+    from app.meshio import load_mesh
+    got = engine.run(tmp_path / "thumb", FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", {})
+    bundle = tmp_path / "thumb" / got["bundle"]
+    before = zipfile.ZipFile(bundle).read("Metadata/plate_1.gcode.md5")
+    assert thumbnail.add_to_bundle(bundle, load_mesh(FIX / "cube_binary.stl"))
+    z = zipfile.ZipFile(bundle)
+    assert z.testzip() is None and z.read("Metadata/plate_1.gcode.md5") == before
+    assert {"Metadata/plate_1.png", "Metadata/plate_1_small.png"} <= set(z.namelist())
+    assert b"/Metadata/plate_1.png" in z.read("_rels/.rels")                      # the bundle already pointed at these files

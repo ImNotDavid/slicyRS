@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from . import jobstate, plates, printing, slicer, store, taskqueue
+from . import jobstate, plates, printing, slicer, store, taskqueue, thumbnail
 from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
 from .storage import JOBS, files
 from .defaults import effective_overrides
@@ -72,6 +72,8 @@ def handle_slice(payload: dict[str, Any]) -> None:
             else:
                 jobstate.transition(job["id"], "failed", None, state="failed", error=str(e))
         return
+    if not members and r.get("bundle"):
+        thumbnail.maybe_add(files.path(JOBS, job["id"], r["bundle"]), _input(job))
     files.publish(JOBS, job["id"])
     cur = store.jobs.get(job["id"]) or {}
     if cur.get("phase") != "slicing":

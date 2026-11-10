@@ -128,7 +128,7 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 | 1.8 | **DONE for the common faults** (duplicate vertices, zero-area and flipped faces, small holes, applied whenever a model is loaded; reported on upload). **Mesh repair** on upload | M | Common cause of bad slices from CAD exports. |
 | 1.9 | **Better G-code viewer**: colour by speed/flow/temperature, layer scrubber, travel moves, animation | M | |
 | 1.10 | **Nozzle sizes and more materials** (0.2, 0.6, 0.8 mm; extra filament profiles) | M | Printer record gets a nozzle size; assignment checks it. |
-| 1.11 | **Plate thumbnail and name on the printer's screen** | S | Bambu Studio's bundle carries images; verify they show on the printer. |
+| 1.11 | **BUILT, OFF BY DEFAULT, NEEDS A REAL PRINT TO CONFIRM** (`thumbnail.py`: the slicer's headless bundle names `plate_1.png` but does not contain it, so a numpy renderer adds it; switch on with `BUNDLE_THUMBNAIL=1`, then check the printer's screen). **Plate thumbnail and name on the printer's screen** | S | Bambu Studio's bundle carries images; verify they show on the printer. |
 | 1.12 | **Cut and measure tools** | M | Lower priority than the rest of this milestone. |
 
 **Exit check:** a typical CAD part is sliced in slicyRS and in Bambu Studio, and time and filament agree within a few percent; auto-orient picks an orientation a reviewer agrees with on a set of ten sample parts.

@@ -8,10 +8,11 @@ Protocol (JSON text frames; the gateway speaks first):
                                                                           (sent on connect and whenever they change)
   gateway -> core   status   {printer_id, update}                        partial status report, as the LAN link produced it
   core -> gateway   print    {req, printer_id, remote_name, plate, size, transfer}   fetch the file from `transfer`, upload, start
+                                                                          (`transfer` is a random path, fetchable only with that
+                                                                          gateway's token and only for 15 minutes)
   core -> gateway   probe    {req, host, port, serial, access_code}      connection test for the admin page
   gateway -> core   result   {req, ok, started?, error?, ...}           answer to print / probe
-The sliced file is not sent over the socket: `transfer` is a one-use path on this server that the gateway downloads with its
-token. Printer access codes cross the socket in the clear (the connection is TLS in production) and live only in the gateway's
+The sliced file is not sent over the socket: the gateway downloads it from `transfer` with its token. Printer access codes cross the socket in the clear (the connection is TLS in production) and live only in the gateway's
 memory. Bed state stays here: the gateway reports what the printer says and the server derives the plate state from it.
 """
 import asyncio
@@ -42,6 +43,10 @@ log = logging.getLogger("gateways")
 router = APIRouter()
 gateways = store.gateways
 HELLO_TIMEOUT_S = 10
+# What a gateway may write into a printer's status: the keys a LAN link produces, nothing else (and nothing large).
+STATUS_KEYS = {"state", "progress", "remaining_min", "nozzle_c", "bed_c", "hms", "print_error", "layer_num", "total_layer_num",
+               "subtask_name", "ams", "error"}
+MAX_STATUS_BYTES = 20_000
 PRINT_TIMEOUT_S = 240          # upload and start of a large file over a slow link
 PROBE_TIMEOUT_S = 20
 TRANSFER_TTL_S = 900
@@ -56,6 +61,14 @@ def authenticate(token: str | None) -> dict[str, Any] | None:
         return None
     digest = _hash(token)
     return next((g for g in gateways.all() if hmac.compare_digest(g["token_hash"], digest)), None)
+
+
+def clean_status(update: Any) -> dict[str, Any]:
+    """A gateway is trusted for the printers it serves, but not to store arbitrary or huge values in the database."""
+    if not isinstance(update, dict):
+        return {}
+    out = {k: v for k, v in update.items() if k in STATUS_KEYS}
+    return out if len(json.dumps(out)) <= MAX_STATUS_BYTES else {}
 
 
 def printers_for(gateway_id: str) -> list[dict[str, Any]]:
@@ -187,7 +200,7 @@ async def gateway_socket(ws: WebSocket) -> None:
         if old:
             old.fail_pending()
             asyncio.create_task(old.ws.close(code=4409))
-        gateways.update(gw["id"], last_seen=time.time(), version=str(hello.get("version") or ""), host_name=str(hello.get("name") or ""))
+        gateways.update(gw["id"], last_seen=time.time(), version=str(hello.get("version") or "")[:20], host_name=str(hello.get("name") or "")[:60])
         await ws.send_text(json.dumps({"type": "welcome", "gateway": gw["id"]}))
         await ws.send_text(json.dumps({"type": "printers", "printers": await run_in_threadpool(printers_for, gw["id"])}))
         log.info("gateway %s connected", gw["name"])
@@ -196,8 +209,12 @@ async def gateway_socket(ws: WebSocket) -> None:
             kind = msg.get("type")
             if kind == "status":
                 p = store.printers.get(str(msg.get("printer_id")))
-                if p and p.get("gateway") == gw["id"] and isinstance(msg.get("update"), dict):   # a gateway only reports its own printers
-                    await run_in_threadpool(apply_status, p["id"], msg["update"])
+                update = clean_status(msg.get("update"))
+                if p and p.get("gateway") == gw["id"] and update:   # a gateway only reports its own printers
+                    try:
+                        await run_in_threadpool(apply_status, p["id"], update)
+                    except Exception:
+                        log.exception("could not apply a status report for printer %s", p["id"])
             elif kind == "result":
                 fut = conn.pending.get(str(msg.get("req")))
                 if fut and not fut.done():

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import allocator, assign, forecast, jobstate, meshio, pipeline, printing, slicer, store
+from .. import allocator, assign, forecast, jobstate, meshio, pipeline, printing, slicer, store, thumbnail
 from ..auth import audit, is_admin
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS
@@ -97,6 +97,8 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
     overrides = effective_overrides(body.preset, body.settings, bed_type)
     try:
         result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides)
+        if result.get("bundle"):
+            thumbnail.maybe_add(files.path(JOBS, job_id, result["bundle"]), input_path)
         files.publish(JOBS, job_id)
         jobstate.transition(job_id, "ready", None, state="done", stats=result, gcode=result["gcode"], bundle=result.get("bundle"))
     except Exception as e:  # surfaced to the UI as the job error

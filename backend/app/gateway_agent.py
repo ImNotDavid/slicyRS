@@ -174,6 +174,8 @@ def main() -> None:
     url, token = os.environ.get("CORE_URL"), os.environ.get("GATEWAY_TOKEN")
     if not url or not token:
         raise SystemExit("Set CORE_URL (the server's address) and GATEWAY_TOKEN (from the server's Gateways page)")
+    if url.startswith("http://") and not any(h in url for h in ("localhost", "127.0.0.1", "[::1]")):
+        log.warning("CORE_URL is not https: the gateway token and printer access codes would cross the network unencrypted")
     asyncio.run(Agent(url, token, os.environ.get("GATEWAY_NAME") or socket.gethostname()).run_forever())
 
 
