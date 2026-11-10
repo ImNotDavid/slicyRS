@@ -135,13 +135,25 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 
 ---
 
+## Milestone U: UI rework (between Milestone 1 and Milestone 2)
+
+Do this once the viewport-heavy Milestone 1 items (1.2 move and arrange, 1.4 supports preview, 1.9 G-code viewer) are in, and before Milestone 2 adds its many new screens (queue, live progress, filament inventory, dashboard).
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| U.1 | **UI rework**: real pages and navigation instead of one screen plus modals, a small design system, a phone and tablet layout, an accessibility pass, and splitting `App.tsx` into feature areas | L | **DESIGN TO CLARIFY WITH THE OWNER WHEN WE REACH THIS.** Ask about: who uses it most and on what devices; the pages and navigation you want; whether to keep the Bambu Studio look or give it its own identity (and any Imperial or society branding); light and dark themes; which screens hurt most today; how much to keep of the current prepare and preview workflow; and whether to move to a component library. |
+
+**Exit check:** every existing screen works on a phone, can be reached from the main navigation, and passes a keyboard-only and screen-reader walk-through.
+
+---
+
 ## Milestone 2: Running a fleet of 5 to 20 printers
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | 2.1 | **Live print progress**: percent, time left, temperatures, layer, on job and fleet pages | M | MQTT status already carries most of it. |
 | 2.2 | **Real per-printer queue with automatic dispatch** when a printer becomes free | L | Needs a "bed cleared" confirmation so the next job never starts on a full bed. Jobs wait unassigned when no printer is eligible and dispatch when one is. |
-| 2.3 | **Notifications**: email on finished or failed, optional Slack or Teams; per-user opt-out | M | Brevo is already available for email. |
+| 2.3 | **Notifications**: email on finished or failed, optional Slack or Teams; per-user opt-out. **Now delivered as part of 2.14 (the notification service).** | M | Brevo is already available for email. |
 | 2.4 | **Cancel, pause and resume** from the web | M | Owner or admin only. |
 | 2.5 | **Estimated wait time** per printer, shown when choosing | S | Sum of queued job times. |
 | 2.6 | **Maintenance mode and a "needs attention" state** (HMS errors, failed last print, door open) | S | Excludes a printer from assignment without deleting it. |
@@ -151,6 +163,8 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 | 2.10 | **Filament inventory**: spools, remaining weight, low-stock warnings, tie AMS slots to spools | L | Feeds smarter printer choice and tells admins what to buy. |
 | 2.11 | **Fleet dashboard for admins**: utilisation, queue length, failures by printer, filament use | M | |
 | 2.12 | **H2D and other model support** | M | Needs process presets that the installed Bambu Studio lacks for some H2D layer heights. |
+| 2.14 | **Notification service** (do this first in Milestone 2; it expands and replaces 2.3): job events become messages, routed to channels (email now; Discord, Slack or Teams, and SMS as plug-in channels) under per-user preferences. Today emails are sent directly from the allocator, bed state and alerts | L | **DESIGN TO CLARIFY WITH THE OWNER WHEN WE REACH THIS.** Ask about: which channels and in what order; Discord by webhook or by a bot; which SMS provider, its cost and who pays; whether channels belong to a person, a group or both (for example a society's Discord channel); which events matter and which should be quiet by default; digests versus instant messages; quiet hours; how a person links their own Discord or phone number; and what must never be sent over SMS or a shared channel. |
+| 2.15 | **Central permission check** (early in Milestone 2, before 2.2 and 2.4): one place that decides what a person may do (cancel, pause, clear a bed, change maintenance mode) instead of owner, admin and operator tests scattered through the code | M | Small first step towards 3.0. Same rules as today, behind one function, so pause, cancel and queue controls are written against it from the start. |
 | 2.13 | **Failure learning**: record why prints fail and show patterns (plate, filament, printer) | M | Useful once there is enough history. |
 
 Camera and timelapse notes (to verify on your own printers before committing): Bambu printers expose their camera differently by model family. The A1 and P1 series use a proprietary image stream on a local port, while the X1 and H2D series use a standard video stream. Treat camera as one printer model first, then extend. Timelapse files are simpler: they are plain files on the printer's SD card.
@@ -163,6 +177,7 @@ Camera and timelapse notes (to verify on your own printers before committing): B
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
+| 3.0 | **Users, groups and permissions rework** (do this first in Milestone 3, before 3.1 and 3.2): roles and group membership with group-level rights, built on the central check from 2.15 | L | **DESIGN TO CLARIFY WITH THE OWNER WHEN WE REACH THIS.** Ask about: which roles exist and what each may do; whether rights come from group membership; who creates and manages groups; how Imperial SSO (Entra) groups map to roles if SSO is adopted; whether people can belong to several groups and which one pays for a print; what operators and approvers are; how a person is offboarded; and how existing admins, operators and users migrate. |
 | 3.1 | **Groups and projects** (for example per society, course or lab) | M | Users belong to groups; jobs belong to a group. |
 | 3.2 | **Quotas**: print hours and filament per user or group per term | L | Soft warnings first, then hard limits. |
 | 3.3 | **Approval workflow**: jobs from selected users or groups wait for a staff member before reaching a printer | M | Per-group setting. Approver gets an email with the sliced preview. |
@@ -209,14 +224,16 @@ Camera and timelapse notes (to verify on your own printers before committing): B
 
 1. **Milestone 0**, starting this week with 0.1 and 0.2 (they only need your printer and Brevo account). Add **0.11** early so the next failed print explains itself.
 2. **Milestone A, steps A.1 to A.4**, starting as soon as 0.1 and 0.2 are done. The job model, allocator and printer boundary are what the queue, approval, quotas and batching all sit on, so they come before most of Milestones 1 to 3. In parallel, start **1.1 (settings from profiles)** and **1.2 (auto-orient, move, arrange)**; Milestone A's batching (A.6) needs 1.2.
-3. **2.1, 2.3, 2.5, 2.6**: small, visible, and they make the service feel finished.
-4. **2.2 (queue with dispatch)** and **2.4 (cancel/pause)**, then **1.3, 1.4, 1.5** (presets and supports).
-5. **2.7 and 2.8 (camera, timelapse)** once you have checked what your own printer models expose.
-6. **Milestone 3** as numbers grow past a few dozen active users, **Milestone 4** after notifications exist.
-7. Revisit "Later" every few weeks against the triggers.
+3. **Finish the viewport items in Milestone 1 (1.2, 1.4, 1.9), then Milestone U (the UI rework).** Milestone 2 builds many new screens, so they should be built on the new layout.
+4. **2.14 (notification service, replacing 2.3) and 2.15 (central permission check) first in Milestone 2**, then **2.1, 2.5, 2.6**: small, visible, and they make the service feel finished.
+5. **2.2 (queue with dispatch)** and **2.4 (cancel/pause)**, then the rest of Milestone 1 (1.4, 1.6, 1.7 thin walls).
+6. **2.7 and 2.8 (camera, timelapse)** once you have checked what your own printer models expose.
+7. **Milestone 3, starting with 3.0 (the users, groups and permissions rework)**, as numbers grow past a few dozen active users; **Milestone 4** after notifications exist.
+8. Revisit "Later" every few weeks against the triggers.
 
 ## Open questions still to settle
 
+- **UI rework (U.1), notification service (2.14) and permissions rework (3.0):** each has a list of design questions in its row. We agreed to go through them with you when each one is reached, not before.
 - **Hosting:** a machine on the printers' network avoids the VPN question; a cloud host needs a VPN or the on-site agent. Which will it be?
 - **Printer models and count:** a list of the models you will add (and which have cameras or AMS) sizes 2.7 to 2.12.
 - **Approval rules:** who approves, and for which users or groups? Does a failed print count against a quota?
