@@ -2,13 +2,15 @@
 import pytest
 
 from app import goals
-from app.catalog import ALLOWED_SETTING_KEYS, FILAMENTS, PROCESS_PRESETS
+from app.catalog import ALLOWED_SETTING_KEYS, FILAMENTS, NOZZLES, PROCESS_PRESETS, preset_nozzle
 
 
+@pytest.mark.parametrize("nozzle", NOZZLES)
 @pytest.mark.parametrize("goal", [g["id"] for g in goals.GOALS])
 @pytest.mark.parametrize("filament", list(FILAMENTS))
-def test_every_goal_resolves_for_every_material_to_known_settings(goal, filament):
-    r = goals.resolve(goal, filament)
+def test_every_goal_resolves_for_every_material_and_nozzle_to_known_settings(goal, filament, nozzle):
+    r = goals.resolve(goal, filament, nozzle)
+    assert preset_nozzle(r["preset"]) == nozzle
     assert r["preset"] in {p["id"] for p in PROCESS_PRESETS} and set(r["settings"]) <= ALLOWED_SETTING_KEYS
     layer = next(p["layer_height"] for p in PROCESS_PRESETS if p["id"] == r["preset"])
     assert r["settings"]["layer_height"] == layer
@@ -43,5 +45,7 @@ def test_the_goal_endpoint_and_the_catalog(client):
     assert [g["id"] for g in cat["goals"]] == ["draft", "standard", "strong", "detail"] and all(g["description"] for g in cat["goals"])
     r = client.get("/api/goals/strong", params={"filament": "ABS"})
     assert r.status_code == 200 and r.json()["preset"] == "0.20mm Strength" and r.json()["notes"]
+    assert client.get("/api/goals/standard", params={"nozzle": 0.6}).json()["preset"] == "0.30mm Standard @0.6"
+    assert client.get("/api/goals/standard", params={"nozzle": 0.5}).status_code == 400
     assert client.get("/api/goals/nope").status_code == 404
     assert client.get("/api/goals/strong", params={"filament": "WOOD"}).status_code == 400

@@ -12,6 +12,7 @@ from typing import Any
 
 from . import assign, bedstate, forecast, jobstate, mailer, pipeline, pipelinecfg, plates, store, taskqueue
 from .bedstate import BUSY
+from .catalog import job_nozzle
 
 log = logging.getLogger("allocator")
 HOLDING = {"assigned", "slicing", "ready", "printing"}
@@ -49,7 +50,7 @@ def waiting_reason(job: dict[str, Any]) -> str:
     printers = store.printers.all()
     if not printers:
         return "No printers are set up"
-    can = {c.printer_id for c in assign.rank([{**p, "assume_available": True} for p in printers], tuple(job["dims"]), job["filament"])
+    can = {c.printer_id for c in assign.rank([{**p, "assume_available": True} for p in printers], tuple(job["dims"]), job["filament"], job_nozzle(job))
            if c.eligible}
     if not can:
         return "No printer can print this part"
@@ -94,7 +95,7 @@ def assign_pool() -> int:
         free = free_printers()
         if not free:
             break
-        ranked = assign.rank([{**p, "queue_depth": 0} for p in free], tuple(job["dims"]), job["filament"])
+        ranked = assign.rank([{**p, "queue_depth": 0} for p in free], tuple(job["dims"]), job["filament"], job_nozzle(job))
         best = next((c for c in ranked if c.eligible), None)
         if best is None:
             continue

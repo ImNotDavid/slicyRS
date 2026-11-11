@@ -8,7 +8,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import plate_compat
-from .catalog import DEFAULT_BED_TYPE, FILAMENTS, PRINTER_MODELS
+from . import profiles
+from .catalog import DEFAULT_BED_TYPE, DEFAULT_NOZZLE, FILAMENTS, PRINTER_MODELS
+from .config import SLICER_MODE
 
 BED_MARGIN_MM = 3.0
 BUSY_STATES = {"RUNNING", "PREPARE", "PAUSE", "SLICING"}
@@ -36,7 +38,12 @@ def fits(bed: tuple[float, float, float], size: tuple[float, float, float]) -> b
     return z <= bz and ((x <= bx and y <= by) or (y <= bx and x <= by))
 
 
-def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament: str) -> Candidate:
+def nozzle_of(printer: dict[str, Any]) -> float:
+    """The nozzle size fitted to a printer: what a connected printer reports, else what an admin set, else 0.4 mm."""
+    return float((printer.get("status") or {}).get("nozzle_mm") or printer.get("nozzle_mm") or DEFAULT_NOZZLE)
+
+
+def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> Candidate:
     model = PRINTER_MODELS.get(printer["model"])
     c = Candidate(printer["id"], printer["name"], printer["model"], True)
     if model is None:
@@ -52,6 +59,13 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
         c.blockers.append(f"Unknown filament {filament}")
         return c
 
+    fitted = nozzle_of(printer)
+    if abs(fitted - nozzle) > 1e-6:
+        c.eligible = False
+        c.blockers.append(f"This job needs a {nozzle:g} mm nozzle; this printer has a {fitted:g} mm one")
+    elif SLICER_MODE == "orca" and not profiles.machine_name(model["machine"], nozzle):
+        c.eligible = False
+        c.blockers.append(f"The slicer has no profile for this printer with a {nozzle:g} mm nozzle")
     if not fits(model["bed"], size):
         c.eligible = False
         c.blockers.append(
@@ -121,11 +135,11 @@ def _match_loaded(ams: list[dict[str, Any]], filament: str) -> int | None:
     return None
 
 
-def rank(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str) -> list[Candidate]:
-    cands = [evaluate(p, size, filament) for p in printers]
+def rank(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> list[Candidate]:
+    cands = [evaluate(p, size, filament, nozzle) for p in printers]
     return sorted(cands, key=lambda c: (not c.eligible, -c.score))
 
 
-def choose(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str) -> Candidate | None:
-    ranked = rank(printers, size, filament)
+def choose(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> Candidate | None:
+    ranked = rank(printers, size, filament, nozzle)
     return ranked[0] if ranked and ranked[0].eligible else None

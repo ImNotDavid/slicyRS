@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .. import assign, meshcheck, meshio, orient, retention, store
-from ..catalog import FILAMENTS
+from ..catalog import DEFAULT_NOZZLE, FILAMENTS
 from ..config import MAX_UPLOAD_MB
 from ..storage import MODELS, files
 from .common import User, _fleet, _source_file, _transformed, _checked_model
@@ -73,6 +73,7 @@ class TransformIn(BaseModel):
 class AssignIn(TransformIn):
     model_id: str
     filament: str
+    nozzle_mm: float = Field(DEFAULT_NOZZLE, gt=0, le=2)     # the nozzle size the job will need (its process preset decides)
 
 
 @router.post("/api/assign")
@@ -80,7 +81,7 @@ def assign_printer(body: AssignIn, user: dict = User):
     if body.filament not in FILAMENTS:
         raise HTTPException(400, "Unknown filament")
     size = meshio.dims(_transformed(body.model_id, body.rotation, body.scale, user))
-    ranked = assign.rank(_fleet(), size, body.filament)
+    ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm)
     best = ranked[0] if ranked and ranked[0].eligible else None
     return {"dims": size, "chosen": best.printer_id if best else None,
             "candidates": [c.asdict() for c in ranked]}

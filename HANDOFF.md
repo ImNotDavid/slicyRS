@@ -43,6 +43,8 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 
 - Plate thumbnail (`thumbnail.py`): the real slicer's bundle refers to `Metadata/plate_1.png` and `plate_1_small.png` but does not contain them. With `BUNDLE_THUMBNAIL=1` a numpy renderer adds both after each single-part slice (shared plates are skipped). **Off by default until someone has printed with it on and seen the picture on the printer's screen.** It cannot fail a slice.
 
+- Nozzle sizes (`catalog.PROCESS_PRESETS`, `assign.nozzle_of`): a process preset belongs to one nozzle (0.4 mm presets keep their old ids; others end in `@0.6` etc.), a job's nozzle comes from its preset (`catalog.job_nozzle`), and only printers whose fitted nozzle matches are eligible. A printer's nozzle is what its MQTT report says (`nozzle_diameter`), else the admin-set `nozzle_mm`, else 0.4. The UI offers only nozzle sizes that enabled printers have (interpretation of "connected printers": enabled printers, online or not). The slicer's profile names differ by printer model for the same layer height, so `profiles.process_name` finds them by layer height. Not yet looked at in a browser.
+
 ## Printer gateway (A.7)
 
 - A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.

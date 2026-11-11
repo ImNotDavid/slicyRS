@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from .. import goals, presets, store
 from ..auth import audit, is_admin
 from ..defaults import ui_defaults
-from ..catalog import BED_TYPES, DEFAULT_BED_TYPE, FILAMENTS, PRINTER_MODELS, PROCESS_PRESETS, SETTINGS_SCHEMA
+from ..catalog import BED_TYPES, DEFAULT_BED_TYPE, FILAMENTS, NOZZLES, PRINTER_MODELS, PROCESS_PRESETS, SETTINGS_SCHEMA
 from ..config import ORCA_BIN, SLICER_MODE
 from .common import User
 
@@ -26,6 +26,7 @@ def catalog(user: dict = User):
         "printer_models": {k: {**v, "bed": list(v["bed"])} for k, v in PRINTER_MODELS.items()},
         "filaments": FILAMENTS,
         "process_presets": PROCESS_PRESETS,
+        "nozzles": list(NOZZLES),
         "goals": goals.public(),
         "settings_schema": SETTINGS_SCHEMA,
         "preset_defaults": {p["id"]: ui_defaults(p["id"]) for p in PROCESS_PRESETS},
@@ -74,10 +75,10 @@ def delete_preset(preset_id: str, user: dict = User):
 
 
 @router.get("/api/goals/{goal_id}")
-def goal(goal_id: str, filament: str = "PLA", user: dict = User):
-    """The preset and settings a print goal means for a material."""
+def goal(goal_id: str, filament: str = "PLA", nozzle: float = 0.4, user: dict = User):
+    """The preset and settings a print goal means for a material and nozzle size."""
     try:
-        return goals.resolve(goal_id, filament)
+        return goals.resolve(goal_id, filament, round(nozzle, 2))
     except KeyError:
         raise HTTPException(404, "Unknown goal")
     except ValueError as e:

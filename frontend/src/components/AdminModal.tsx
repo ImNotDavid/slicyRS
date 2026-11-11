@@ -82,7 +82,7 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
   const [f, setF] = useState({
     ...EMPTY, model: printer?.model ?? models[0], name: printer?.name ?? "", host: printer?.host ?? "", port: printer?.port ?? 8883,
     serial: printer?.serial ?? "", hardened_nozzle: !!printer?.hardened_nozzle, enabled: printer?.enabled ?? true,
-    bed_type: printer?.bed_type ?? catalog.default_bed_type, gateway: printer?.gateway ?? "",
+    bed_type: printer?.bed_type ?? catalog.default_bed_type, gateway: printer?.gateway ?? "", nozzle_mm: printer?.nozzle_mm ?? 0.4,
   });
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<ProbeResult | "testing" | null>(null);
@@ -90,7 +90,7 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
 
   const body = (): PrinterInput => ({
     name: f.name, model: f.model, host: f.host || null, port: Number(f.port) || 8883, serial: f.serial || null,
-    access_code: f.access_code || null, hardened_nozzle: f.hardened_nozzle, enabled: f.enabled, bed_type: f.bed_type, gateway: f.gateway || null,
+    access_code: f.access_code || null, hardened_nozzle: f.hardened_nozzle, enabled: f.enabled, bed_type: f.bed_type, nozzle_mm: f.nozzle_mm, gateway: f.gateway || null,
   });
   const save = async () => {
     setErr("");
@@ -123,6 +123,12 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
         <label className="plate-field">Build plate
           <select value={f.bed_type} onChange={(e) => set("bed_type", e.target.value)} aria-label="Build plate">
             {catalog.bed_types.map((b) => <option key={b}>{b}</option>)}
+          </select>
+        </label>
+        <label className="plate-field">Nozzle
+          <select value={f.nozzle_mm} onChange={(e) => set("nozzle_mm", Number(e.target.value))} aria-label="Nozzle size"
+            title="A connected printer reports its own nozzle size, which takes over from this">
+            {catalog.nozzles.map((n) => <option key={n} value={n}>{n} mm</option>)}
           </select>
         </label>
         <label className="plate-field">Connected through

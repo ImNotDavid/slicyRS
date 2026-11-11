@@ -144,3 +144,15 @@ def test_a_thumbnail_added_to_a_real_bundle_leaves_it_valid(engine, tmp_path):
     assert z.testzip() is None and z.read("Metadata/plate_1.gcode.md5") == before
     assert {"Metadata/plate_1.png", "Metadata/plate_1_small.png"} <= set(z.namelist())
     assert b"/Metadata/plate_1.png" in z.read("_rels/.rels")                      # the bundle already pointed at these files
+
+
+@pytest.mark.parametrize("nozzle", [0.2, 0.4, 0.6, 0.8])
+def test_every_printer_model_slices_for_every_nozzle_size_with_that_nozzle(engine, tmp_path, nozzle):
+    import re
+    from app.catalog import PRINTER_MODELS, PROCESS_PRESETS
+    preset = next(p["id"] for p in PROCESS_PRESETS if p["nozzle"] == nozzle and "Standard" in p["id"] and p["layer_height"] >= 0.1)
+    for model in PRINTER_MODELS:
+        got = engine.run(tmp_path / f"{model}-{nozzle}", FIX / "cube_binary.stl", model, preset, "PLA", {})
+        text = (tmp_path / f"{model}-{nozzle}" / got["gcode"]).read_text(errors="ignore")
+        assert re.search(rf"nozzle_diameter\s*=\s*{nozzle:g}\b", text), (model, nozzle)
+        assert got["time_s"] > 0

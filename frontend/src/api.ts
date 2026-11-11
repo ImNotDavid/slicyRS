@@ -9,10 +9,11 @@ export type PrinterModel = { vendor: string; bed: [number, number, number]; encl
 export type Catalog = {
   printer_models: Record<string, PrinterModel>;
   filaments: Record<string, FilamentInfo>;
-  process_presets: { id: string; layer_height: number }[];
+  process_presets: { id: string; layer_height: number; nozzle: number; label: string }[];
+  nozzles: number[];
   settings_schema: Tab[];
   preset_defaults: Record<string, Record<string, number | string | boolean>>;
-  goals: { id: string; name: string; preset: string; description: string }[];
+  goals: { id: string; name: string; presets: Record<string, string>; description: string }[];
   slicer_mode: string;
   engine: string;
   bed_types: string[];
@@ -22,7 +23,7 @@ export type AmsSlot = { slot: number; type: string; color: string; remain: numbe
 export type Bed = { state: "occupied" | "clear" | "unknown"; source: string | null; by?: string | null; at: number | null; finished?: boolean };
 export type Printer = {
   bed?: Bed;
-  id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string;
+  id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null };
   // admin only
   host?: string | null; port?: number; serial?: string | null; has_access_code?: boolean; demo?: boolean; gateway?: string | null;
@@ -30,7 +31,7 @@ export type Printer = {
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
-  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; gateway?: string | null; status?: Printer["status"];
+  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; nozzle_mm?: number; gateway?: string | null; status?: Printer["status"];
 };
 export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
@@ -111,8 +112,8 @@ export const api = {
   audit: () => fetch("/api/admin/audit?limit=100").then(j<AuditEntry[]>),
   testPrinter: (p: { host: string; port: number; serial: string; access_code?: string; printer_id?: string; gateway?: string }) =>
     send("POST", "/api/admin/printers/test", p).then(j<ProbeResult>),
-  goal: (id: string, filament: string) =>
-    fetch(`/api/goals/${id}?filament=${encodeURIComponent(filament)}`).then(j<{ goal: string; preset: string; settings: Record<string, number | string | boolean>; notes: string[] }>),
+  goal: (id: string, filament: string, nozzle: number) =>
+    fetch(`/api/goals/${id}?filament=${encodeURIComponent(filament)}&nozzle=${nozzle}`).then(j<{ goal: string; preset: string; settings: Record<string, number | string | boolean>; notes: string[] }>),
   presets: () => fetch("/api/presets").then(j<SavedPreset[]>),
   savePreset: (p: { name: string; preset: string; filament: string; settings: Record<string, number | string | boolean>; shared: boolean }) =>
     post("/api/presets", p).then(j<SavedPreset>),
@@ -125,8 +126,8 @@ export const api = {
   },
   orient: (model_id: string, mode: "flat" | "auto" | "face", normal?: [number, number, number]) =>
     post(`/api/models/${model_id}/orient`, { mode, normal }).then(j<{ rotation: [number, number, number]; dims: [number, number, number]; before: { overhang_percent: number }; after: { overhang_percent: number; contact_mm2: number } }>),
-  assign: (model_id: string, filament: string, t: Transform) =>
-    post("/api/assign", { model_id, filament, ...t }).then(j<AssignResult>),
+  assign: (model_id: string, filament: string, t: Transform, nozzle_mm: number) =>
+    post("/api/assign", { model_id, filament, nozzle_mm, ...t }).then(j<AssignResult>),
   slice: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string } & Transform) =>
     post("/api/slice", body).then(j<Job>),
   draft: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown> } & Transform) =>

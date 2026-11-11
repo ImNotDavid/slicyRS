@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import allocator, assign, forecast, jobstate, meshio, pipeline, printing, slicer, store, thumbnail
 from ..auth import audit, is_admin
 from ..defaults import effective_overrides
-from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS
+from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle
 from ..storage import JOBS, MODELS, files
 from .common import User, _fleet, _source_file, _transformed, pool
 from .models import TransformIn
@@ -51,7 +51,7 @@ def start_slice(body: SliceIn, user: dict = User):
 
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
-    ranked = assign.rank(_fleet(), size, body.filament)
+    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset))
     if body.printer_id:
         chosen = next((c for c in ranked if c.printer_id == body.printer_id), None)
         if not chosen or not chosen.eligible:
@@ -197,8 +197,9 @@ def create_draft(body: DraftIn, user: dict = User):
     settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
-    if not forecast.eligible_printers(size, body.filament):
-        why = sorted({b for c in assign.rank(_fleet(), size, body.filament) for b in c.blockers if b != "Printer is offline"})
+    nozzle = preset_nozzle(body.preset)
+    if not forecast.eligible_printers(size, body.filament, nozzle):
+        why = sorted({b for c in assign.rank(_fleet(), size, body.filament, nozzle) for b in c.blockers if b != "Printer is offline"})
         raise HTTPException(409, "No printer in the fleet can ever print this part. " + "; ".join(why))
     job_id = uuid.uuid4().hex[:12]
     files.create(JOBS, job_id)

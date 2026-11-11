@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .. import bedstate, meshio, retention, store
+from .. import assign, bedstate, meshio, retention, store
 from ..auth import is_admin
 from ..catalog import DEFAULT_BED_TYPE
 from ..storage import MODELS, files
@@ -23,7 +23,7 @@ def _public_printer(p: dict[str, Any], admin: bool) -> dict[str, Any]:
     """Everyone sees status; connection details are admin-only and the access code is never returned."""
     out = {"id": p["id"], "name": p["name"], "model": p["model"], "status": p.get("status", {}),
            "hardened_nozzle": p.get("hardened_nozzle", False), "enabled": p.get("enabled", True),
-           "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p),
+           "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p), "nozzle_mm": assign.nozzle_of(p),
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host"))}
     if admin:
         out.update(host=p.get("host"), port=p.get("port") or 8883, serial=p.get("serial"),

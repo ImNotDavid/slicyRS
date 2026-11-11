@@ -58,9 +58,24 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     if (catalog) setSettings(catalog.preset_defaults[id]);
   };
 
-  const applyGoal = async (id: string, material = filament) => {
+  // the nozzle size is implied by the process preset; the choices are the nozzles the fleet has
+  const nozzle = catalog?.process_presets.find((p) => p.id === preset)?.nozzle ?? 0.4;
+  const fleetNozzles = useMemo(() => {
+    const sizes = [...new Set(printers.filter((p) => p.enabled && p.nozzle_mm).map((p) => p.nozzle_mm as number))].sort((a, b) => a - b);
+    return sizes.length ? sizes : [0.4];
+  }, [printers]);
+  const changeNozzle = (n: number) => {
+    if (!catalog) return;
+    if (goal) applyGoal(goal, filament, n);
+    else changePreset(catalog.goals.find((g) => g.id === "standard")?.presets[String(n)] ?? preset);
+  };
+  useEffect(() => { // the chosen nozzle must be one a printer actually has
+    if (catalog && printers.length && !fleetNozzles.includes(nozzle)) changeNozzle(fleetNozzles[0]);
+  }, [fleetNozzles, catalog, nozzle]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyGoal = async (id: string, material = filament, n = nozzle) => {
     try {
-      const r = await api.goal(id, material);
+      const r = await api.goal(id, material, n);
       setPreset(r.preset); setSettings(r.settings); setGoal(id); setGoalNotes(r.notes);
     } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
   };
@@ -72,10 +87,10 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   useEffect(() => {
     if (!model) { setAssignment(null); return; }
     const t = setTimeout(() => {
-      api.assign(model.id, filament, transform).then(setAssignment).catch((e) => setMessage({ kind: "error", text: e.message }));
+      api.assign(model.id, filament, transform, nozzle).then(setAssignment).catch((e) => setMessage({ kind: "error", text: e.message }));
     }, 200);
     return () => clearTimeout(t);
-  }, [model, filament, transform, fleetKey]);
+  }, [model, filament, transform, fleetKey, nozzle]);
 
   // Any input change invalidates the previous slice.
   useEffect(() => { setJob(null); setGcode(null); setMode("prepare"); }, [model, filament, preset, settings, transform, manualPrinter]);
@@ -251,6 +266,10 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
           <select className="row-select" value={filament} onChange={(e) => setFilament(e.target.value)}>
             {Object.entries(catalog.filaments).map(([key, f]) => <option key={key} value={key}>{f.orca}</option>)}
           </select>
+          <select className="row-select" value={nozzle} aria-label="Nozzle size" onChange={(e) => changeNozzle(Number(e.target.value))}
+            title="Only nozzle sizes that your printers have are offered">
+            {fleetNozzles.map((n) => <option key={n} value={n}>{n} mm nozzle</option>)}
+          </select>
         </div>
 
         <div className="goals" role="group" aria-label="Print goal">
@@ -265,7 +284,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
         <div className="preset-row">
           <select value={preset} onChange={(e) => changePreset(e.target.value)}>
-            {catalog.process_presets.map((p) => <option key={p.id}>{p.id}</option>)}
+            {catalog.process_presets.filter((p) => p.nozzle === nozzle).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
           <button className="icon-btn" title="Reset settings to preset" aria-label="Reset settings to preset"
             disabled={JSON.stringify(settings) === JSON.stringify(catalog.preset_defaults[preset])}

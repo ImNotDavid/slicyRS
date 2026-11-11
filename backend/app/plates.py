@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 from . import assign, forecast, jobstate, pipelinecfg, slicer, store
-from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
+from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS, job_nozzle
 from .defaults import effective_overrides
 from .meshio import load_mesh
 from .storage import JOBS, files
@@ -178,7 +178,7 @@ def find_partners(lead: dict[str, Any], printer: dict[str, Any], pool: list[dict
             continue
         if not colours_ok(group) or not _pickup_ok(group, now):
             continue
-        if not assign.evaluate({**printer, "assume_available": True}, tuple(cand["dims"]), cand["filament"]).eligible:
+        if not assign.evaluate({**printer, "assume_available": True}, tuple(cand["dims"]), cand["filament"], job_nozzle(cand)).eligible:
             continue
         if not footprints_fit([tuple(j["dims"]) for j in group], bed):
             continue

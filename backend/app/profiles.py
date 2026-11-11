@@ -70,9 +70,43 @@ def resolve(name: str) -> dict[str, Any]:
     return merged
 
 
+def _nozzle_tag(nozzle: float) -> str:
+    return f"{nozzle:g}"
+
+
+def machine_name(machine_04: str, nozzle: float) -> str | None:
+    """The printer's machine profile for a nozzle size, from its 0.4 mm profile name."""
+    return find(machine_04.replace("0.4 nozzle", f"{_nozzle_tag(nozzle)} nozzle"))
+
+
 def process_name(preset: str, process_suffix: str) -> str | None:
-    return find(f"{preset} @BBL {process_suffix}", f"{preset} @BBL X1C")
+    """The slicer's process profile for one of our presets on a printer family. The preset names the nozzle and layer height."""
+    from .catalog import DEFAULT_NOZZLE, PROCESS_PRESETS
+    p = next((x for x in PROCESS_PRESETS if x["id"] == preset), None)
+    nozzle = p["nozzle"] if p else DEFAULT_NOZZLE
+    if nozzle == DEFAULT_NOZZLE:
+        return find(f"{preset} @BBL {process_suffix}", f"{preset} @BBL X1C")
+    layer = f"{p['layer_height']:.2f}mm"
+    variant = p["label"].split(" ", 1)[1]
+    names = _index()
+    for suffix in (process_suffix, "X1C"):
+        tail = f" @BBL {suffix} {_nozzle_tag(nozzle)} nozzle"
+        exact = f"{layer} {variant}{tail}"
+        if exact in names:
+            return exact
+        same_height = sorted(n for n in names if n.startswith(layer + " ") and n.endswith(tail))
+        for want in (variant, "Standard", "Strength"):   # the model's own name for this layer height can differ ("Optimal", "Fine", ...)
+            hit = next((n for n in same_height if n.startswith(f"{layer} {want} ")), None)
+            if hit:
+                return hit
+        if same_height:
+            return same_height[0]
+    return None
 
 
-def filament_name(orca_name: str, process_suffix: str) -> str | None:
+def filament_name(orca_name: str, process_suffix: str, nozzle: float = 0.4) -> str | None:
+    if nozzle < 0.3:    # the 0.2 mm nozzle has its own (slower, thinner) filament profiles
+        hit = find(f"{orca_name} @BBL {process_suffix} 0.2 nozzle", f"{orca_name} @BBL X1C 0.2 nozzle")
+        if hit:
+            return hit
     return find(f"{orca_name} @BBL {process_suffix}", f"{orca_name} @BBL X1C", orca_name)

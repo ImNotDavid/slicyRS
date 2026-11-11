@@ -110,6 +110,11 @@ class LanLink:
             update["nozzle_c"] = report["nozzle_temper"]
         if "bed_temper" in report:
             update["bed_c"] = report["bed_temper"]
+        if report.get("nozzle_diameter"):
+            try:
+                update["nozzle_mm"] = round(float(report["nozzle_diameter"]), 2)
+            except (TypeError, ValueError):
+                pass
         if "hms" in report:
             update["hms"] = report["hms"]
         for src, dst in (("print_error", "print_error"), ("layer_num", "layer_num"),

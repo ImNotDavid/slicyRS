@@ -9,7 +9,7 @@ from .. import allocator, bedstate, crypto, gateways, store
 from ..adapter import AdapterError
 from ..auth import audit, is_admin, require_admin
 from ..bambu import check_host, links, probe
-from ..catalog import BED_TYPES, DEFAULT_BED_TYPE, PRINTER_MODELS
+from ..catalog import BED_TYPES, DEFAULT_BED_TYPE, NOZZLES, PRINTER_MODELS
 from .common import User, _public_printer
 
 router = APIRouter()
@@ -31,6 +31,7 @@ class PrinterIn(BaseModel):
     hardened_nozzle: bool = False
     enabled: bool = True
     bed_type: str = DEFAULT_BED_TYPE  # the build plate fitted to this printer (admin-managed)
+    nozzle_mm: float = 0.4            # nozzle fitted (admin-set; a connected printer reports its own, which wins)
     gateway: str | None = None        # id of the remote gateway that reaches this printer; empty = this server connects directly
     status: dict[str, Any] | None = None
 
@@ -38,6 +39,8 @@ class PrinterIn(BaseModel):
 def _validate_printer(body: PrinterIn) -> None:
     if body.model not in PRINTER_MODELS:
         raise HTTPException(400, "Unknown printer model")
+    if round(body.nozzle_mm, 2) not in NOZZLES:
+        raise HTTPException(400, f"Unknown nozzle size. Choose one of: {', '.join(f'{n:g}' for n in NOZZLES)} mm")
     if body.bed_type not in BED_TYPES:
         raise HTTPException(400, f"Unknown build plate. Choose one of: {', '.join(BED_TYPES)}")
     body.gateway = body.gateway or None

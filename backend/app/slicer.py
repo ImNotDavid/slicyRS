@@ -13,7 +13,7 @@ import numpy as np
 import trimesh
 
 from . import profiles
-from .catalog import FILAMENTS, PRINTER_MODELS
+from .catalog import FILAMENTS, PRINTER_MODELS, preset_nozzle
 from .config import ORCA_BIN, SLICE_TIMEOUT_S, SLICER_MODE
 from .meshio import load_mesh
 
@@ -84,9 +84,10 @@ def _plate_3mf(workdir: Path, models: list[Path], object_settings: list[dict[str
 def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
               overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     pm = PRINTER_MODELS[printer_model]
-    machine = profiles.find(pm["machine"])
+    nozzle = preset_nozzle(preset)
+    machine = profiles.machine_name(pm["machine"], nozzle)
     process = profiles.process_name(preset, pm["process_suffix"])
-    fil = profiles.filament_name(FILAMENTS[filament]["orca"], pm["process_suffix"])
+    fil = profiles.filament_name(FILAMENTS[filament]["orca"], pm["process_suffix"], nozzle)
     if not (machine and process and fil):
         raise SliceError(f"Missing OrcaSlicer presets (machine={machine}, process={process}, filament={fil})")
 

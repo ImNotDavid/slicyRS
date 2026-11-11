@@ -48,15 +48,36 @@ BED_TYPES: dict[str, str] = {
 }
 DEFAULT_BED_TYPE = "Textured PEI Plate"
 
-PROCESS_PRESETS = [
-    {"id": "0.08mm Extra Fine", "layer_height": 0.08},
-    {"id": "0.12mm Fine", "layer_height": 0.12},
-    {"id": "0.16mm Optimal", "layer_height": 0.16},
-    {"id": "0.20mm Standard", "layer_height": 0.20},
-    {"id": "0.20mm Strength", "layer_height": 0.20},
-    {"id": "0.24mm Draft", "layer_height": 0.24},
-    {"id": "0.28mm Extra Draft", "layer_height": 0.28},
-]
+NOZZLES = (0.2, 0.4, 0.6, 0.8)    # mm; the sizes Bambu Lab ships profiles for
+DEFAULT_NOZZLE = 0.4
+
+
+def _presets() -> list[dict[str, Any]]:
+    """Process presets by nozzle. A preset names its own nozzle, so choosing one also chooses which printers can print it. The 0.4 mm
+    ones keep their original ids; the others carry "@<nozzle>". The slicer's own profile names differ by printer model for the same
+    layer height ("Optimal", "Standard", ...), so the slicer profile is found by layer height (profiles.process_name)."""
+    out = [{"id": i, "layer_height": h, "nozzle": 0.4, "label": i} for i, h in [
+        ("0.08mm Extra Fine", 0.08), ("0.12mm Fine", 0.12), ("0.16mm Optimal", 0.16), ("0.20mm Standard", 0.20),
+        ("0.20mm Strength", 0.20), ("0.24mm Draft", 0.24), ("0.28mm Extra Draft", 0.28)]]
+    for nozzle, rows in ((0.2, [(0.06, "Standard"), (0.08, "Standard"), (0.10, "Standard"), (0.12, "Standard"), (0.14, "Standard")]),
+                         (0.6, [(0.18, "Standard"), (0.24, "Standard"), (0.30, "Standard"), (0.30, "Strength"), (0.36, "Standard"), (0.42, "Standard")]),
+                         (0.8, [(0.24, "Standard"), (0.32, "Standard"), (0.40, "Standard"), (0.48, "Standard"), (0.56, "Standard")])):
+        for h, variant in rows:
+            label = f"{h:.2f}mm {variant}"
+            out.append({"id": f"{label} @{nozzle:g}", "layer_height": h, "nozzle": nozzle, "label": label})
+    return out
+
+
+PROCESS_PRESETS = _presets()
+
+
+def preset_nozzle(preset_id: str | None) -> float:
+    return next((p["nozzle"] for p in PROCESS_PRESETS if p["id"] == preset_id), DEFAULT_NOZZLE)
+
+
+def job_nozzle(job: dict[str, Any]) -> float:
+    """The nozzle size a job needs, from its process preset (jobs made before nozzle sizes existed are 0.4 mm)."""
+    return preset_nozzle((job.get("spec") or {}).get("preset") or job.get("preset"))
 
 
 def _f(key, label, unit=None, kind="number", options=None, level="simple", step=None):
@@ -156,6 +177,7 @@ SETTING_DEFAULTS: dict[str, Any] = {
 # Strength preset tweaks applied on top of the default values for the UI.
 PRESET_OVERRIDES = {
     "0.20mm Strength": {"wall_loops": 6, "sparse_infill_density": 25},
+    "0.30mm Strength @0.6": {"wall_loops": 6, "sparse_infill_density": 25},
 }
 
 ALLOWED_SETTING_KEYS = {f["key"] for t in SETTINGS_SCHEMA for g in t["groups"] for f in g["fields"]}

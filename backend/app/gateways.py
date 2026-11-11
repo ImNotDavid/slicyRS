@@ -45,7 +45,7 @@ gateways = store.gateways
 HELLO_TIMEOUT_S = 10
 # What a gateway may write into a printer's status: the keys a LAN link produces, nothing else (and nothing large).
 STATUS_KEYS = {"state", "progress", "remaining_min", "nozzle_c", "bed_c", "hms", "print_error", "layer_num", "total_layer_num",
-               "subtask_name", "ams", "error"}
+               "subtask_name", "ams", "error", "nozzle_mm"}
 MAX_STATUS_BYTES = 20_000
 PRINT_TIMEOUT_S = 240          # upload and start of a large file over a slow link
 PROBE_TIMEOUT_S = 20
