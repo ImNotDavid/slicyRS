@@ -1,6 +1,8 @@
+// The settings panel follows Bambu Studio: pages, groups, labels, units, ranges and choices are generated from its source.
 export type Field = {
-  key: string; label: string; unit: string | null; type: "number" | "bool" | "select";
-  options: string[] | null; level: "basic" | "simple" | "advanced"; step: number | null;
+  key: string; label: string; unit?: string; type: "number" | "percent" | "number_or_percent" | "bool" | "select" | "text";
+  options?: { value: string; label: string }[]; level: "basic" | "simple" | "advanced";
+  integer?: boolean; min?: number; max?: number;
 };
 export type Group = { name: string; fields: Field[] };
 export type Tab = { tab: string; groups: Group[] };

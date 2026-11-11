@@ -8,14 +8,14 @@ from functools import lru_cache
 from typing import Any
 
 from . import profiles
-from .catalog import ALLOWED_SETTING_KEYS, preset_defaults
+from .catalog import ALLOWED_SETTING_KEYS, FIELDS, preset_defaults
 from .config import SLICER_MODE
 
 REFERENCE_PRINTER_SUFFIX = "P2S"  # same generic machine the preview slice uses (falls back to X1C if the preset is missing)
 
 
 def _parse(raw: Any, like: Any) -> Any:
-    """Convert a profile value (always text, sometimes a one-item list, "15%" for percentages) to the UI's type."""
+    """Convert a profile value (always text, sometimes a one-item list, "15%" for percentages) to the type of `like`."""
     if isinstance(raw, list):
         raw = raw[0] if raw else like
     if isinstance(like, bool):
@@ -26,6 +26,22 @@ def _parse(raw: Any, like: Any) -> Any:
         except ValueError:
             return like
         return int(v) if isinstance(like, int) and v == int(v) else v
+    return str(raw)
+
+
+def _typed(raw: Any, field: dict[str, Any], like: Any) -> Any:
+    """A profile value as the settings panel holds it, by the setting's type in the schema."""
+    if isinstance(raw, list):
+        raw = raw[0] if raw else like
+    kind = field["type"]
+    if kind == "bool":
+        return str(raw).strip().lower() in ("1", "true", "yes")
+    if kind in ("number", "percent"):
+        try:
+            v = float(str(raw).rstrip("%"))
+        except ValueError:
+            return like
+        return int(v) if field.get("integer") or v == int(v) and kind == "percent" else v
     return str(raw)
 
 
@@ -40,7 +56,7 @@ def _ui_defaults(preset_id: str) -> tuple[tuple[str, Any], ...]:
             real = {}
         for key, like in list(base.items()):
             if key in real:
-                base[key] = _parse(real[key], like)
+                base[key] = _typed(real[key], FIELDS[key], like) if key in FIELDS else _parse(real[key], like)
     return tuple(base.items())
 
 

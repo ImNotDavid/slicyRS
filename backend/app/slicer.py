@@ -13,7 +13,7 @@ import numpy as np
 import trimesh
 
 from . import profiles
-from .catalog import FILAMENTS, PRINTER_MODELS, preset_nozzle
+from .catalog import FIELDS, FILAMENTS, PRINTER_MODELS, preset_nozzle
 from .config import ORCA_BIN, SLICE_TIMEOUT_S, SLICER_MODE
 from .meshio import load_mesh
 
@@ -32,9 +32,9 @@ class PlateOverflow(SliceError):
 def _orca_value(key: str, value: Any) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
-    if key == "sparse_infill_density":
-        return f"{value}%"
-    return str(value)
+    if FIELDS.get(key, {}).get("type") == "percent":
+        return f"{value:g}%" if isinstance(value, (int, float)) else str(value)
+    return f"{value:g}" if isinstance(value, float) else str(value)
 
 
 def process_config(printer_model: str, preset: str, overrides: dict[str, Any]) -> dict[str, Any]:

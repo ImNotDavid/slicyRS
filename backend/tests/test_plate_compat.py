@@ -113,20 +113,18 @@ def test_static_table_matches_the_slicers_own_profiles(engine, model, monkeypatc
 @pytest.mark.parametrize("filament,plate,model", [("ABS", "Cool Plate", "P1S"), ("PETG", "Cool Plate", "A1 mini"),
                                                   ("PLA", "Engineering Plate", "P1S")])
 def test_slicer_really_refuses_what_we_call_incompatible(engine, tmp_path, filament, plate, model):  # noqa: F811
-    from app.catalog import preset_defaults
     from app.slicer import SliceError
     assert not plate_compat.compatible(model, filament, plate)
     with pytest.raises(SliceError, match="not compatible with the plate"):
         engine.run(tmp_path, FIX / "cube_binary.stl", model, "0.20mm Standard", filament,
-                   {**preset_defaults("0.20mm Standard"), "curr_bed_type": plate})
+                   {"curr_bed_type": plate})
 
 
 @real
 @pytest.mark.parametrize("filament,plate,model", [("PLA", "Cool Plate", "P1S"), ("TPU", "Cool Plate", "A1 mini"),
                                                   ("PLA", "Engineering Plate", "H2D"), ("ABS", "High Temp Plate", "X1C")])
 def test_slicer_really_accepts_what_we_call_compatible(engine, tmp_path, filament, plate, model):  # noqa: F811
-    from app.catalog import preset_defaults
     assert plate_compat.compatible(model, filament, plate)
     r = engine.run(tmp_path, FIX / "cube_binary.stl", model, "0.20mm Standard", filament,
-                   {**preset_defaults("0.20mm Standard"), "curr_bed_type": plate})
+                   {"curr_bed_type": plate})
     assert r["layers"] == 100

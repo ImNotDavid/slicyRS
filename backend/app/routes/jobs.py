@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import allocator, assign, forecast, jobstate, meshio, pipeline, printing, slicer, store, thumbnail
 from ..auth import audit, is_admin
 from ..defaults import effective_overrides
-from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle
+from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
 from ..storage import JOBS, MODELS, files
 from .common import User, _fleet, _source_file, _transformed, pool
 from .models import TransformIn
@@ -47,6 +47,8 @@ def start_slice(body: SliceIn, user: dict = User):
     bad = set(body.settings) - ALLOWED_SETTING_KEYS - SERVER_MANAGED_SETTINGS
     if bad:
         raise HTTPException(400, f"Unknown settings: {sorted(bad)}")
+    if (why := validate_settings({k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS})):
+        raise HTTPException(400, why)
     body.settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
 
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
@@ -194,6 +196,8 @@ def create_draft(body: DraftIn, user: dict = User):
     bad = set(body.settings) - ALLOWED_SETTING_KEYS - SERVER_MANAGED_SETTINGS
     if bad:
         raise HTTPException(400, f"Unknown settings: {sorted(bad)}")
+    if (why := validate_settings({k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS})):
+        raise HTTPException(400, why)
     settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)

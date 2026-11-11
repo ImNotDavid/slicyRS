@@ -1,0 +1,2916 @@
+{
+ "source": "Bambu Studio v02.09.01.70: TabPrint::build (pages, groups, order) and PrintConfig.cpp (labels, units, ranges, choices, defaults)",
+ "tabs": [
+  {
+   "tab": "Quality",
+   "groups": [
+    {
+     "name": "Layer height",
+     "fields": [
+      {
+       "key": "layer_height",
+       "label": "Layer height",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.2
+      },
+      {
+       "key": "initial_layer_print_height",
+       "label": "Initial layer height",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.2
+      },
+      {
+       "key": "enable_mixed_color_sublayer",
+       "label": "Mixed color sublayer",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      }
+     ]
+    },
+    {
+     "name": "Line width",
+     "fields": [
+      {
+       "key": "line_width",
+       "label": "Default",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "initial_layer_line_width",
+       "label": "Initial layer",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "initial_layer_infill_line_width",
+       "label": "Initial layer infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "outer_wall_line_width",
+       "label": "Outer wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "inner_wall_line_width",
+       "label": "Inner wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "top_surface_line_width",
+       "label": "Top surface",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "sparse_infill_line_width",
+       "label": "Sparse infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "internal_solid_infill_line_width",
+       "label": "Internal solid infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "support_line_width",
+       "label": "Support",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      }
+     ]
+    },
+    {
+     "name": "Seam",
+     "fields": [
+      {
+       "key": "seam_position",
+       "label": "Seam position",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "nearest",
+         "label": "Nearest"
+        },
+        {
+         "value": "aligned",
+         "label": "Aligned"
+        },
+        {
+         "value": "back",
+         "label": "Back"
+        },
+        {
+         "value": "random",
+         "label": "Random"
+        }
+       ]
+      },
+      {
+       "key": "seam_placement_away_from_overhangs",
+       "label": "Seam placement away from overhangs(experimental)",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "seam_slope_conditional",
+       "label": "Smart scarf seam application",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "scarf_angle_threshold",
+       "label": "Scarf application angle threshold",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "integer": true,
+       "min": 0.0,
+       "max": 180.0,
+       "default": 155
+      },
+      {
+       "key": "seam_slope_entire_loop",
+       "label": "Scarf around entire wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "seam_slope_steps",
+       "label": "Scarf steps",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 1.0,
+       "default": 10
+      },
+      {
+       "key": "seam_slope_inner_walls",
+       "label": "Scarf joint for inner walls",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "override_filament_scarf_seam_setting",
+       "label": "Override filament scarf seam setting",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "seam_slope_type",
+       "label": "Scarf seam type",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "none",
+         "label": "None"
+        },
+        {
+         "value": "external",
+         "label": "Contour"
+        },
+        {
+         "value": "all",
+         "label": "Contour and hole"
+        }
+       ]
+      },
+      {
+       "key": "seam_slope_start_height",
+       "label": "Scarf start height",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm/%",
+       "min": 0.0
+      },
+      {
+       "key": "seam_slope_gap",
+       "label": "Scarf slope gap",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm/%",
+       "min": 0.0
+      },
+      {
+       "key": "seam_slope_min_length",
+       "label": "Scarf length",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 10.0
+      },
+      {
+       "key": "role_base_wipe_speed",
+       "label": "Role-based wipe speed",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      }
+     ]
+    },
+    {
+     "name": "Precision",
+     "fields": [
+      {
+       "key": "slice_closing_radius",
+       "label": "Slice gap closing radius",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.049
+      },
+      {
+       "key": "resolution",
+       "label": "Resolution",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.01
+      },
+      {
+       "key": "enable_arc_fitting",
+       "label": "Arc fitting",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "xy_hole_compensation",
+       "label": "X-Y hole compensation",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "default": 0.0
+      },
+      {
+       "key": "xy_contour_compensation",
+       "label": "X-Y contour compensation",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "default": 0.0
+      },
+      {
+       "key": "enable_circle_compensation",
+       "label": "Auto circle contour-hole compensation",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "circle_compensation_manual_offset",
+       "label": "User Customized Offset",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "default": 0.0
+      },
+      {
+       "key": "elefant_foot_compensation",
+       "label": "Elephant foot compensation",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "precise_z_height",
+       "label": "Precise Z height",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      }
+     ]
+    },
+    {
+     "name": "Ironing",
+     "fields": [
+      {
+       "key": "ironing_type",
+       "label": "Ironing Type",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "no ironing",
+         "label": "No ironing"
+        },
+        {
+         "value": "top",
+         "label": "Top surfaces"
+        },
+        {
+         "value": "topmost",
+         "label": "Topmost surface"
+        },
+        {
+         "value": "solid",
+         "label": "All solid layer"
+        }
+       ]
+      },
+      {
+       "key": "ironing_pattern",
+       "label": "Ironing Pattern",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "zig-zag",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "ironingarchimedeanspiral",
+         "label": "Archimedean Chords"
+        }
+       ]
+      },
+      {
+       "key": "ironing_speed",
+       "label": "Ironing speed",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 20.0
+      },
+      {
+       "key": "ironing_flow",
+       "label": "Ironing flow",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 10
+      },
+      {
+       "key": "ironing_spacing",
+       "label": "Ironing line spacing",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 1.0,
+       "default": 0.1
+      },
+      {
+       "key": "ironing_inset",
+       "label": "Ironing inset",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 0.0
+      }
+     ]
+    },
+    {
+     "name": "Wall generator",
+     "fields": [
+      {
+       "key": "wall_generator",
+       "label": "Wall generator",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "classic",
+         "label": "Classic"
+        },
+        {
+         "value": "arachne",
+         "label": "Arachne"
+        }
+       ]
+      },
+      {
+       "key": "wall_transition_angle",
+       "label": "Wall transitioning threshold angle",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 1.0,
+       "max": 59.0,
+       "default": 10.0
+      },
+      {
+       "key": "wall_transition_filter_deviation",
+       "label": "Wall transitioning filter margin",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "default": 25
+      },
+      {
+       "key": "wall_transition_length",
+       "label": "Wall transition length",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "default": 100
+      },
+      {
+       "key": "wall_distribution_count",
+       "label": "Wall distribution count",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 1.0,
+       "default": 1
+      },
+      {
+       "key": "min_bead_width",
+       "label": "Minimum wall width",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "default": 85
+      },
+      {
+       "key": "min_feature_size",
+       "label": "Minimum feature size",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "default": 25
+      }
+     ]
+    },
+    {
+     "name": "Advanced",
+     "fields": [
+      {
+       "key": "wall_sequence",
+       "label": "Order of walls",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "inner wall/outer wall",
+         "label": "inner/outer"
+        },
+        {
+         "value": "outer wall/inner wall",
+         "label": "outer/inner"
+        },
+        {
+         "value": "inner-outer-inner wall",
+         "label": "inner wall/outer wall/inner wall"
+        }
+       ]
+      },
+      {
+       "key": "is_infill_first",
+       "label": "Print infill first",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "bridge_flow",
+       "label": "Bridge flow",
+       "type": "number",
+       "level": "advanced",
+       "min": 0.0,
+       "max": 2.0,
+       "default": 1.0
+      },
+      {
+       "key": "thick_bridges",
+       "label": "Thick bridges",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "counterbore_hole_bridging",
+       "label": "Bridge counterbore holes",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "none",
+         "label": "None"
+        },
+        {
+         "value": "partiallybridge",
+         "label": "Partially bridged"
+        },
+        {
+         "value": "sacrificiallayer",
+         "label": "Sacrificial layer"
+        }
+       ]
+      },
+      {
+       "key": "top_one_wall_type",
+       "label": "Only one wall on top surfaces",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "not apply",
+         "label": "Not apply"
+        },
+        {
+         "value": "all top",
+         "label": "Top surfaces"
+        },
+        {
+         "value": "topmost",
+         "label": "Topmost surface"
+        }
+       ]
+      },
+      {
+       "key": "only_one_wall_first_layer",
+       "label": "Only one wall on first layer",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "smooth_speed_discontinuity_area",
+       "label": "Smooth speed discontinuity area",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "smooth_coefficient",
+       "label": "Smooth coefficient",
+       "type": "number",
+       "level": "advanced",
+       "min": 0.0,
+       "default": 80.0
+      },
+      {
+       "key": "reduce_crossing_wall",
+       "label": "Avoid crossing wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "max_travel_detour_distance",
+       "label": "Avoid crossing wall - Max detour length",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm or %",
+       "min": 0.0
+      },
+      {
+       "key": "avoid_crossing_wall_includes_support",
+       "label": "Avoid crossing wall - Includes support",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "z_direction_outwall_speed_continuous",
+       "label": "Smoothing wall speed along Z(experimental)",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "tab": "Strength",
+   "groups": [
+    {
+     "name": "Walls",
+     "fields": [
+      {
+       "key": "wall_loops",
+       "label": "Wall loops",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "max": 1000.0,
+       "default": 2
+      },
+      {
+       "key": "alternate_extra_wall",
+       "label": "Alternate extra wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "embedding_wall_into_infill",
+       "label": "Embedding the wall into the infill",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "detect_thin_wall",
+       "label": "Detect thin wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      }
+     ]
+    },
+    {
+     "name": "Top/bottom shells",
+     "fields": [
+      {
+       "key": "top_surface_pattern",
+       "label": "Top surface pattern",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "zig-zag",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "monotonic",
+         "label": "Monotonic"
+        },
+        {
+         "value": "monotonicline",
+         "label": "Monotonic line"
+        },
+        {
+         "value": "globalmonotonicline",
+         "label": "Global monotonic line"
+        },
+        {
+         "value": "alignedrectilinear",
+         "label": "Aligned Rectilinear"
+        },
+        {
+         "value": "hilbertcurve",
+         "label": "Hilbert Curve"
+        },
+        {
+         "value": "archimedeanchords",
+         "label": "Archimedean Chords"
+        },
+        {
+         "value": "octagramspiral",
+         "label": "Octagram Spiral"
+        }
+       ]
+      },
+      {
+       "key": "top_surface_density",
+       "label": "Top surface density",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 100
+      },
+      {
+       "key": "top_shell_layers",
+       "label": "Top shell layers",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "default": 4
+      },
+      {
+       "key": "top_shell_thickness",
+       "label": "Top shell thickness",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.6
+      },
+      {
+       "key": "top_color_penetration_layers",
+       "label": "Top paint penetration layers",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 1.0,
+       "default": 4
+      },
+      {
+       "key": "bottom_surface_density",
+       "label": "Bottom surface density",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 10.0,
+       "max": 100.0,
+       "default": 100
+      },
+      {
+       "key": "bottom_shell_layers",
+       "label": "Bottom shell layers",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "default": 3
+      },
+      {
+       "key": "bottom_shell_thickness",
+       "label": "Bottom shell thickness",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "bottom_color_penetration_layers",
+       "label": "Bottom paint penetration layers",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 1.0,
+       "default": 3
+      },
+      {
+       "key": "infill_instead_top_bottom_surfaces",
+       "label": "Use infill instead of top and bottom surfaces",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      }
+     ]
+    },
+    {
+     "name": "Sparse infill",
+     "fields": [
+      {
+       "key": "sparse_infill_density",
+       "label": "Sparse infill density",
+       "type": "percent",
+       "level": "simple",
+       "unit": "%",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 20
+      },
+      {
+       "key": "fill_multiline",
+       "label": "Fill multiline",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 1.0,
+       "max": 5.0,
+       "default": 1
+      },
+      {
+       "key": "sparse_infill_pattern",
+       "label": "Sparse infill pattern",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "zig-zag",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "grid",
+         "label": "Grid"
+        },
+        {
+         "value": "line",
+         "label": "Line"
+        },
+        {
+         "value": "cubic",
+         "label": "Cubic"
+        },
+        {
+         "value": "triangles",
+         "label": "Triangles"
+        },
+        {
+         "value": "tri-hexagon",
+         "label": "Tri-hexagon"
+        },
+        {
+         "value": "gyroid",
+         "label": "Gyroid"
+        },
+        {
+         "value": "honeycomb",
+         "label": "Honeycomb"
+        },
+        {
+         "value": "adaptivecubic",
+         "label": "Adaptive Cubic"
+        },
+        {
+         "value": "alignedrectilinear",
+         "label": "Aligned Rectilinear"
+        },
+        {
+         "value": "3dhoneycomb",
+         "label": "3D Honeycomb"
+        },
+        {
+         "value": "hilbertcurve",
+         "label": "Hilbert Curve"
+        },
+        {
+         "value": "archimedeanchords",
+         "label": "Archimedean Chords"
+        },
+        {
+         "value": "octagramspiral",
+         "label": "Octagram Spiral"
+        },
+        {
+         "value": "supportcubic",
+         "label": "Support Cubic"
+        },
+        {
+         "value": "lightning",
+         "label": "Lightning"
+        },
+        {
+         "value": "crosshatch",
+         "label": "Cross Hatch"
+        },
+        {
+         "value": "zigzag",
+         "label": "Zig Zag"
+        },
+        {
+         "value": "crosszag",
+         "label": "Cross Zag"
+        },
+        {
+         "value": "lockedzag",
+         "label": "Locked Zag"
+        },
+        {
+         "value": "2dlattice",
+         "label": "2D Lattice"
+        }
+       ]
+      },
+      {
+       "key": "conformal_infill",
+       "label": "Conformal infill",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "conformal_stagger",
+       "label": "Layer stagger",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "none",
+         "label": "Off"
+        },
+        {
+         "value": "alternate",
+         "label": "Alternate"
+        }
+       ]
+      },
+      {
+       "key": "conformal_link_keep_layers",
+       "label": "Forward layers",
+       "type": "number",
+       "level": "advanced",
+       "unit": "layers",
+       "integer": true,
+       "min": 0.0,
+       "max": 1000.0,
+       "default": 1
+      },
+      {
+       "key": "conformal_link_flip_layers",
+       "label": "Reverse layers",
+       "type": "number",
+       "level": "advanced",
+       "unit": "layers",
+       "integer": true,
+       "min": 0.0,
+       "max": 1000.0,
+       "default": 0
+      },
+      {
+       "key": "conformal_pole",
+       "label": "Radial center",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "layer",
+         "label": "Each layer"
+        },
+        {
+         "value": "axis",
+         "label": "Axis"
+        },
+        {
+         "value": "bezier",
+         "label": "Smooth curve"
+        }
+       ]
+      },
+      {
+       "key": "conformal_ray_count",
+       "label": "Radial line count",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 0.0,
+       "max": 1000.0,
+       "default": 0
+      },
+      {
+       "key": "conformal_hub_radius",
+       "label": "Center region radius",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 200.0,
+       "default": 0.0
+      },
+      {
+       "key": "locked_skin_infill_pattern",
+       "label": "Skin infill pattern",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "zig-zag",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "grid",
+         "label": "Grid"
+        },
+        {
+         "value": "line",
+         "label": "Line"
+        },
+        {
+         "value": "cubic",
+         "label": "Cubic"
+        },
+        {
+         "value": "triangles",
+         "label": "Triangles"
+        },
+        {
+         "value": "tri-hexagon",
+         "label": "Tri-hexagon"
+        },
+        {
+         "value": "gyroid",
+         "label": "Gyroid"
+        },
+        {
+         "value": "honeycomb",
+         "label": "Honeycomb"
+        },
+        {
+         "value": "alignedrectilinear",
+         "label": "Aligned Rectilinear"
+        },
+        {
+         "value": "3dhoneycomb",
+         "label": "3D Honeycomb"
+        },
+        {
+         "value": "hilbertcurve",
+         "label": "Hilbert Curve"
+        },
+        {
+         "value": "archimedeanchords",
+         "label": "Archimedean Chords"
+        },
+        {
+         "value": "octagramspiral",
+         "label": "Octagram Spiral"
+        },
+        {
+         "value": "crosshatch",
+         "label": "Cross Hatch"
+        },
+        {
+         "value": "zigzag",
+         "label": "Zig Zag"
+        },
+        {
+         "value": "crosszag",
+         "label": "Cross Zag"
+        }
+       ]
+      },
+      {
+       "key": "skin_infill_density",
+       "label": "Skin infill density",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 15
+      },
+      {
+       "key": "locked_skeleton_infill_pattern",
+       "label": "Skeleton infill pattern",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "zig-zag",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "grid",
+         "label": "Grid"
+        },
+        {
+         "value": "line",
+         "label": "Line"
+        },
+        {
+         "value": "cubic",
+         "label": "Cubic"
+        },
+        {
+         "value": "triangles",
+         "label": "Triangles"
+        },
+        {
+         "value": "tri-hexagon",
+         "label": "Tri-hexagon"
+        },
+        {
+         "value": "gyroid",
+         "label": "Gyroid"
+        },
+        {
+         "value": "honeycomb",
+         "label": "Honeycomb"
+        },
+        {
+         "value": "alignedrectilinear",
+         "label": "Aligned Rectilinear"
+        },
+        {
+         "value": "3dhoneycomb",
+         "label": "3D Honeycomb"
+        },
+        {
+         "value": "hilbertcurve",
+         "label": "Hilbert Curve"
+        },
+        {
+         "value": "archimedeanchords",
+         "label": "Archimedean Chords"
+        },
+        {
+         "value": "octagramspiral",
+         "label": "Octagram Spiral"
+        },
+        {
+         "value": "crosshatch",
+         "label": "Cross Hatch"
+        },
+        {
+         "value": "zigzag",
+         "label": "Zig Zag"
+        },
+        {
+         "value": "crosszag",
+         "label": "Cross Zag"
+        }
+       ]
+      },
+      {
+       "key": "skeleton_infill_density",
+       "label": "Skeleton infill density",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 15
+      },
+      {
+       "key": "infill_lock_depth",
+       "label": "Infill lock depth",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 1.0
+      },
+      {
+       "key": "skin_infill_depth",
+       "label": "Skin infill depth",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 2.0
+      },
+      {
+       "key": "skin_infill_line_width",
+       "label": "Skin line width",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "skeleton_infill_line_width",
+       "label": "Skeleton line width",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.4
+      },
+      {
+       "key": "symmetric_infill_y_axis",
+       "label": "Symmetric infill y axis",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "infill_shift_step",
+       "label": "Infill shift step",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 10.0,
+       "default": 0.4
+      },
+      {
+       "key": "sparse_infill_lattice_angle_1",
+       "label": "Lattice angle 1",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": -75.0,
+       "max": 75.0,
+       "default": -45.0
+      },
+      {
+       "key": "sparse_infill_lattice_angle_2",
+       "label": "Lattice angle 2",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": -75.0,
+       "max": 75.0,
+       "default": 45.0
+      },
+      {
+       "key": "infill_rotate_step",
+       "label": "Infill rotate step",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 360.0,
+       "default": 0.0
+      },
+      {
+       "key": "sparse_infill_anchor",
+       "label": "Length of sparse infill anchor",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm or %"
+      },
+      {
+       "key": "sparse_infill_anchor_max",
+       "label": "Maximum length of sparse infill anchor",
+       "type": "number_or_percent",
+       "level": "simple"
+      }
+     ]
+    },
+    {
+     "name": "Advanced",
+     "fields": [
+      {
+       "key": "infill_wall_overlap",
+       "label": "Infill/Wall overlap",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "default": 15
+      },
+      {
+       "key": "infill_direction",
+       "label": "Infill direction",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 360.0,
+       "default": 45.0
+      },
+      {
+       "key": "bridge_angle",
+       "label": "Bridge direction",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "minimum_sparse_infill_area",
+       "label": "Minimum sparse infill threshold",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm²",
+       "min": 0.0,
+       "default": 15.0
+      },
+      {
+       "key": "infill_combination",
+       "label": "Infill combination",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "detect_narrow_internal_solid_infill",
+       "label": "Detect narrow internal solid infill",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "ensure_vertical_shell_thickness",
+       "label": "Ensure vertical shell thickness",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "disabled",
+         "label": "Disabled"
+        },
+        {
+         "value": "partial",
+         "label": "Partial"
+        },
+        {
+         "value": "enabled",
+         "label": "Enabled"
+        }
+       ]
+      },
+      {
+       "key": "detect_floating_vertical_shell",
+       "label": "Detect floating vertical shells",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "sparse_infill_filament",
+       "label": "Sparse infill filament",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 0.0,
+       "default": 0
+      },
+      {
+       "key": "solid_infill_filament",
+       "label": "Solid infill",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 0.0,
+       "default": 0
+      },
+      {
+       "key": "wall_filament",
+       "label": "Walls",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 0.0,
+       "default": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "tab": "Speed",
+   "groups": [
+    {
+     "name": "Initial layer speed",
+     "fields": [
+      {
+       "key": "initial_layer_speed",
+       "label": "Initial layer",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 30.0
+      },
+      {
+       "key": "initial_layer_infill_speed",
+       "label": "Initial layer infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 1.0,
+       "default": 60.0
+      }
+     ]
+    },
+    {
+     "name": "Other layers speed",
+     "fields": [
+      {
+       "key": "outer_wall_speed",
+       "label": "Outer wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 60.0
+      },
+      {
+       "key": "inner_wall_speed",
+       "label": "Inner wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 60.0
+      },
+      {
+       "key": "small_perimeter_speed",
+       "label": "Small perimeters",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm/s or %",
+       "min": 0.0
+      },
+      {
+       "key": "small_perimeter_threshold",
+       "label": "Small perimeter threshold",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "sparse_infill_speed",
+       "label": "Sparse infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 100.0
+      },
+      {
+       "key": "internal_solid_infill_speed",
+       "label": "Internal solid infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 100.0
+      },
+      {
+       "key": "vertical_shell_speed",
+       "label": "Vertical shell speed",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm/s or %",
+       "min": 0.0
+      },
+      {
+       "key": "top_surface_speed",
+       "label": "Top surface",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 100.0
+      },
+      {
+       "key": "enable_overhang_speed",
+       "label": "Slow down for overhang",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "overhang_1_4_speed",
+       "label": "10%",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "overhang_2_4_speed",
+       "label": "25%",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "overhang_3_4_speed",
+       "label": "50%",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "overhang_4_4_speed",
+       "label": "75%",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "overhang_totally_speed",
+       "label": "100%",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 10.0
+      },
+      {
+       "key": "enable_height_slowdown",
+       "label": "Slow down by height",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "slowdown_start_height",
+       "label": "Starting height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "slowdown_start_speed",
+       "label": "Speed at starting height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 1000.0
+      },
+      {
+       "key": "slowdown_start_acc",
+       "label": "Acceleration at starting height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 100000.0
+      },
+      {
+       "key": "slowdown_end_height",
+       "label": "Ending height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 400.0
+      },
+      {
+       "key": "slowdown_end_speed",
+       "label": "Speed at ending height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 1000.0
+      },
+      {
+       "key": "slowdown_end_acc",
+       "label": "Acceleration at ending height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 100000.0
+      },
+      {
+       "key": "bridge_speed",
+       "label": "Bridge",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 25.0
+      },
+      {
+       "key": "gap_infill_speed",
+       "label": "Gap infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 30.0
+      },
+      {
+       "key": "support_speed",
+       "label": "Support",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 80.0
+      },
+      {
+       "key": "support_interface_speed",
+       "label": "Support interface",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 1.0,
+       "default": 80.0
+      }
+     ]
+    },
+    {
+     "name": "Travel speed",
+     "fields": [
+      {
+       "key": "travel_speed",
+       "label": "Travel",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 1.0,
+       "default": 120.0
+      }
+     ]
+    },
+    {
+     "name": "Acceleration",
+     "fields": [
+      {
+       "key": "default_acceleration",
+       "label": "Normal printing",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 500.0
+      },
+      {
+       "key": "travel_acceleration",
+       "label": "Travel",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 500.0
+      },
+      {
+       "key": "initial_layer_travel_acceleration",
+       "label": "Initial layer travel",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 500.0
+      },
+      {
+       "key": "initial_layer_acceleration",
+       "label": "Initial layer",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 300.0
+      },
+      {
+       "key": "outer_wall_acceleration",
+       "label": "Outer wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 500.0
+      },
+      {
+       "key": "inner_wall_acceleration",
+       "label": "Inner wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "top_surface_acceleration",
+       "label": "Top surface",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s²",
+       "min": 0.0,
+       "default": 500.0
+      },
+      {
+       "key": "sparse_infill_acceleration",
+       "label": "Sparse infill",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm/s² or %",
+       "min": 0.0
+      },
+      {
+       "key": "accel_to_decel_enable",
+       "label": "Enable accel_to_decel",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "accel_to_decel_factor",
+       "label": "accel_to_decel",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 1.0,
+       "max": 100.0,
+       "default": 50
+      }
+     ]
+    },
+    {
+     "name": "Jerk(XY)",
+     "fields": [
+      {
+       "key": "default_jerk",
+       "label": "Default",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "outer_wall_jerk",
+       "label": "Outer wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      },
+      {
+       "key": "inner_wall_jerk",
+       "label": "Inner wall",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      },
+      {
+       "key": "infill_jerk",
+       "label": "Infill",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      },
+      {
+       "key": "top_surface_jerk",
+       "label": "Top surface",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      },
+      {
+       "key": "initial_layer_jerk",
+       "label": "First layer",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      },
+      {
+       "key": "travel_jerk",
+       "label": "Travel",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 0.0,
+       "default": 9.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "tab": "Support",
+   "groups": [
+    {
+     "name": "Support",
+     "fields": [
+      {
+       "key": "enable_support",
+       "label": "Enable support",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "support_type",
+       "label": "Type",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "normal(auto)",
+         "label": "normal(auto)"
+        },
+        {
+         "value": "tree(auto)",
+         "label": "tree(auto)"
+        },
+        {
+         "value": "normal(manual)",
+         "label": "normal(manual)"
+        },
+        {
+         "value": "tree(manual)",
+         "label": "tree(manual)"
+        }
+       ]
+      },
+      {
+       "key": "support_style",
+       "label": "Style",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "default",
+         "label": "Default"
+        },
+        {
+         "value": "grid",
+         "label": "Grid"
+        },
+        {
+         "value": "snug",
+         "label": "Snug"
+        },
+        {
+         "value": "tree_slim",
+         "label": "Tree Slim"
+        },
+        {
+         "value": "tree_strong",
+         "label": "Tree Strong"
+        },
+        {
+         "value": "tree_hybrid",
+         "label": "Tree Hybrid"
+        },
+        {
+         "value": "tree_organic",
+         "label": "Tree Organic"
+        }
+       ]
+      },
+      {
+       "key": "support_threshold_angle",
+       "label": "Threshold angle",
+       "type": "number",
+       "level": "simple",
+       "unit": "°",
+       "integer": true,
+       "min": 1.0,
+       "max": 90.0,
+       "default": 30
+      },
+      {
+       "key": "support_on_build_plate_only",
+       "label": "On build plate only",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "support_critical_regions_only",
+       "label": "Support critical regions only",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "support_remove_small_overhang",
+       "label": "Remove small overhangs",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      }
+     ]
+    },
+    {
+     "name": "Raft",
+     "fields": [
+      {
+       "key": "raft_layers",
+       "label": "Raft layers",
+       "type": "number",
+       "level": "advanced",
+       "unit": "layers",
+       "integer": true,
+       "min": 0.0,
+       "max": 100.0,
+       "default": 0
+      },
+      {
+       "key": "raft_contact_distance",
+       "label": "Raft contact Z distance",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.1
+      }
+     ]
+    },
+    {
+     "name": "Support filament",
+     "fields": [
+      {
+       "key": "support_filament",
+       "label": "Support/raft base",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "default": 0
+      },
+      {
+       "key": "support_interface_filament",
+       "label": "Support/raft interface",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "default": 0
+      },
+      {
+       "key": "support_interface_not_for_body",
+       "label": "Avoid interface filament for base",
+       "type": "bool",
+       "level": "simple",
+       "default": true
+      }
+     ]
+    },
+    {
+     "name": "Advanced",
+     "fields": [
+      {
+       "key": "raft_first_layer_density",
+       "label": "Initial layer density",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 10.0,
+       "max": 100.0,
+       "default": 90
+      },
+      {
+       "key": "raft_first_layer_expansion",
+       "label": "Initial layer expansion",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": -1.0,
+       "default": -1.0
+      },
+      {
+       "key": "tree_support_wall_count",
+       "label": "Support wall loops",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": -1.0,
+       "max": 2.0,
+       "default": -1
+      },
+      {
+       "key": "support_top_z_distance",
+       "label": "Top Z distance",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.2
+      },
+      {
+       "key": "support_bottom_z_distance",
+       "label": "Bottom Z distance",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "default": 0.2
+      },
+      {
+       "key": "support_base_pattern",
+       "label": "Base pattern",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "default",
+         "label": "Default"
+        },
+        {
+         "value": "rectilinear",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "rectilinear-grid",
+         "label": "Rectilinear grid"
+        },
+        {
+         "value": "honeycomb",
+         "label": "Honeycomb"
+        },
+        {
+         "value": "lightning",
+         "label": "Lightning"
+        },
+        {
+         "value": "hollow",
+         "label": "Hollow"
+        }
+       ]
+      },
+      {
+       "key": "support_base_pattern_spacing",
+       "label": "Base pattern spacing",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 2.5
+      },
+      {
+       "key": "support_angle",
+       "label": "Pattern angle",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 359.0,
+       "default": 0.0
+      },
+      {
+       "key": "support_interface_top_layers",
+       "label": "Top interface layers",
+       "type": "number",
+       "level": "advanced",
+       "unit": "layers",
+       "integer": true,
+       "min": 0.0,
+       "default": 3
+      },
+      {
+       "key": "support_interface_bottom_layers",
+       "label": "Bottom interface layers",
+       "type": "number",
+       "level": "advanced",
+       "unit": "layers",
+       "integer": true,
+       "min": -1.0,
+       "default": 0
+      },
+      {
+       "key": "support_interface_pattern",
+       "label": "Interface pattern",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "auto",
+         "label": "Default"
+        },
+        {
+         "value": "rectilinear",
+         "label": "Rectilinear"
+        },
+        {
+         "value": "concentric",
+         "label": "Concentric"
+        },
+        {
+         "value": "rectilinear_interlaced",
+         "label": "Rectilinear Interlaced"
+        },
+        {
+         "value": "grid",
+         "label": "Grid"
+        }
+       ]
+      },
+      {
+       "key": "support_interface_spacing",
+       "label": "Top interface spacing",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.5
+      },
+      {
+       "key": "support_expansion",
+       "label": "Normal Support expansion",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "default": 0.0
+      },
+      {
+       "key": "support_object_xy_distance",
+       "label": "Support/object xy distance",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 10.0,
+       "default": 0.35
+      },
+      {
+       "key": "top_z_overrides_xy_distance",
+       "label": "Z overrides X/Y",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "support_object_first_layer_gap",
+       "label": "Support/object first layer gap",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 10.0,
+       "default": 0.2
+      },
+      {
+       "key": "bridge_no_support",
+       "label": "Don't support bridges",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "max_bridge_length",
+       "label": "Max bridge length",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 10.0
+      },
+      {
+       "key": "independent_support_layer_height",
+       "label": "Independent support layer height",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      }
+     ]
+    },
+    {
+     "name": "Tree Support",
+     "fields": [
+      {
+       "key": "tree_support_branch_distance",
+       "label": "Branch distance",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 1.0,
+       "max": 10.0,
+       "default": 5.0
+      },
+      {
+       "key": "tree_support_branch_diameter",
+       "label": "Branch diameter",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 1.0,
+       "max": 10.0,
+       "default": 5.0
+      },
+      {
+       "key": "tree_support_branch_angle",
+       "label": "Branch angle",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 60.0,
+       "default": 40.0
+      },
+      {
+       "key": "tree_support_branch_diameter_angle",
+       "label": "Branch diameter angle",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 15.0,
+       "default": 5.0
+      },
+      {
+       "key": "tree_support_tip_diameter",
+       "label": "Tip diameter",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.1,
+       "max": 10.0,
+       "default": 0.8
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "tab": "Others",
+   "groups": [
+    {
+     "name": "Bed adhension",
+     "fields": [
+      {
+       "key": "skirt_loops",
+       "label": "Skirt loops",
+       "type": "number",
+       "level": "simple",
+       "integer": true,
+       "min": 0.0,
+       "max": 10.0,
+       "default": 1
+      },
+      {
+       "key": "skirt_height",
+       "label": "Skirt height",
+       "type": "number",
+       "level": "simple",
+       "unit": "layers",
+       "integer": true,
+       "max": 10000.0,
+       "default": 1
+      },
+      {
+       "key": "brim_type",
+       "label": "Brim type",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "auto_brim",
+         "label": "Auto"
+        },
+        {
+         "value": "brim_ears",
+         "label": "Painted"
+        },
+        {
+         "value": "outer_only",
+         "label": "Outer brim only"
+        },
+        {
+         "value": "inner_only",
+         "label": "Inner brim only"
+        },
+        {
+         "value": "outer_and_inner",
+         "label": "Outer and inner brim"
+        },
+        {
+         "value": "no_brim",
+         "label": "No-brim"
+        }
+       ]
+      },
+      {
+       "key": "brim_width",
+       "label": "Brim width",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 100.0,
+       "default": 0.0
+      },
+      {
+       "key": "brim_object_gap",
+       "label": "Brim-object gap",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 2.0,
+       "default": 0.0
+      }
+     ]
+    },
+    {
+     "name": "Prime tower",
+     "fields": [
+      {
+       "key": "enable_prime_tower",
+       "label": "Enable",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "prime_tower_skip_points",
+       "label": "Skip points",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "prime_tower_enable_framework",
+       "label": "Internal ribs",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "prime_tower_width",
+       "label": "Width",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 2.0,
+       "default": 35.0
+      },
+      {
+       "key": "prime_tower_max_speed",
+       "label": "Max speed",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 10.0,
+       "default": 90.0
+      },
+      {
+       "key": "prime_tower_feedrate_factor",
+       "label": "Prime tower feedrate factor",
+       "type": "number",
+       "level": "advanced",
+       "min": 0.01,
+       "default": 1.0
+      },
+      {
+       "key": "prime_tower_tail_speed_factor",
+       "label": "Tail speed factor",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 10.0,
+       "max": 100.0,
+       "default": 100
+      },
+      {
+       "key": "prime_tower_tail_slowdown_volume",
+       "label": "Tail slowdown volume",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm³",
+       "min": 0.0,
+       "default": 10.0
+      },
+      {
+       "key": "prime_tower_brim_width",
+       "label": "Brim width",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": -1.0,
+       "default": 3.0
+      },
+      {
+       "key": "prime_tower_infill_gap",
+       "label": "Infill gap",
+       "type": "percent",
+       "level": "advanced",
+       "unit": "%",
+       "min": 100.0,
+       "default": 150
+      },
+      {
+       "key": "prime_tower_rib_wall",
+       "label": "Rib wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "prime_tower_extra_rib_length",
+       "label": "Extra rib length",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "max": 300.0,
+       "default": 0.0
+      },
+      {
+       "key": "prime_tower_rib_width",
+       "label": "Rib width",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 300.0,
+       "default": 8.0
+      },
+      {
+       "key": "prime_tower_fillet_wall",
+       "label": "Fillet wall",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "prime_tower_flat_ironing",
+       "label": "Flat ironing",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "prime_tower_line_ironing",
+       "label": "Line ironing",
+       "type": "bool",
+       "level": "advanced",
+       "default": true
+      },
+      {
+       "key": "prime_tower_ironing_speed",
+       "label": "Ironing speed",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 1.0,
+       "max": 100.0,
+       "default": 10.0
+      },
+      {
+       "key": "prime_tower_side_scrape",
+       "label": "Side scrape after tool change",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "prime_tower_side_scrape_face",
+       "label": "Side scrape walls",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "left_right",
+         "label": "Left and right"
+        },
+        {
+         "value": "front_back",
+         "label": "Front and back"
+        }
+       ]
+      },
+      {
+       "key": "prime_tower_side_scrape_length",
+       "label": "Side scrape length",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.1,
+       "max": 20.0,
+       "default": 2.0
+      },
+      {
+       "key": "prime_tower_side_scrape_height",
+       "label": "Side scrape lift height",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.1,
+       "max": 10.0,
+       "default": 1.5
+      },
+      {
+       "key": "prime_tower_side_scrape_speed",
+       "label": "Side scrape speed",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm/s",
+       "min": 1.0,
+       "max": 2000.0,
+       "default": 1400.0
+      },
+      {
+       "key": "prime_tower_side_scrape_wall_gap",
+       "label": "Side scrape wall gap",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": -2.0,
+       "max": 10.0,
+       "default": 0.2
+      },
+      {
+       "key": "prime_tower_side_scrape_point_spacing",
+       "label": "Side scrape point spacing",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.5,
+       "max": 50.0,
+       "default": 1.0
+      },
+      {
+       "key": "prime_tower_side_scrape_along_length",
+       "label": "Side scrape along-wall length",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 50.0,
+       "default": 2.0
+      }
+     ]
+    },
+    {
+     "name": "Flush options",
+     "fields": [
+      {
+       "key": "flush_into_infill",
+       "label": "Flush into objects' infill",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "flush_into_objects",
+       "label": "Flush into this object",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "flush_into_support",
+       "label": "Flush into objects' support",
+       "type": "bool",
+       "level": "simple",
+       "default": true
+      }
+     ]
+    },
+    {
+     "name": "Special mode",
+     "fields": [
+      {
+       "key": "slicing_mode",
+       "label": "Slicing Mode",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "regular",
+         "label": "Regular"
+        },
+        {
+         "value": "even_odd",
+         "label": "Even-odd"
+        },
+        {
+         "value": "close_holes",
+         "label": "Close holes"
+        }
+       ]
+      },
+      {
+       "key": "print_sequence",
+       "label": "Print sequence",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "by layer",
+         "label": "By layer"
+        },
+        {
+         "value": "by object",
+         "label": "By object"
+        }
+       ]
+      },
+      {
+       "key": "spiral_mode",
+       "label": "Spiral vase",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "spiral_mode_smooth",
+       "label": "Smooth Spiral",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      },
+      {
+       "key": "spiral_mode_max_xy_smoothing",
+       "label": "Max XY Smoothing",
+       "type": "number_or_percent",
+       "level": "advanced",
+       "unit": "mm or %",
+       "min": 0.0,
+       "max": 1000.0
+      },
+      {
+       "key": "timelapse_type",
+       "label": "Timelapse",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "0",
+         "label": "Instant"
+        },
+        {
+         "value": "1",
+         "label": "Smooth"
+        }
+       ]
+      },
+      {
+       "key": "fuzzy_skin",
+       "label": "Fuzzy Skin",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "none",
+         "label": "None(allow paint)"
+        },
+        {
+         "value": "external",
+         "label": "Contour"
+        },
+        {
+         "value": "all",
+         "label": "Contour and hole"
+        },
+        {
+         "value": "allwalls",
+         "label": "All walls"
+        },
+        {
+         "value": "disabled_fuzzy",
+         "label": "Disabled"
+        }
+       ]
+      },
+      {
+       "key": "fuzzy_skin_mode",
+       "label": "Fuzzy skin generator mode",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "displacement",
+         "label": "Displacement"
+        },
+        {
+         "value": "extrusion",
+         "label": "Extrusion"
+        },
+        {
+         "value": "combined",
+         "label": "Combined"
+        }
+       ]
+      },
+      {
+       "key": "fuzzy_skin_noise_type",
+       "label": "Fuzzy skin noise type",
+       "type": "select",
+       "level": "simple",
+       "options": [
+        {
+         "value": "classic",
+         "label": "Classic"
+        },
+        {
+         "value": "perlin",
+         "label": "Perlin"
+        },
+        {
+         "value": "billow",
+         "label": "Billow"
+        },
+        {
+         "value": "ridgedmulti",
+         "label": "Ridged Multifractal"
+        },
+        {
+         "value": "voronoi",
+         "label": "Voronoi"
+        }
+       ]
+      },
+      {
+       "key": "fuzzy_skin_point_distance",
+       "label": "Fuzzy skin point distance",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 5.0,
+       "default": 0.8
+      },
+      {
+       "key": "fuzzy_skin_thickness",
+       "label": "Fuzzy skin thickness",
+       "type": "number",
+       "level": "simple",
+       "unit": "mm",
+       "min": 0.0,
+       "max": 1.0,
+       "default": 0.3
+      },
+      {
+       "key": "fuzzy_skin_scale",
+       "label": "Fuzzy skin feature size",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.1,
+       "max": 500.0,
+       "default": 1.0
+      },
+      {
+       "key": "fuzzy_skin_octaves",
+       "label": "Fuzzy skin noise octaves",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 1.0,
+       "max": 10.0,
+       "default": 4
+      },
+      {
+       "key": "fuzzy_skin_persistence",
+       "label": "Fuzzy skin noise persistence",
+       "type": "number",
+       "level": "advanced",
+       "min": 0.01,
+       "max": 1.0,
+       "default": 0.5
+      },
+      {
+       "key": "fuzzy_skin_first_layer",
+       "label": "Apply fuzzy skin to first layer",
+       "type": "bool",
+       "level": "simple",
+       "default": false
+      }
+     ]
+    },
+    {
+     "name": "Advanced",
+     "fields": [
+      {
+       "key": "enable_wrapping_detection",
+       "label": "Enable clumping detection",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "interlocking_beam",
+       "label": "Use beam interlocking",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      },
+      {
+       "key": "mmu_segmented_region_interlocking_depth",
+       "label": "Interlocking depth of a segmented region",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.0,
+       "default": 0.0
+      },
+      {
+       "key": "interlocking_beam_width",
+       "label": "Interlocking beam width",
+       "type": "number",
+       "level": "advanced",
+       "unit": "mm",
+       "min": 0.01,
+       "default": 0.8
+      },
+      {
+       "key": "interlocking_orientation",
+       "label": "Interlocking direction",
+       "type": "number",
+       "level": "advanced",
+       "unit": "°",
+       "min": 0.0,
+       "max": 360.0,
+       "default": 22.5
+      },
+      {
+       "key": "interlocking_beam_layer_count",
+       "label": "Interlocking beam layers",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 1.0,
+       "default": 2
+      },
+      {
+       "key": "interlocking_depth",
+       "label": "Interlocking depth",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 1.0,
+       "default": 2
+      },
+      {
+       "key": "interlocking_boundary_avoidance",
+       "label": "Interlocking boundary avoidance",
+       "type": "number",
+       "level": "advanced",
+       "integer": true,
+       "min": 0.0,
+       "default": 2
+      }
+     ]
+    },
+    {
+     "name": "G-code output",
+     "fields": [
+      {
+       "key": "reduce_infill_retraction_mode",
+       "label": "Reduce infill retraction",
+       "type": "select",
+       "level": "advanced",
+       "options": [
+        {
+         "value": "Disabled",
+         "label": "Disabled"
+        },
+        {
+         "value": "Auto",
+         "label": "Auto"
+        },
+        {
+         "value": "Enabled",
+         "label": "Enabled"
+        }
+       ]
+      },
+      {
+       "key": "exclude_object",
+       "label": "Exclude objects",
+       "type": "bool",
+       "level": "advanced",
+       "default": false
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

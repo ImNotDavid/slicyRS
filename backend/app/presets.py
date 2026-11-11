@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from . import store
-from .catalog import ALLOWED_SETTING_KEYS, FILAMENTS, PROCESS_PRESETS
+from .catalog import ALLOWED_SETTING_KEYS, FILAMENTS, PROCESS_PRESETS, validate_settings
 
 
 class PresetError(ValueError):
@@ -23,6 +23,8 @@ def _clean(preset: str, filament: str, settings: dict[str, Any]) -> dict[str, An
         raise PresetError(f"Unknown settings: {bad}")
     if not all(isinstance(v, (int, float, str, bool)) for v in settings.values()):
         raise PresetError("Settings must be numbers, text or on/off values")
+    if why := validate_settings(settings):
+        raise PresetError(why)
     return dict(settings)
 
 

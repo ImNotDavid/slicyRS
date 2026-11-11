@@ -1,6 +1,9 @@
 """Static catalogs: Bambu Lab printer models, filament types and the settings
 schema the UI renders. Keeping the schema here makes it the single source of
 truth for both the form and the OrcaSlicer key overrides."""
+import json
+import re
+from pathlib import Path
 from typing import Any
 
 # bed: (x, y, z) mm usable build volume. process_suffix is the "@BBL xxx" tag
@@ -80,84 +83,24 @@ def job_nozzle(job: dict[str, Any]) -> float:
     return preset_nozzle((job.get("spec") or {}).get("preset") or job.get("preset"))
 
 
-def _f(key, label, unit=None, kind="number", options=None, level="simple", step=None):
-    return {"key": key, "label": label, "unit": unit, "type": kind, "options": options,
-            "level": level, "step": step}
+# The settings panel's pages, groups, order, labels, units, ranges and choices come from Bambu Studio itself: settings_schema.json is
+# generated from its source by scripts/gen_settings_schema.py (see that file). "basic" below is our own short list for beginners.
+BASIC_KEYS = {"layer_height", "wall_loops", "sparse_infill_density", "enable_support", "brim_type"}
 
 
-# level: "basic" settings show in every mode, "simple" in Simple+Advanced, "advanced" only in Advanced.
-SETTINGS_SCHEMA: list[dict[str, Any]] = [
-    {"tab": "Quality", "groups": [
-        {"name": "Layer height", "fields": [
-            _f("layer_height", "Layer height", "mm", level="basic", step=0.02),
-            _f("initial_layer_print_height", "First layer height", "mm", level="advanced", step=0.02)]},
-        {"name": "Line width", "fields": [
-            _f("line_width", "Default", "mm", level="advanced", step=0.01),
-            _f("outer_wall_line_width", "Outer wall", "mm", level="advanced", step=0.01),
-            _f("inner_wall_line_width", "Inner wall", "mm", level="advanced", step=0.01)]},
-        {"name": "Seam", "fields": [
-            _f("seam_position", "Seam position", None, "select",
-               ["nearest", "aligned", "back", "random"], level="simple")]},
-        {"name": "Precision", "fields": [
-            _f("resolution", "Slice gap closing / resolution", "mm", level="advanced", step=0.001),
-            _f("ironing_type", "Ironing type", None, "select",
-               ["no ironing", "top", "topmost", "solid"], level="simple")]},
-    ]},
-    {"tab": "Strength", "groups": [
-        {"name": "Walls", "fields": [
-            _f("wall_loops", "Wall loops", None, level="basic", step=1),
-            _f("detect_thin_wall", "Detect thin wall", None, "bool", level="advanced")]},
-        {"name": "Top/bottom shells", "fields": [
-            _f("top_shell_layers", "Top shell layers", None, level="simple", step=1),
-            _f("bottom_shell_layers", "Bottom shell layers", None, level="simple", step=1)]},
-        {"name": "Sparse infill", "fields": [
-            _f("sparse_infill_density", "Sparse infill density", "%", level="basic", step=1),
-            _f("sparse_infill_pattern", "Sparse infill pattern", None, "select",
-               ["grid", "gyroid", "cubic", "honeycomb", "adaptivecubic", "lightning", "line",
-                "triangles", "3dhoneycomb"], level="simple")]},
-    ]},
-    {"tab": "Speed", "groups": [
-        {"name": "Print speed", "fields": [
-            _f("initial_layer_speed", "First layer", "mm/s", level="simple", step=5),
-            _f("outer_wall_speed", "Outer wall", "mm/s", level="simple", step=5),
-            _f("inner_wall_speed", "Inner wall", "mm/s", level="simple", step=5),
-            _f("sparse_infill_speed", "Sparse infill", "mm/s", level="simple", step=5),
-            _f("top_surface_speed", "Top surface", "mm/s", level="advanced", step=5),
-            _f("travel_speed", "Travel", "mm/s", level="advanced", step=5)]},
-        {"name": "Acceleration", "fields": [
-            _f("default_acceleration", "Normal printing", "mm/s²", level="advanced", step=100),
-            _f("outer_wall_acceleration", "Outer wall", "mm/s²", level="advanced", step=100)]},
-    ]},
-    {"tab": "Support", "groups": [
-        {"name": "Support", "fields": [
-            _f("enable_support", "Enable support", None, "bool", level="basic"),
-            _f("support_type", "Type", None, "select",
-               ["normal(auto)", "tree(auto)", "normal(manual)", "tree(manual)"], level="simple"),
-            _f("support_threshold_angle", "Threshold angle", "°", level="simple", step=1),
-            _f("support_on_build_plate_only", "On build plate only", None, "bool", level="simple")]},
-        {"name": "Raft", "fields": [
-            _f("raft_layers", "Raft layers", None, level="advanced", step=1)]},
-        {"name": "Bed adhesion", "fields": [
-            _f("brim_type", "Brim type", None, "select",
-               ["auto_brim", "outer_only", "inner_only", "outer_and_inner", "no_brim"], level="basic"),
-            _f("brim_width", "Brim width", "mm", level="advanced", step=0.5),
-            _f("skirt_loops", "Skirt loops", None, level="advanced", step=1)]},
-    ]},
-    {"tab": "Multimaterial", "groups": [
-        {"name": "Prime tower", "fields": [
-            _f("enable_prime_tower", "Enable prime tower", None, "bool", level="simple"),
-            _f("prime_tower_width", "Width", "mm", level="advanced", step=1)]},
-        {"name": "Flush", "fields": [
-            _f("flush_multiplier", "Flush volume multiplier", None, level="advanced", step=0.1)]},
-    ]},
-    {"tab": "Others", "groups": [
-        {"name": "Special mode", "fields": [
-            _f("print_sequence", "Print sequence", None, "select", ["by layer", "by object"], level="advanced"),
-            _f("spiral_mode", "Spiral vase", None, "bool", level="advanced")]},
-        {"name": "Fuzzy skin", "fields": [
-            _f("fuzzy_skin", "Fuzzy skin", None, "select", ["none", "external", "all"], level="advanced")]},
-    ]},
-]
+def _load_schema() -> list[dict[str, Any]]:
+    raw = json.loads((Path(__file__).with_name("settings_schema.json")).read_text(encoding="utf-8"))
+    for tab in raw["tabs"]:
+        for group in tab["groups"]:
+            for f in group["fields"]:
+                if f["key"] in BASIC_KEYS:
+                    f["level"] = "basic"       # level: "basic" shows in every mode, "simple" in Simple and Advanced, "advanced" only in Advanced
+    return raw["tabs"]
+
+
+SETTINGS_SCHEMA: list[dict[str, Any]] = _load_schema()
+FIELDS: dict[str, dict[str, Any]] = {f["key"]: f for t in SETTINGS_SCHEMA for g in t["groups"] for f in g["fields"]}
+
 
 # Defaults used for the UI when no preset values have been resolved yet.
 SETTING_DEFAULTS: dict[str, Any] = {
@@ -180,11 +123,63 @@ PRESET_OVERRIDES = {
     "0.30mm Strength @0.6": {"wall_loops": 6, "sparse_infill_density": 25},
 }
 
-ALLOWED_SETTING_KEYS = {f["key"] for t in SETTINGS_SCHEMA for g in t["groups"] for f in g["fields"]}
+ALLOWED_SETTING_KEYS = set(FIELDS)
+
+
+def _schema_defaults() -> dict[str, Any]:
+    """A value for every setting when no real profile is installed (mock mode): Bambu Studio's own default where the schema has
+    one, the first choice for a list, else empty. The hand-set values above win, because they track the printer profiles."""
+    out: dict[str, Any] = {}
+    for key, f in FIELDS.items():
+        if "default" in f:
+            out[key] = f["default"]
+        elif f["type"] == "select":
+            out[key] = f["options"][0]["value"]
+        elif f["type"] == "bool":
+            out[key] = False
+        elif f["type"] in ("number", "percent"):
+            out[key] = f.get("min", 0)
+        elif f["type"] == "number_or_percent":
+            out[key] = "0"
+        else:
+            out[key] = ""
+    return out
+
+
+def validate_settings(settings: dict[str, Any]) -> str | None:
+    """A message for the first setting whose value cannot be right (wrong type, not one of the choices, out of range), else None.
+    Only known settings are checked; unknown ones are rejected elsewhere."""
+    for key, v in settings.items():
+        f = FIELDS.get(key)
+        if f is None:
+            continue
+        label, kind = f["label"], f["type"]
+        if kind == "bool":
+            ok = isinstance(v, bool)
+        elif kind in ("number", "percent"):
+            ok = isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
+            if ok and f.get("integer") and v != int(v):
+                return f"{label} must be a whole number"
+        elif kind == "number_or_percent":
+            ok = (isinstance(v, (int, float)) and not isinstance(v, bool)) or (isinstance(v, str) and re.fullmatch(r"-?\d+(\.\d+)?%?", v) is not None)
+            if ok and isinstance(v, str):
+                v = float(v.rstrip("%"))
+        elif kind == "select":
+            ok = isinstance(v, str) and v in {o["value"] for o in f["options"]}
+        else:
+            ok = isinstance(v, str) and len(v) <= 200
+        if not ok:
+            return f"{label} has an invalid value"
+        if kind in ("number", "percent", "number_or_percent") and isinstance(v, (int, float)):
+            if "min" in f and v < f["min"]:
+                return f"{label} must be at least {f['min']:g}"
+            if "max" in f and v > f["max"]:
+                return f"{label} must be at most {f['max']:g}"
+    return None
 
 
 def preset_defaults(preset_id: str) -> dict[str, Any]:
-    values = dict(SETTING_DEFAULTS)
+    values = {**_schema_defaults(), **SETTING_DEFAULTS}
     for p in PROCESS_PRESETS:
         if p["id"] == preset_id:
             values["layer_height"] = p["layer_height"]

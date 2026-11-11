@@ -11,7 +11,7 @@ import zipfile
 import pytest
 
 from app import defaults, profiles
-from app.catalog import PRINTER_MODELS, preset_defaults
+from app.catalog import PRINTER_MODELS, SETTING_DEFAULTS, preset_defaults
 from test_real_engine import FIX, FOUND, engine  # noqa: F401  (fixture)
 
 
@@ -103,7 +103,7 @@ def test_untouched_panel_equals_the_printers_own_profile(engine, tmp_path, monke
 def test_old_hard_coded_defaults_did_differ_from_the_profile(engine, tmp_path):  # noqa: F811
     """Documents the bug: sending my old full defaults changed acceleration and travel speed on the A1 mini."""
     engine.run(tmp_path / "old", FIX / "cube_binary.stl", "A1 mini", "0.20mm Standard", "PLA",
-               {**preset_defaults("0.20mm Standard"), "curr_bed_type": "Textured PEI Plate"})
+               {**SETTING_DEFAULTS, "curr_bed_type": "Textured PEI Plate"})
     engine.run(tmp_path / "pure", FIX / "cube_binary.stl", "A1 mini", "0.20mm Standard", "PLA", {"curr_bed_type": "Textured PEI Plate"})
 
     def cfg(d):

@@ -66,6 +66,7 @@ export default function SettingsPanel({ catalog, values, baseline, onChange }: P
 }
 
 function FieldRow({ f, value, edited, onChange }: { f: Field; value: Value; edited: boolean; onChange: (v: Value) => void }) {
+  const step = f.integer ? 1 : f.unit === "mm/s" ? 5 : f.unit === "mm" ? 0.01 : "any";
   return (
     <div className={"field" + (edited ? " edited" : "")}>
       <span>{f.label}</span>
@@ -73,12 +74,18 @@ function FieldRow({ f, value, edited, onChange }: { f: Field; value: Value; edit
         <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
       ) : f.type === "select" ? (
         <select value={String(value)} onChange={(e) => onChange(e.target.value)}>
-          {f.options!.map((o) => <option key={o}>{o}</option>)}
+          {f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+      ) : f.type === "number" || f.type === "percent" ? (
+        <div className="num">
+          <input type="number" step={step} min={f.min} max={f.max} value={value as number}
+            onChange={(e) => e.target.value !== "" && onChange(Number(e.target.value))} />
+          {f.unit && <em>{f.unit}</em>}
+        </div>
       ) : (
         <div className="num">
-          <input type="number" step={f.step ?? "any"} value={value as number}
-            onChange={(e) => e.target.value !== "" && onChange(Number(e.target.value))} />
+          <input type="text" inputMode={f.type === "number_or_percent" ? "decimal" : undefined} value={String(value ?? "")}
+            onChange={(e) => onChange(e.target.value)} />
           {f.unit && <em>{f.unit}</em>}
         </div>
       )}

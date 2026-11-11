@@ -32,8 +32,7 @@ def engine(monkeypatch):
 @pytest.mark.parametrize("printer", ["A1 mini", "P1S", "X1C", "H2D"])
 @pytest.mark.parametrize("filament", ["PLA", "PETG", "ABS", "TPU"])
 def test_every_printer_and_filament_slices(engine, tmp_path, printer, filament):
-    from app.catalog import preset_defaults
-    r = engine.run(tmp_path, FIX / "cube_binary.stl", printer, "0.20mm Standard", filament, preset_defaults("0.20mm Standard"))
+    r = engine.run(tmp_path, FIX / "cube_binary.stl", printer, "0.20mm Standard", filament, {"curr_bed_type": "Textured PEI Plate"})
     g = (tmp_path / "model.gcode").read_text(errors="ignore")
     assert r["layers"] == 100 and r["time_s"] > 0 and r["filament_g"] > 0
     assert {"Outer wall", "Sparse infill"} <= set(re.findall(r"^; FEATURE: (.+)$", g, re.M))
@@ -41,8 +40,7 @@ def test_every_printer_and_filament_slices(engine, tmp_path, printer, filament):
 
 
 def test_settings_reach_the_engine(engine, tmp_path):
-    from app.catalog import preset_defaults
-    base = preset_defaults("0.20mm Standard")
+    base: dict = {}      # only what the user changed is sent; the printer's own profile supplies the rest
     a = engine.run(tmp_path / "a", FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", {**base, "sparse_infill_density": 5})
     b = engine.run(tmp_path / "b", FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", {**base, "sparse_infill_density": 60})
     assert b["filament_g"] > a["filament_g"] * 1.2
@@ -53,18 +51,15 @@ def test_settings_reach_the_engine(engine, tmp_path):
 def test_incompatible_plate_gives_a_readable_error(engine, tmp_path):
     """ABS cannot print on a cool plate: the engine's own explanation must reach the user."""
     import pytest as _pytest
-    from app.catalog import preset_defaults
     from app.slicer import SliceError
     with _pytest.raises(SliceError, match="not compatible with the plate"):
-        engine.run(tmp_path, FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "ABS",
-                   {**preset_defaults("0.20mm Standard"), "curr_bed_type": "Cool Plate"})
+        engine.run(tmp_path, FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "ABS", {"curr_bed_type": "Cool Plate"})
 
 
 def test_textured_pei_works_for_abs_and_petg(engine, tmp_path):
-    from app.catalog import preset_defaults
     for fil in ("ABS", "PETG"):
         r = engine.run(tmp_path / fil, FIX / "cube_binary.stl", "A1 mini", "0.20mm Standard", fil,
-                       {**preset_defaults("0.20mm Standard"), "curr_bed_type": "Textured PEI Plate"})
+                       {"curr_bed_type": "Textured PEI Plate"})
         assert r["layers"] == 100
 
 
@@ -156,3 +151,41 @@ def test_every_printer_model_slices_for_every_nozzle_size_with_that_nozzle(engin
         text = (tmp_path / f"{model}-{nozzle}" / got["gcode"]).read_text(errors="ignore")
         assert re.search(rf"nozzle_diameter\s*=\s*{nozzle:g}\b", text), (model, nozzle)
         assert got["time_s"] > 0
+
+
+def _other_value(f, current):
+    """A different, valid value for a setting (for the sweep below)."""
+    t = f["type"]
+    if t == "bool":
+        return not bool(current)
+    if t == "select":
+        vals = [o["value"] for o in f["options"]]
+        return next((v for v in vals if v != current), vals[0])
+    lo, hi = f.get("min", -1e6), f.get("max", 1e6)
+    if t == "percent":
+        return min(hi, max(lo, 30 if current != 30 else 40))
+    if t == "number_or_percent":
+        return "50%" if str(current) != "50%" else "60%"
+    base = float(current) if isinstance(current, (int, float)) else float(f.get("default", 0))
+    v = min(hi, max(lo, base * 1.2 + (1 if f.get("integer") else 0.05)))
+    return int(v) if f.get("integer") else round(v, 3)
+
+
+def test_the_engine_accepts_every_setting_the_panel_can_send(engine, tmp_path, monkeypatch):
+    """Changing any one setting of the generated schema must still slice: a setting the engine rejects would fail a user's job."""
+    from app import defaults
+    from app.catalog import FIELDS, validate_settings
+    monkeypatch.setattr(defaults, "SLICER_MODE", "orca")
+    defaults._ui_defaults.cache_clear()
+    base = defaults.ui_defaults("0.20mm Standard")
+    rejected = {}
+    for key, f in FIELDS.items():
+        value = _other_value(f, base.get(key))
+        assert validate_settings({key: value}) is None, (key, value)
+        try:
+            engine.run(tmp_path / key, FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA",
+                       {**defaults.effective_overrides("0.20mm Standard", {key: value}, "Textured PEI Plate")})
+        except engine.SliceError as e:
+            rejected[key] = str(e)[:120]
+    defaults._ui_defaults.cache_clear()
+    assert not rejected, rejected

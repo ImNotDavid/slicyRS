@@ -245,8 +245,8 @@ def test_catalog_consistency(client):
     for t in c["settings_schema"]:
         for g in t["groups"]:
             for f in g["fields"]:
-                assert f["type"] in ("number", "bool", "select")
-                assert f["type"] != "select" or f["options"]
+                assert f["type"] in ("number", "percent", "number_or_percent", "bool", "select", "text")
+                assert f["type"] != "select" or (f["options"] and all({"value", "label"} <= set(o) for o in f["options"]))
     assert set(c["printer_models"]) == set(PRINTER_MODELS)
 
 

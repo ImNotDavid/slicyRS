@@ -118,7 +118,7 @@ Focus: people arrive with an STL or STEP and want a good print without learning 
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| 1.1 | **Full settings coverage**, generated from the engine's own profiles instead of the hand-written list | L | Biggest item. Correct defaults, units and descriptions for every setting; stays correct when profiles update. |
+| 1.1 | **DONE for the process settings** (`settings_schema.json`, 249 options on Bambu Studio's own five pages and groups, same order, labels, units, ranges and choices; generated from the pinned release's source by `backend/scripts/gen_settings_schema.py`; every setting is checked against the real slicer). **Not done: Filament and Printer setting pages, the explanatory tooltips (licence, see Risks), greying out options that do not apply.** **Full settings coverage**, generated from the engine's own profiles instead of the hand-written list | L | Biggest item. Correct defaults, units and descriptions for every setting; stays correct when profiles update. |
 | 1.2 | **PARTLY DONE: auto-orient and lay flat** (`orient.py`, buttons under Rotate). **Still to do: manual move and auto-arrange** | M | Auto-orient picks the face down that minimises overhangs and supports. Needs position sent to the slicer, not just rotation and scale. |
 | 1.3 | **DONE** (`goals.py`: Fast draft, Standard, Strong, Fine detail as one-click buttons above the preset menu; flexible filament is slowed, warp-prone materials get a brim; every goal and material is checked against the real slicer). **Sensible presets by goal**: "Fast draft", "Standard", "Strong", "Fine detail", with material-aware defaults | M | Gives beginners one choice instead of 500. Advanced users keep full control. |
 | 1.4 | **Supports**: preview where supports go, on/off per region (block/enforce), tree vs normal | L | Today only the on/off and type settings exist. |
@@ -244,6 +244,7 @@ Camera and timelapse notes (to verify on your own printers before committing): B
 ## Risks to keep in view
 
 - **Printer firmware.** Bambu has already tightened control access (Developer Mode is now needed). A further change could break printing from third-party software. Record the firmware versions you test with and avoid auto-updating production printers.
+- **Settings schema text.** `settings_schema.json` holds Bambu Studio's page and group names, option labels, units, ranges and choices, generated from its source (AGPL-3.0); the long explanatory tooltips were deliberately left out. Decide before including them or shipping to others.
 - **Slicer engine licence and versions.** Bambu Studio and OrcaSlicer are AGPL-3.0. Running them as a network service has obligations if you change them, and profile names change between versions. Pin versions and keep the profile-matching tests.
 - **Third-party site terms.** Import by link (4.3) can breach a site's terms if done by scraping. Prefer official APIs or user-supplied direct links.
 - **A service that can start physical machines.** Keep admin actions audited, printer access codes encrypted, and the print endpoint treated like any other action with real-world effect. "Bed cleared" confirmation (2.2) is a safety item, not a convenience.
