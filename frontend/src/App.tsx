@@ -13,7 +13,7 @@ import JobsModal, { fmtTime } from "./components/JobsModal";
 import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
-const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1 };
+const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1, position: [0, 0] };
 
 export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -23,7 +23,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [preset, setPreset] = useState("0.20mm Standard");
   const [settings, setSettings] = useState<Record<string, Value>>({});
   const [transform, setTransform] = useState<Transform>(IDENTITY);
-  const [tool, setTool] = useState<"rotate" | "scale" | null>(null);
+  const [tool, setTool] = useState<"move" | "rotate" | "scale" | null>(null);
   const [pickFace, setPickFace] = useState(false);
   const [goal, setGoal] = useState<string | null>("standard");
   const [goalNotes, setGoalNotes] = useState<string[]>([]);
@@ -301,7 +301,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
       <main className="viewport">
         <Viewport modelUrl={model ? modelUrl(model.id) : null} bed={bed} transform={transform} gcode={gcode} mode={mode}
           layerRange={layerRange} onLayerCount={onLayerCount} fitSignal={fitSignal}
-          pickFace={pickFace} onPickFace={(n) => { setPickFace(false); orientTo("face", n); }} />
+          pickFace={pickFace} onPickFace={(n) => { setPickFace(false); orientTo("face", n); }}
+          moveMode={tool === "move" && mode === "prepare"} onMove={(position) => setTransform((t) => ({ ...t, position }))} />
 
         <div className="mode-toggle">
           <button className={mode === "prepare" ? "btn primary" : "btn"} onClick={() => setMode("prepare")}>PREPARE</button>
@@ -319,10 +320,26 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
         {model && mode === "prepare" && (
           <div className="tools">
-            <button title="Move (auto-arranged on the plate)" disabled><Move3d size={20} /></button>
+            <button title="Move" className={tool === "move" ? "on" : ""} onClick={() => setTool(tool === "move" ? null : "move")}><Move3d size={20} /></button>
             <button title="Rotate" className={tool === "rotate" ? "on" : ""} onClick={() => setTool(tool === "rotate" ? null : "rotate")}><RotateCw size={20} /></button>
             <button title="Scale" className={tool === "scale" ? "on" : ""} onClick={() => setTool(tool === "scale" ? null : "scale")}><Scaling size={20} /></button>
             <button title="Reset view" onClick={() => setFitSignal((n) => n + 1)}><Maximize size={20} /></button>
+            {tool === "move" && (
+              <div className="popover">
+                {(["X", "Y"] as const).map((ax, i) => (
+                  <label key={ax}><b>{ax}</b>
+                    <input type="number" step={1} value={Math.round(transform.position[i] * 10) / 10} aria-label={`Position ${ax} in millimetres from the middle of the bed`}
+                      onChange={(e) => { const p = [...transform.position] as [number, number]; p[i] = Number(e.target.value) || 0; setTransform({ ...transform, position: p }); }} />
+                    <span>mm</span><span />
+                  </label>
+                ))}
+                <div className="actions">
+                  <button className="mini" disabled={!transform.position[0] && !transform.position[1]} title="Let the slicer place the part (the middle of the bed)"
+                    onClick={() => { setTransform({ ...transform, position: [0, 0] }); setMessage({ kind: "ok", text: "The slicer will place the part" }); }}>Auto-arrange</button>
+                </div>
+                <p className="hint">Drag the part on the bed, or type a position. 0, 0 is the middle of the bed; the part stays where you put it.</p>
+              </div>
+            )}
             {tool === "rotate" && (
               <div className="popover">
                 {(["X", "Y", "Z"] as const).map((ax, i) => (
@@ -337,7 +354,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
                   <button className={"mini" + (pickFace ? " on" : "")} aria-pressed={pickFace} disabled={busy}
                     title="Then click the face of the part that should lie on the bed" onClick={() => setPickFace(!pickFace)}>Lay flat</button>
                   <button className="mini" disabled={busy} title="Turn the part to need the least support" onClick={() => orientTo("auto")}>Auto-orient</button>
-                  <button className="mini" disabled={busy} onClick={() => setTransform(IDENTITY)}>Reset</button>
+                  <button className="mini" disabled={busy} onClick={() => setTransform({ ...transform, rotation: [0, 0, 0] })}>Reset</button>
                 </div>
                 {pickFace && <p className="hint">Click the face that should lie on the bed.</p>}
               </div>

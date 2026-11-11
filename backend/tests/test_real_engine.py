@@ -189,3 +189,21 @@ def test_the_engine_accepts_every_setting_the_panel_can_send(engine, tmp_path, m
             rejected[key] = str(e)[:120]
     defaults._ui_defaults.cache_clear()
     assert not rejected, rejected
+
+
+def _x_extent(gcode):
+    import re
+    xs = [float(m.group(1)) for line in open(gcode) if line.startswith("G1") and " E" in line for m in [re.search(r" X([-\d.]+)", line)] if m]
+    ys = [float(m.group(1)) for line in open(gcode) if line.startswith("G1") and " E" in line for m in [re.search(r" Y([-\d.]+)", line)] if m]
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+
+
+def test_a_part_placed_by_hand_is_printed_where_it_was_put(engine, tmp_path):
+    """Zero offset is where the slicer's own arrange puts a part; every other offset moves it by exactly that far."""
+    plate = {"curr_bed_type": "Textured PEI Plate"}
+    engine.run(tmp_path / "arranged", FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", plate)
+    ax, ay = _x_extent(tmp_path / "arranged" / "model.gcode")
+    for tag, off in (("zero", (0.0, 0.0)), ("moved", (30.0, -20.0)), ("corner", (-80.0, 70.0))):
+        engine.run(tmp_path / tag, FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", plate, offset=off)
+        cx, cy = _x_extent(tmp_path / tag / "model.gcode")
+        assert cx == pytest.approx(ax + off[0], abs=1.0) and cy == pytest.approx(ay + off[1], abs=1.0), (tag, cx, cy)

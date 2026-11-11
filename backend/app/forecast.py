@@ -11,7 +11,7 @@ from typing import Any
 
 from . import assign, pipelinecfg, store
 from .bedstate import BUSY
-from .catalog import job_nozzle
+from .catalog import job_nozzle, job_position
 
 HOLDING = {"assigned", "slicing", "ready"}
 DEFAULT_ESTIMATE_S = 1800  # when a job has no estimate yet
@@ -36,11 +36,11 @@ def _fleet() -> list[dict[str, Any]]:
     return [p for p in store.printers.all() if p.get("enabled", True)]
 
 
-def eligible_printers(dims, filament: str, nozzle: float = 0.4) -> list[dict[str, Any]]:
+def eligible_printers(dims, filament: str, nozzle: float = 0.4, offset: tuple[float, float] = (0.0, 0.0)) -> list[dict[str, Any]]:
     """Printers that could ever print this part: every hard rule except being online right now."""
     out = []
     for p in _fleet():
-        c = assign.evaluate({**p, "assume_available": True}, tuple(dims), filament, nozzle)
+        c = assign.evaluate({**p, "assume_available": True}, tuple(dims), filament, nozzle, offset)
         if c.eligible:
             out.append(p)
     return out
@@ -50,7 +50,7 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     now = now or time.time()
     cfg = pipelinecfg.get()
     margin = cfg["cooling_margin_min"] * 60
-    printers = eligible_printers(job["dims"], job["filament"], job_nozzle(job))
+    printers = eligible_printers(job["dims"], job["filament"], job_nozzle(job), job_position(job))
     if not printers:
         return {"feasible": False, "earliest_finish": None, "jobs_ahead": 0, "printer_id": None, "printer_name": None}
 
@@ -72,7 +72,7 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
                    key=lambda j: j.get("submitted_at") or 0)
     counted = 0
     for j in ahead:                                      # jobs in front take the earliest printer that can run them
-        ok = [p for p in eligible_printers(j["dims"], j["filament"], job_nozzle(j)) if p["id"] in free_at]
+        ok = [p for p in eligible_printers(j["dims"], j["filament"], job_nozzle(j), job_position(j)) if p["id"] in free_at]
         if ok:
             best = min(ok, key=lambda p: free_at[p["id"]])
             free_at[best["id"]] += estimate_s(j) + margin

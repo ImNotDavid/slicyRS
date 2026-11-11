@@ -17,6 +17,8 @@ type Props = {
   fitSignal: number;
   pickFace?: boolean;                                        // hover highlights the flat face under the cursor; a click picks it
   onPickFace?: (normal: [number, number, number]) => void;  // outward normal of the picked face, in the model's own frame
+  moveMode?: boolean;                                        // dragging the part moves it on the bed
+  onMove?: (position: [number, number]) => void;             // new offset (mm) from the middle of the bed
 };
 
 export default function Viewport(p: Props) {
@@ -25,6 +27,10 @@ export default function Viewport(p: Props) {
   bedRef.current = p.bed;
   const onPickRef = useRef(p.onPickFace);
   onPickRef.current = p.onPickFace;
+  const onMoveRef = useRef(p.onMove);
+  onMoveRef.current = p.onMove;
+  const posRef = useRef(p.transform.position);
+  posRef.current = p.transform.position;
   const userMoved = useRef(false); // once the user orbits, window resizes stop re-framing
   const three = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls; renderer: THREE.WebGLRenderer;
@@ -116,6 +122,64 @@ export default function Viewport(p: Props) {
     if (m) place(m, p.transform, p.bed);
   }, [p.transform, p.bed]);
 
+  // drag the part across the bed
+  useEffect(() => {
+    const t = three.current!;
+    const el = t.renderer.domElement;
+    if (!p.moveMode) return;
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const point = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, t.camera);
+      return ray.ray.intersectPlane(plane, new THREE.Vector3()) ?? undefined;
+    };
+    const over = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, t.camera);
+      return !!t.model && t.model.visible && ray.intersectObject(t.model, false).length > 0;
+    };
+    let drag: { start: THREE.Vector3; from: [number, number] } | null = null;
+    const down = (e: PointerEvent) => {
+      if (e.button !== 0 || !over(e)) return;
+      const start = point(e);
+      if (!start) return;
+      drag = { start, from: [...posRef.current] as [number, number] };
+      t.controls.enabled = false;                       // dragging the part must not orbit the camera
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = "grabbing";
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag) { el.style.cursor = over(e) ? "grab" : ""; return; }
+      const now = point(e);
+      const m = t.model;
+      if (!now || !m) return;
+      const box = new THREE.Box3().setFromObject(m);
+      const half = [(box.max.x - box.min.x) / 2, (box.max.y - box.min.y) / 2];
+      const limit = [0, 1].map((i) => Math.max(0, bedRef.current[i] / 2 - 3 - half[i]));      // keep the part on the plate
+      const pos = [0, 1].map((i) => Math.max(-limit[i], Math.min(limit[i], drag!.from[i] + (now.getComponent(i) - drag!.start.getComponent(i)))));
+      onMoveRef.current?.([Math.round(pos[0] * 10) / 10, Math.round(pos[1] * 10) / 10]);
+    };
+    const up = (e: PointerEvent) => {
+      if (!drag) return;
+      drag = null;
+      t.controls.enabled = true;
+      el.releasePointerCapture(e.pointerId);
+      el.style.cursor = over(e) ? "grab" : "";
+    };
+    el.addEventListener("pointerdown", down, true);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    return () => {
+      el.removeEventListener("pointerdown", down, true); el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up);
+      t.controls.enabled = true;
+      el.style.cursor = "";
+    };
+  }, [p.moveMode, p.modelUrl]);
+
   // pick a face to lay on the bed
   useEffect(() => {
     const t = three.current!;
@@ -206,7 +270,7 @@ export default function Viewport(p: Props) {
   return <div ref={host} className="viewport-canvas" />;
 }
 
-// Mirrors backend apply_transform: scale, then rotate about X, Y, Z, drop to z=0, centre on the bed.
+// Mirrors backend apply_transform: scale, then rotate about X, Y, Z, drop to z=0, centre on the bed, then shift by the position the user chose.
 function place(mesh: THREE.Mesh, t: Transform, bed: [number, number, number]) {
   const rs = new THREE.Matrix4()
     .makeRotationFromEuler(new THREE.Euler(
@@ -215,7 +279,7 @@ function place(mesh: THREE.Mesh, t: Transform, bed: [number, number, number]) {
     .multiply(new THREE.Matrix4().makeScale(t.scale, t.scale, t.scale));
   const box = mesh.geometry.boundingBox!.clone().applyMatrix4(rs);
   const c = box.getCenter(new THREE.Vector3());
-  const tr = new THREE.Matrix4().makeTranslation(bed[0] / 2 - c.x, bed[1] / 2 - c.y, -box.min.z);
+  const tr = new THREE.Matrix4().makeTranslation(bed[0] / 2 + t.position[0] - c.x, bed[1] / 2 + t.position[1] - c.y, -box.min.z);
   mesh.matrix.copy(tr.multiply(rs));
   mesh.matrixWorldNeedsUpdate = true;
 }

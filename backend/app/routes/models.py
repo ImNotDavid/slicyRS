@@ -68,6 +68,7 @@ def preview(model_id: str, user: dict = User):
 class TransformIn(BaseModel):
     rotation: tuple[float, float, float] = (0, 0, 0)
     scale: float = Field(1.0, gt=0, le=100)
+    position: tuple[float, float] = Field((0.0, 0.0), description="where the part was placed by hand: mm from the middle of the bed; (0, 0) lets the slicer place it")
 
 
 class AssignIn(TransformIn):
@@ -81,7 +82,7 @@ def assign_printer(body: AssignIn, user: dict = User):
     if body.filament not in FILAMENTS:
         raise HTTPException(400, "Unknown filament")
     size = meshio.dims(_transformed(body.model_id, body.rotation, body.scale, user))
-    ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm)
+    ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, tuple(body.position))
     best = ranked[0] if ranked and ranked[0].eligible else None
     return {"dims": size, "chosen": best.printer_id if best else None,
             "candidates": [c.asdict() for c in ranked]}

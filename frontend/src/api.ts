@@ -77,7 +77,7 @@ export type Stats = {
 };
 export type SavedPreset = { id: string; name: string; scope: "user" | "shared"; owner_email: string; preset: string; filament: string; settings: Record<string, number | string | boolean> };
 export type ModelCheck = { level: "info" | "warn"; text: string };
-export type Transform = { rotation: [number, number, number]; scale: number };
+export type Transform = { rotation: [number, number, number]; scale: number; position: [number, number] };   // position: mm from the middle of the bed
 
 async function j<T>(res: Response): Promise<T> {
   if (res.status === 401 && !res.url.includes("/auth/")) window.dispatchEvent(new Event("auth-expired"));

@@ -58,7 +58,7 @@ def test_plate_is_no_longer_a_user_setting(client, fleet, monkeypatch):
     assert all("curr_bed_type" not in d for d in client.get("/api/catalog").json()["preset_defaults"].values())
     seen = {}
     real = app_main.slicer.run
-    monkeypatch.setattr(app_main.slicer, "run", lambda w, m, pm, pr, f, o: (seen.update(o), real(w, m, pm, pr, f, o))[1])
+    monkeypatch.setattr(app_main.slicer, "run", lambda w, m, pm, pr, f, o, **kw: (seen.update(o), real(w, m, pm, pr, f, o, **kw))[1])
     m = upload(client, VALID / "cube_binary.stl").json()
     r = client.post("/api/slice", json={"model_id": m["id"], "filament": "PLA", "settings": {"curr_bed_type": "Cool Plate"}})
     assert r.status_code == 200                                           # tolerated, not an error ...
@@ -87,9 +87,9 @@ def test_slice_uses_the_assigned_printers_plate(client, fleet, monkeypatch):
     seen = {}
     real = app_main.slicer.run
 
-    def spy(workdir, model, printer_model, preset, filament, overrides):
+    def spy(workdir, model, printer_model, preset, filament, overrides, **kw):
         seen.update(overrides)
-        return real(workdir, model, printer_model, preset, filament, overrides)
+        return real(workdir, model, printer_model, preset, filament, overrides, **kw)
 
     monkeypatch.setattr(app_main.slicer, "run", spy)
     for p in client.get("/api/printers").json():                          # make the A1 mini (smallest, preferred) use a cool plate

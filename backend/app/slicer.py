@@ -48,14 +48,16 @@ def process_config(printer_model: str, preset: str, overrides: dict[str, Any]) -
 
 
 def run(workdir: Path, model_path: Path | list[Path], printer_model: str, preset: str, filament: str,
-        overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None,
+        offset: tuple[float, float] | None = None) -> dict[str, Any]:
     """Slice one model, or several that share a plate (the slicer arranges them). `object_settings` gives each of several
-    models its own settings on top of the plate's (the same order as the models)."""
+    models its own settings on top of the plate's (the same order as the models). `offset` places a single model by hand: its
+    centre goes that many mm from the middle of the printer's bed, and the slicer does not move it."""
     workdir.mkdir(parents=True, exist_ok=True)
     models = list(model_path) if isinstance(model_path, (list, tuple)) else [model_path]
     if SLICER_MODE == "orca":
-        return _run_orca(workdir, models, printer_model, preset, filament, overrides, object_settings)
-    return _run_mock(workdir, models, printer_model, filament, overrides)
+        return _run_orca(workdir, models, printer_model, preset, filament, overrides, object_settings, offset)
+    return _run_mock(workdir, models, printer_model, filament, overrides, offset)
 
 
 # ---------------------------------------------------------------- OrcaSlicer
@@ -81,8 +83,21 @@ def _plate_3mf(workdir: Path, models: list[Path], object_settings: list[dict[str
     return out
 
 
+def _placed_3mf(workdir: Path, model: Path, bed: tuple[float, float, float], offset: tuple[float, float]) -> Path:
+    """A 3MF holding the model with its centre at (bed middle + offset), sitting on the bed; used with the slicer's arrange switched off."""
+    mesh = load_mesh(model)
+    lo, hi = mesh.bounds
+    mesh.apply_translation([bed[0] / 2 + offset[0] - (lo[0] + hi[0]) / 2, bed[1] / 2 + offset[1] - (lo[1] + hi[1]) / 2, -lo[2]])
+    scene = trimesh.Scene()
+    scene.add_geometry(mesh, node_name="part", geom_name="part")
+    out = workdir / "placed.3mf"
+    scene.export(str(out), file_type="3mf")
+    return out
+
+
 def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
-              overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+              overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None,
+              offset: tuple[float, float] | None = None) -> dict[str, Any]:
     pm = PRINTER_MODELS[printer_model]
     nozzle = preset_nozzle(preset)
     machine = profiles.machine_name(pm["machine"], nozzle)
@@ -109,9 +124,12 @@ def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str
     out = workdir / "out"
     out.mkdir(exist_ok=True)
     n_models = len(models)
+    placed = bool(offset and any(offset) and n_models == 1)
+    if placed:
+        models = [_placed_3mf(workdir, models[0], pm["bed"], offset)]
     if object_settings and n_models > 1 and any(object_settings):
         models = [_plate_3mf(workdir, models, object_settings)]
-    cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "1",
+    cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "0" if placed else "1",
            "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
            "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", *[str(m.resolve()) for m in models]]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SLICE_TIMEOUT_S, cwd=workdir)
@@ -179,7 +197,7 @@ def parse_stats(gcode: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------- mock
 
 def _run_mock(workdir: Path, models: list[Path], printer_model: str, filament: str,
-              overrides: dict[str, Any]) -> dict[str, Any]:   # per-object settings are not modelled by the mock
+              overrides: dict[str, Any], offset: tuple[float, float] | None = None) -> dict[str, Any]:   # per-object settings are not modelled by the mock
     """Perimeter-only slicer: good enough to drive and demo the G-code viewer."""
     lh = float(overrides.get("layer_height", 0.2))
     width = float(overrides.get("line_width", 0.42))
@@ -194,7 +212,7 @@ def _run_mock(workdir: Path, models: list[Path], printer_model: str, filament: s
         raise PlateOverflow("The parts do not all fit on one plate")
     mesh = trimesh.util.concatenate(meshes)
     mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2, 0, 0])
-    cx, cy = bed[0] / 2, bed[1] / 2
+    cx, cy = bed[0] / 2 + (offset[0] if offset else 0), bed[1] / 2 + (offset[1] if offset else 0)
     height = float(mesh.bounds[1][2])
     n_layers = max(1, int(math.ceil(height / lh)))
     zs = np.minimum((np.arange(n_layers) + 1) * lh, height) - lh / 2 + 1e-6

@@ -53,7 +53,7 @@ def start_slice(body: SliceIn, user: dict = User):
 
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
-    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset))
+    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset), tuple(body.position))
     if body.printer_id:
         chosen = next((c for c in ranked if c.printer_id == body.printer_id), None)
         if not chosen or not chosen.eligible:
@@ -68,7 +68,7 @@ def start_slice(body: SliceIn, user: dict = User):
     job_id = uuid.uuid4().hex[:12]
     workdir = files.create(JOBS, job_id)
     src = _source_file(body.model_id, user)
-    untransformed = tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0
+    untransformed = tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0 and not any(body.position)
     if untransformed and src.suffix == ".3mf":
         files.write_bytes(JOBS, job_id, "input.3mf", src.read_bytes())
         input_path = files.path(JOBS, job_id, "input.3mf")
@@ -98,7 +98,8 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
     # the plate is fixed by the assigned printer, so the sliced file always matches what is physically installed
     overrides = effective_overrides(body.preset, body.settings, bed_type)
     try:
-        result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides)
+        result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides,
+                            offset=tuple(body.position) if any(body.position) else None)
         if result.get("bundle"):
             thumbnail.maybe_add(files.path(JOBS, job_id, result["bundle"]), input_path)
         files.publish(JOBS, job_id)
@@ -202,13 +203,13 @@ def create_draft(body: DraftIn, user: dict = User):
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
     nozzle = preset_nozzle(body.preset)
-    if not forecast.eligible_printers(size, body.filament, nozzle):
-        why = sorted({b for c in assign.rank(_fleet(), size, body.filament, nozzle) for b in c.blockers if b != "Printer is offline"})
+    if not forecast.eligible_printers(size, body.filament, nozzle, tuple(body.position)):
+        why = sorted({b for c in assign.rank(_fleet(), size, body.filament, nozzle, tuple(body.position)) for b in c.blockers if b != "Printer is offline"})
         raise HTTPException(409, "No printer in the fleet can ever print this part. " + "; ".join(why))
     job_id = uuid.uuid4().hex[:12]
     files.create(JOBS, job_id)
     src = _source_file(body.model_id, user)
-    if tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0 and src.suffix == ".3mf":
+    if tuple(body.rotation) == (0, 0, 0) and body.scale == 1.0 and not any(body.position) and src.suffix == ".3mf":
         input_file = "input.3mf"
         files.write_bytes(JOBS, job_id, input_file, src.read_bytes())
     else:
@@ -221,7 +222,7 @@ def create_draft(body: DraftIn, user: dict = User):
         "owner_id": user["id"], "owner_email": user["email"], "printer_id": None, "printer_name": None, "printer_model": None,
         "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
         "input_file": input_file, "pickup_by": None, "submitted_at": None,
-        "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "filament": body.filament,
+        "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "position": list(body.position), "filament": body.filament,
                  "preset": body.preset, "settings": settings},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})

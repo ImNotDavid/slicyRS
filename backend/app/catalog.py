@@ -78,6 +78,12 @@ def preset_nozzle(preset_id: str | None) -> float:
     return next((p["nozzle"] for p in PROCESS_PRESETS if p["id"] == preset_id), DEFAULT_NOZZLE)
 
 
+def job_position(job: dict[str, Any]) -> tuple[float, float]:
+    """Where on the bed the job's part was placed by hand, as an offset (mm) from the bed centre. (0, 0) means "let the slicer place it"."""
+    p = (job.get("spec") or {}).get("position") or (0.0, 0.0)
+    return float(p[0]), float(p[1])
+
+
 def job_nozzle(job: dict[str, Any]) -> float:
     """The nozzle size a job needs, from its process preset (jobs made before nozzle sizes existed are 0.4 mm)."""
     return preset_nozzle((job.get("spec") or {}).get("preset") or job.get("preset"))

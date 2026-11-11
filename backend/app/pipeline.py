@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from . import jobstate, plates, printing, slicer, store, taskqueue, thumbnail
-from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS
+from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS, job_position
 from .storage import JOBS, files
 from .defaults import effective_overrides
 
@@ -64,7 +64,8 @@ def handle_slice(payload: dict[str, Any]) -> None:
     try:
         r = slicer.run(wd, inputs, job["printer_model"], spec["preset"], spec["filament"],
                        effective_overrides(spec["preset"], spec["settings"], job.get("bed_type") or DEFAULT_BED_TYPE),
-                       object_settings=[{}] + [m.get("plate_overrides") or {} for m in members])
+                       object_settings=[{}] + [m.get("plate_overrides") or {} for m in members],
+                       offset=job_position(job) if not members else None)
     except Exception as e:
         if (store.jobs.get(job["id"]) or {}).get("phase") == "slicing":
             if plates.drop_last(job["id"], f"the plate could not be sliced ({e})"):

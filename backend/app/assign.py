@@ -31,7 +31,14 @@ class Candidate:
         return self.__dict__.copy()
 
 
-def fits(bed: tuple[float, float, float], size: tuple[float, float, float]) -> bool:
+def fits(bed: tuple[float, float, float], size: tuple[float, float, float], offset: tuple[float, float] = (0.0, 0.0)) -> bool:
+    """Does the part fit the build volume? With an offset (a part placed by hand) the footprint must stay on the plate where it
+    was put and cannot be turned; without one the slicer may turn it to fit."""
+    if any(offset):
+        x, y, z = size
+        cx, cy = bed[0] / 2 + offset[0], bed[1] / 2 + offset[1]
+        m = BED_MARGIN_MM
+        return z <= bed[2] and cx - x / 2 >= m and cx + x / 2 <= bed[0] - m and cy - y / 2 >= m and cy + y / 2 <= bed[1] - m
     bx, by = (b - 2 * BED_MARGIN_MM for b in bed[:2])
     bz = bed[2]
     x, y, z = size
@@ -43,7 +50,8 @@ def nozzle_of(printer: dict[str, Any]) -> float:
     return float((printer.get("status") or {}).get("nozzle_mm") or printer.get("nozzle_mm") or DEFAULT_NOZZLE)
 
 
-def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> Candidate:
+def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE,
+             offset: tuple[float, float] = (0.0, 0.0)) -> Candidate:
     model = PRINTER_MODELS.get(printer["model"])
     c = Candidate(printer["id"], printer["name"], printer["model"], True)
     if model is None:
@@ -66,11 +74,13 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     elif SLICER_MODE == "orca" and not profiles.machine_name(model["machine"], nozzle):
         c.eligible = False
         c.blockers.append(f"The slicer has no profile for this printer with a {nozzle:g} mm nozzle")
-    if not fits(model["bed"], size):
+    if not fits(model["bed"], size, offset):
         c.eligible = False
-        c.blockers.append(
-            f"Part {size[0]:.0f}×{size[1]:.0f}×{size[2]:.0f} mm exceeds "
-            f"{model['bed'][0]}×{model['bed'][1]}×{model['bed'][2]} mm build volume")
+        if any(offset) and fits(model["bed"], size):
+            c.blockers.append(f"At the position you chose the part would hang off this printer's {model['bed'][0]}×{model['bed'][1]} mm plate")
+        else:
+            c.blockers.append(f"Part {size[0]:.0f}×{size[1]:.0f}×{size[2]:.0f} mm exceeds "
+                              f"{model['bed'][0]}×{model['bed'][1]}×{model['bed'][2]} mm build volume")
     if fil["enclosed"] and not model["enclosed"]:
         c.eligible = False
         c.blockers.append(f"{filament} needs an enclosed printer")
@@ -135,11 +145,13 @@ def _match_loaded(ams: list[dict[str, Any]], filament: str) -> int | None:
     return None
 
 
-def rank(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> list[Candidate]:
-    cands = [evaluate(p, size, filament, nozzle) for p in printers]
+def rank(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE,
+         offset: tuple[float, float] = (0.0, 0.0)) -> list[Candidate]:
+    cands = [evaluate(p, size, filament, nozzle, offset) for p in printers]
     return sorted(cands, key=lambda c: (not c.eligible, -c.score))
 
 
-def choose(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE) -> Candidate | None:
-    ranked = rank(printers, size, filament, nozzle)
+def choose(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE,
+           offset: tuple[float, float] = (0.0, 0.0)) -> Candidate | None:
+    ranked = rank(printers, size, filament, nozzle, offset)
     return ranked[0] if ranked and ranked[0].eligible else None
