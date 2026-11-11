@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Play, Printer as PrinterIcon,
+  AlertTriangle, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
 import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type ModelCheck, type Printer, type Transform, type User } from "./api";
 import Viewport from "./components/Viewport";
+import { TRAVEL, type FeatureInfo } from "./gcode";
 import SettingsPanel from "./components/SettingsPanel";
 import SavedPresets from "./components/SavedPresets";
 import FleetModal from "./components/FleetModal";
@@ -13,6 +14,8 @@ import JobsModal, { fmtTime } from "./components/JobsModal";
 import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
+const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
+const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1, position: [0, 0] };
 
 export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
@@ -25,6 +28,13 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [transform, setTransform] = useState<Transform>(IDENTITY);
   const [tool, setTool] = useState<"move" | "rotate" | "scale" | null>(null);
   const [pickFace, setPickFace] = useState(false);
+  const [showOverhang, setShowOverhang] = useState(false);
+  const [overhangPercent, setOverhangPercent] = useState<number | null>(null);
+  const [features, setFeatures] = useState<FeatureInfo[]>([]);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [travel, setTravel] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [goal, setGoal] = useState<string | null>("standard");
   const [goalNotes, setGoalNotes] = useState<string[]>([]);
   const [assignment, setAssignment] = useState<AssignResult | null>(null);
@@ -175,6 +185,25 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
   useEffect(() => { if (tool !== "rotate" || mode !== "prepare") setPickFace(false); }, [tool, mode]);
 
+  // a new G-code starts with everything shown and no playback
+  useEffect(() => { setHidden([]); setTravel(false); setProgress(null); setPlaying(false); }, [gcode]);
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0, last = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      setProgress((p) => {
+        const next = (p ?? 0) + dt / PLAY_SECONDS;
+        if (next >= 1) { setPlaying(false); return 1; }
+        return next;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
   const onLayerCount = useCallback((n: number) => { setLayerCount(n); setLayerRange([0, Math.max(0, n - 1)]); }, []);
 
   if (!catalog) return <div className="loading">{message?.text ?? "Loading…"}</div>;
@@ -224,6 +253,15 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
             {model.checks.map((c) => <p key={c.text} className={c.level === "warn" ? "form-error" : "muted"}>{c.level === "warn" ? "Check: " : ""}{c.text}</p>)}
           </div>
         ) : null}
+
+        {showOverhang && overhangPercent != null && mode === "prepare" && model && (
+          <div className="card checks" role="status">
+            <p className={overhangPercent >= 15 ? "form-error" : "muted"}>
+              {overhangPercent < 0.5 ? "No faces need support at this orientation (estimate)."
+                : `About ${Math.round(overhangPercent)}% of the surface will need support at this orientation (estimate, ${Number(settings.support_threshold_angle) || 45}° threshold, shown in red). The sliced preview shows the real supports.`}
+            </p>
+          </div>
+        )}
 
         <div className="card">
           <div className="printer-head">
@@ -302,6 +340,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
         <Viewport modelUrl={model ? modelUrl(model.id) : null} bed={bed} transform={transform} gcode={gcode} mode={mode}
           layerRange={layerRange} onLayerCount={onLayerCount} fitSignal={fitSignal}
           pickFace={pickFace} onPickFace={(n) => { setPickFace(false); orientTo("face", n); }}
+          overhangAngle={showOverhang && mode === "prepare" ? (Number(settings.support_threshold_angle) || 45) : null} onOverhang={setOverhangPercent}
+          hiddenFeatures={hidden} showTravel={travel} progress={progress} onFeatures={setFeatures}
           moveMode={tool === "move" && mode === "prepare"} onMove={(position) => setTransform((t) => ({ ...t, position }))} />
 
         <div className="mode-toggle">
@@ -323,6 +363,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
             <button title="Move" className={tool === "move" ? "on" : ""} onClick={() => setTool(tool === "move" ? null : "move")}><Move3d size={20} /></button>
             <button title="Rotate" className={tool === "rotate" ? "on" : ""} onClick={() => setTool(tool === "rotate" ? null : "rotate")}><RotateCw size={20} /></button>
             <button title="Scale" className={tool === "scale" ? "on" : ""} onClick={() => setTool(tool === "scale" ? null : "scale")}><Scaling size={20} /></button>
+            <button title="Show the faces that will need support (an estimate)" aria-pressed={showOverhang} className={showOverhang ? "on" : ""}
+              onClick={() => setShowOverhang(!showOverhang)}><AlertTriangle size={20} /></button>
             <button title="Reset view" onClick={() => setFitSignal((n) => n + 1)}><Maximize size={20} /></button>
             {tool === "move" && (
               <div className="popover">
@@ -365,6 +407,34 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
                   onChange={(e) => Number(e.target.value) > 0 && setTransform({ ...transform, scale: Number(e.target.value) / 100 })} /><span>%</span></label>
               </div>
             )}
+          </div>
+        )}
+
+        {mode === "preview" && gcode && features.length > 0 && (
+          <div className="gcode-panel" role="group" aria-label="G-code view">
+            <div className="playback">
+              <button className="mini" aria-label={playing ? "Pause playback" : "Play the print"} title={playing ? "Pause" : "Play the print layer by layer"}
+                onClick={() => { if (playing) { setPlaying(false); } else { if (progress == null || progress >= 1) setProgress(0); setPlaying(true); } }}>
+                {playing ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <input type="range" min={0} max={1000} value={Math.round((progress ?? 1) * 1000)} aria-label="Playback position"
+                onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value) / 1000); }} />
+              <button className="mini" disabled={progress == null} onClick={() => { setPlaying(false); setProgress(null); }}>All</button>
+            </div>
+            <ul className="legend">
+              {features.filter((f) => f.name !== TRAVEL).map((f) => (
+                <li key={f.name}>
+                  <label>
+                    <input type="checkbox" checked={!hidden.includes(f.name)}
+                      onChange={(e) => setHidden(e.target.checked ? hidden.filter((h) => h !== f.name) : [...hidden, f.name])} />
+                    <i style={{ background: hex(f.color) }} />{f.name}
+                  </label>
+                </li>
+              ))}
+              {features.some((f) => f.name === TRAVEL) && (
+                <li><label><input type="checkbox" checked={travel} onChange={(e) => setTravel(e.target.checked)} /><i style={{ background: hex(features.find((f) => f.name === TRAVEL)!.color) }} />Travel moves</label></li>
+              )}
+            </ul>
           </div>
         )}
 

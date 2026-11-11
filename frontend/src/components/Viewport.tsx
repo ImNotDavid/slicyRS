@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { Transform } from "../api";
-import { parseGcode, type GcodeLayers } from "../gcode";
+import { parseGcode, type FeatureInfo, type GcodeLayers } from "../gcode";
 import { buildTopology, faceRegion, regionNormal, type Topology } from "../faceRegion";
+import { overhangTriangles } from "../overhang";
 
 type Props = {
   modelUrl: string | null;
@@ -17,6 +18,12 @@ type Props = {
   fitSignal: number;
   pickFace?: boolean;                                        // hover highlights the flat face under the cursor; a click picks it
   onPickFace?: (normal: [number, number, number]) => void;  // outward normal of the picked face, in the model's own frame
+  overhangAngle?: number | null;                             // highlight faces that need support at this threshold angle; null = off
+  onOverhang?: (percent: number | null) => void;             // share of the surface highlighted
+  hiddenFeatures?: string[];                                 // G-code feature types switched off in the legend
+  showTravel?: boolean;                                      // draw non-printing moves
+  progress?: number | null;                                  // 0..1 playback position through the visible layers; null shows everything
+  onFeatures?: (features: FeatureInfo[]) => void;            // what the loaded G-code contains
   moveMode?: boolean;                                        // dragging the part moves it on the bed
   onMove?: (position: [number, number]) => void;             // new offset (mm) from the middle of the bed
 };
@@ -27,6 +34,11 @@ export default function Viewport(p: Props) {
   bedRef.current = p.bed;
   const onPickRef = useRef(p.onPickFace);
   onPickRef.current = p.onPickFace;
+  const [loaded, setLoaded] = useState(0);        // counts model loads, so effects that need the geometry run after it arrives
+  const onOverhangRef = useRef(p.onOverhang);
+  onOverhangRef.current = p.onOverhang;
+  const filterRef = useRef({ hidden: p.hiddenFeatures ?? [], travel: !!p.showTravel });
+  filterRef.current = { hidden: p.hiddenFeatures ?? [], travel: !!p.showTravel };
   const onMoveRef = useRef(p.onMove);
   onMoveRef.current = p.onMove;
   const posRef = useRef(p.transform.position);
@@ -112,6 +124,7 @@ export default function Viewport(p: Props) {
       t.model = mesh;
       t.scene.add(mesh);
       place(mesh, p.transform, p.bed);
+      setLoaded((n) => n + 1);
     });
     return () => { cancelled = true; };
   }, [p.modelUrl]);
@@ -121,6 +134,23 @@ export default function Viewport(p: Props) {
     const m = three.current?.model;
     if (m) place(m, p.transform, p.bed);
   }, [p.transform, p.bed]);
+
+  // faces that will need support at the current orientation (an estimate, drawn on the model)
+  useEffect(() => {
+    const m = three.current?.model;
+    if (p.overhangAngle == null || !m) { onOverhangRef.current?.(null); return; }
+    const r = overhangTriangles(m.geometry.getAttribute("position").array, p.transform.rotation, p.transform.scale, p.overhangAngle);
+    const src = m.geometry.getAttribute("position").array as Float32Array;
+    const out = new Float32Array(r.triangles.length * 9);
+    r.triangles.forEach((tri, i) => out.set(src.subarray(tri * 9, tri * 9 + 9), i * 9));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(out, 3));
+    const overlay = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xe53935, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+    m.add(overlay);
+    onOverhangRef.current?.(r.percent);
+    return () => { m.remove(overlay); g.dispose(); };
+  }, [p.overhangAngle, p.transform.rotation[0], p.transform.rotation[1], p.transform.rotation[2], p.transform.scale, p.modelUrl, loaded]);
 
   // drag the part across the bed
   useEffect(() => {
@@ -244,21 +274,37 @@ export default function Viewport(p: Props) {
     if (t.gcode) { t.scene.remove(t.gcode.group); t.gcode = undefined; }
     if (!p.gcode) { p.onLayerCount(0); return; }
     const parsed = parseGcode(p.gcode);
+    parsed.apply(new Set(filterRef.current.hidden), filterRef.current.travel);
     t.gcode = parsed;
+    p.onFeatures?.(parsed.features);
     t.scene.add(parsed.group);
     p.onLayerCount(parsed.layers.length);
   }, [p.gcode]);
 
-  // mode + layer range visibility
+  // which features are drawn: rebuilt only when the legend changes
+  useEffect(() => {
+    three.current?.gcode?.apply(new Set(p.hiddenFeatures ?? []), !!p.showTravel);
+  }, [p.hiddenFeatures, p.showTravel, p.gcode]);
+
+  // mode, layer range and playback visibility (runs after the features above, so draw ranges see the new segment counts)
   useEffect(() => {
     const t = three.current!;
     const preview = p.mode === "preview" && !!t.gcode;
     if (t.model) t.model.visible = !preview;
-    if (t.gcode) {
-      t.gcode.group.visible = preview;
-      t.gcode.layers.forEach((l, i) => { l.visible = i >= p.layerRange[0] && i <= p.layerRange[1]; });
-    }
-  }, [p.mode, p.layerRange, p.gcode]);
+    const g = t.gcode;
+    if (!g) return;
+    g.group.visible = preview;
+    const [lo, hi] = p.layerRange;
+    const reach = p.progress == null ? Infinity : p.progress * (hi - lo + 1);       // layers (and part of one) reached by the playback
+    g.layers.forEach((l, i) => {
+      const n = g.visibleSegments(i);
+      const inRange = i >= lo && i <= hi && n > 0;
+      const into = i - lo;
+      if (!inRange || into >= reach) { l.visible = false; return; }
+      l.visible = true;
+      l.geometry.setDrawRange(0, into + 1 <= reach ? Infinity : Math.max(2, Math.ceil((reach - into) * n)) * 2);
+    });
+  }, [p.mode, p.layerRange, p.gcode, p.hiddenFeatures, p.showTravel, p.progress]);
 
   // reset camera
   useEffect(() => {

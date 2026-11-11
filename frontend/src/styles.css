@@ -286,3 +286,11 @@ ul.history { margin: 4px 0 0; padding-left: 18px; }
 .saved-row select { flex: 1; min-width: 0; }
 .saved-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
 .saved-form input[type="text"], .saved-form input:not([type]) { padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.gcode-panel { position: absolute; left: 16px; top: 16px; width: 220px; max-height: calc(100% - 120px); overflow: auto; background: var(--surface);
+  border-radius: 8px; box-shadow: 0 1px 6px rgb(0 0 0 / 0.2); padding: 10px 12px; z-index: 4; display: flex; flex-direction: column; gap: 8px; }
+.gcode-panel .playback { display: flex; align-items: center; gap: 6px; }
+.gcode-panel .playback input[type="range"] { flex: 1; min-width: 0; }
+.gcode-panel .playback .mini { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; }
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.legend label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid rgb(0 0 0 / 0.2); }
