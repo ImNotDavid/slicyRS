@@ -3,7 +3,9 @@ import {
   AlertTriangle, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
-import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type ModelCheck, type Printer, type Transform, type User } from "./api";
+import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type Printer, type Transform, type User } from "./api";
+import { IDENTITY, MAX_PARTS, newPart, payload, plateSpec, type Part } from "./plate";
+import PartsPanel from "./components/PartsPanel";
 import Viewport from "./components/Viewport";
 import { TRAVEL, type FeatureInfo } from "./gcode";
 import SettingsPanel from "./components/SettingsPanel";
@@ -16,16 +18,24 @@ import SubmitModal from "./components/SubmitModal";
 type Value = number | string | boolean;
 const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
-const IDENTITY: Transform = { rotation: [0, 0, 0], scale: 1, position: [0, 0] };
 
 export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
-  const [model, setModel] = useState<{ id: string; name: string; dims: [number, number, number]; checks?: ModelCheck[] } | null>(null);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [overlapPairs, setOverlapPairs] = useState<[string, string][]>([]);
   const [filament, setFilament] = useState("PLA");
   const [preset, setPreset] = useState("0.20mm Standard");
   const [settings, setSettings] = useState<Record<string, Value>>({});
-  const [transform, setTransform] = useState<Transform>(IDENTITY);
+  // the tools act on the selected part; the rest of the app reads it as "the model" and "its transform"
+  const selectedPart = parts.find((p) => p.uid === selectedUid) ?? parts[0] ?? null;
+  const model = selectedPart?.model ?? null;
+  const transform = selectedPart?.transform ?? IDENTITY;
+  const setTransform = (t: Transform | ((t: Transform) => Transform)) =>
+    setParts((ps) => ps.map((p) => (p.uid === selectedPart?.uid ? { ...p, transform: typeof t === "function" ? t(p.transform) : t } : p)));
+  const viewParts = useMemo(() => parts.map((p) => ({ uid: p.uid, url: modelUrl(p.model.id), transform: p.transform })), [parts]);
+  const plateName = parts.length > 1 ? `${parts[0].model.name} + ${parts.length - 1} more` : parts[0]?.model.name ?? "No file";
   const [tool, setTool] = useState<"move" | "rotate" | "scale" | null>(null);
   const [pickFace, setPickFace] = useState(false);
   const [showOverhang, setShowOverhang] = useState(false);
@@ -52,6 +62,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const addInput = useRef<HTMLInputElement>(null);
 
   const refreshPrinters = useCallback(() => api.printers().then(setPrinters).catch(() => {}), []);
 
@@ -95,15 +106,15 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   // Re-run printer assignment whenever the part, material, transform or fleet changes.
   const fleetKey = JSON.stringify(printers.map((p) => [p.id, p.status.state, p.queue_depth, p.status.ams]));
   useEffect(() => {
-    if (!model) { setAssignment(null); return; }
+    if (!parts.length) { setAssignment(null); return; }
     const t = setTimeout(() => {
-      api.assign(model.id, filament, transform, nozzle).then(setAssignment).catch((e) => setMessage({ kind: "error", text: e.message }));
+      api.assign(plateSpec(parts), filament, nozzle).then(setAssignment).catch((e) => setMessage({ kind: "error", text: e.message }));
     }, 200);
     return () => clearTimeout(t);
-  }, [model, filament, transform, fleetKey, nozzle]);
+  }, [parts, filament, fleetKey, nozzle]);
 
   // Any input change invalidates the previous slice.
-  useEffect(() => { setJob(null); setGcode(null); setMode("prepare"); }, [model, filament, preset, settings, transform, manualPrinter]);
+  useEffect(() => { setJob(null); setGcode(null); setMode("prepare"); }, [parts, filament, preset, settings, manualPrinter]);
 
   const chosenId = manualPrinter || assignment?.chosen || "";
   const chosen = assignment?.candidates.find((c) => c.printer_id === chosenId);
@@ -112,13 +123,55 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     () => (chosenPrinter && catalog ? catalog.printer_models[chosenPrinter.model].bed : [256, 256, 256]),
     [chosenPrinter, catalog]);
 
-  const upload = async (file: File) => {
+  const upload = async (file: File) => {                       // opening a file starts a new plate with that one part
     setBusy(true); setMessage(null);
     try {
-      const m = await api.upload(file);
-      setTransform(IDENTITY); setManualPrinter(""); setModel(m);
+      const p = newPart(await api.upload(file));
+      setParts([p]); setSelectedUid(p.uid); setManualPrinter("");
     } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
     setBusy(false);
+  };
+
+  // the printer model the slicer lays the plate out for: the chosen printer, else the smallest bed in the fleet (so the layout fits all of them)
+  const layoutPrinterModel = (): string => {
+    if (chosenPrinter) return chosenPrinter.model;
+    const beds = printers.filter((p) => p.enabled && catalog?.printer_models[p.model]).map((p) => ({ m: p.model, a: catalog!.printer_models[p.model].bed }));
+    beds.sort((x, y) => x.a[0] * x.a[1] - y.a[0] * y.a[1]);
+    return beds[0]?.m ?? "X1C";
+  };
+  const arrangeAll = async (list: Part[]) => {
+    if (list.length < 2) { setParts(list); return; }
+    setBusy(true);
+    try {
+      const r = await api.arrange(list.map(payload), layoutPrinterModel(), filament, preset);
+      setParts(list.map((p, i) => ({ ...p, transform: { ...p.transform, position: r.parts[i].position,
+        rotation: [p.transform.rotation[0], p.transform.rotation[1], (((p.transform.rotation[2] + r.parts[i].rotation_z) % 360) + 360) % 360] as [number, number, number] } })));
+    } catch (e) {
+      setParts(list);
+      setMessage({ kind: "error", text: (e as Error).message });
+    }
+    setBusy(false);
+  };
+  const addPart = async (file: File) => {
+    if (parts.length >= MAX_PARTS) { setMessage({ kind: "error", text: `A plate holds at most ${MAX_PARTS} parts` }); return; }
+    setBusy(true); setMessage(null);
+    try {
+      const p = newPart(await api.upload(file));
+      setBusy(false);
+      setSelectedUid(p.uid);
+      await arrangeAll([...parts, p]);
+    } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); setBusy(false); }
+  };
+  const addCopies = async (uid: string, count: number) => {
+    const src = parts.find((p) => p.uid === uid);
+    if (!src) return;
+    const copies = Array.from({ length: Math.min(count, MAX_PARTS - parts.length) }, () => newPart(src.model, { ...src.transform }));
+    await arrangeAll([...parts, ...copies]);
+  };
+  const removePart = (uid: string) => {
+    const rest = parts.filter((p) => p.uid !== uid);
+    setParts(rest);
+    if (selectedUid === uid) setSelectedUid(rest[0]?.uid ?? null);
   };
 
   const openJob = async (j: Job) => {
@@ -132,7 +185,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     if (!model) return;
     setBusy(true); setMessage(null);
     try {
-      let j = await api.slice({ model_id: model.id, filament, preset, settings, printer_id: manualPrinter || undefined, ...transform });
+      let j = await api.slice({ ...plateSpec(parts), filament, preset, settings, printer_id: manualPrinter || undefined });
       setJob(j);
       while (j.state === "slicing") {
         await new Promise((r) => setTimeout(r, 800));
@@ -213,8 +266,9 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
   return (
     <div className="app" onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) upload(f); }}>
-      <input ref={fileInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) (parts.length ? addPart(f) : upload(f)); }}>
+      <input ref={fileInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
+      <input ref={addInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) addPart(f); }} />
 
       <nav className="rail">
         <div className="logo" aria-label="slicyRS">SP</div>
@@ -247,6 +301,11 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
       <aside className="panel">
         <div className="card select-card"><span className="engine">{catalog.engine}</span><ChevronDown size={18} /></div>
+
+        {parts.length > 0 && (
+          <PartsPanel parts={parts} selectedUid={selectedPart?.uid ?? null} overlapping={overlapPairs} busy={busy} onSelect={setSelectedUid} onRemove={removePart}
+            onAdd={() => addInput.current?.click()} onArrange={() => arrangeAll(parts)} onCopies={addCopies} />
+        )}
 
         {model?.checks?.length ? (
           <div className="card checks" aria-label="Checks on the uploaded model">
@@ -337,19 +396,20 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
       </aside>
 
       <main className="viewport">
-        <Viewport modelUrl={model ? modelUrl(model.id) : null} bed={bed} transform={transform} gcode={gcode} mode={mode}
+        <Viewport parts={viewParts} selectedUid={selectedPart?.uid ?? null} onSelect={setSelectedUid} onOverlap={setOverlapPairs} bed={bed} gcode={gcode} mode={mode}
           layerRange={layerRange} onLayerCount={onLayerCount} fitSignal={fitSignal}
           pickFace={pickFace} onPickFace={(n) => { setPickFace(false); orientTo("face", n); }}
           overhangAngle={showOverhang && mode === "prepare" ? (Number(settings.support_threshold_angle) || 45) : null} onOverhang={setOverhangPercent}
           hiddenFeatures={hidden} showTravel={travel} progress={progress} onFeatures={setFeatures}
-          moveMode={tool === "move" && mode === "prepare"} onMove={(position) => setTransform((t) => ({ ...t, position }))} />
+          moveMode={tool === "move" && mode === "prepare"}
+          onMove={(uid, position) => setParts((ps) => ps.map((x) => (x.uid === uid ? { ...x, transform: { ...x.transform, position } } : x)))} />
 
         <div className="mode-toggle">
           <button className={mode === "prepare" ? "btn primary" : "btn"} onClick={() => setMode("prepare")}>PREPARE</button>
           <button className={mode === "preview" ? "btn primary" : "btn"} disabled={!gcode} onClick={() => setMode("preview")}>PREVIEW</button>
         </div>
 
-        {!model && (
+        {!parts.length && (
           <div className="empty">
             <button className="btn primary big" onClick={() => fileInput.current?.click()} disabled={busy}>
               {busy ? "Uploading…" : "Open a model"}
@@ -376,10 +436,11 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
                   </label>
                 ))}
                 <div className="actions">
-                  <button className="mini" disabled={!transform.position[0] && !transform.position[1]} title="Let the slicer place the part (the middle of the bed)"
-                    onClick={() => { setTransform({ ...transform, position: [0, 0] }); setMessage({ kind: "ok", text: "The slicer will place the part" }); }}>Auto-arrange</button>
+                  <button className="mini" disabled={busy || (parts.length === 1 && !transform.position[0] && !transform.position[1])}
+                    title={parts.length > 1 ? "Let the slicer lay out every part" : "Let the slicer place the part (the middle of the bed)"}
+                    onClick={() => { if (parts.length > 1) arrangeAll(parts); else { setTransform({ ...transform, position: [0, 0] }); setMessage({ kind: "ok", text: "The slicer will place the part" }); } }}>Auto-arrange{parts.length > 1 ? " all" : ""}</button>
                 </div>
-                <p className="hint">Drag the part on the bed, or type a position. 0, 0 is the middle of the bed; the part stays where you put it.</p>
+                <p className="hint">Drag a part on the bed, or type a position for the selected one. 0, 0 is the middle of the bed; parts stay where you put them and stop at their neighbours.</p>
               </div>
             )}
             {tool === "rotate" && (
@@ -469,19 +530,19 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
         )}
 
         <div className="bottombar">
-          <span className="filename">{model?.name ?? "No file"}</span>
+          <span className="filename">{plateName}</span>
           <a className={"btn" + (ready ? "" : " disabled")} href={ready ? gcodeUrl(job!.id) : undefined} aria-label="Download G-code" title="Download G-code"><Download size={16} /></a>
-          <button className="btn primary" disabled={!model || busy || !assignment?.chosen && !manualPrinter} onClick={slice}>
+          <button className="btn primary" disabled={!model || busy || overlapPairs.length > 0 || !assignment?.chosen && !manualPrinter} onClick={slice}>
             <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
           </button>
           <button className="btn dark" disabled={!ready || job?.queued} onClick={queue}>QUEUE</button>
-          <button className="btn" disabled={!model || busy} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
+          <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
           <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
         </div>
       </main>
 
       {modal === "fleet" && <FleetModal printers={printers} onClose={() => setModal(null)} onChanged={refreshPrinters} />}
-      {modal === "submit" && model && <SubmitModal spec={{ model_id: model.id, filament, preset, settings, ...transform }} onClose={() => setModal(null)}
+      {modal === "submit" && model && <SubmitModal spec={{ ...plateSpec(parts), filament, preset, settings }} onClose={() => setModal(null)}
         onDone={(j) => {
           setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
       {modal === "admin" && isAdmin && <AdminModal catalog={catalog} me={user} onClose={() => setModal(null)} onPrintersChanged={refreshPrinters} />}

@@ -78,6 +78,9 @@ export type Stats = {
 export type SavedPreset = { id: string; name: string; scope: "user" | "shared"; owner_email: string; preset: string; filament: string; settings: Record<string, number | string | boolean> };
 export type ModelCheck = { level: "info" | "warn"; text: string };
 export type Transform = { rotation: [number, number, number]; scale: number; position: [number, number] };   // position: mm from the middle of the bed
+export type PartPayload = { model_id: string } & Transform;
+// What a request says about its part or parts: one model with its transform, or a plate of several parts, each with its own place.
+export type PlateSpec = ({ model_id: string } & Transform) | { parts: PartPayload[] };
 
 async function j<T>(res: Response): Promise<T> {
   if (res.status === 401 && !res.url.includes("/auth/")) window.dispatchEvent(new Event("auth-expired"));
@@ -128,11 +131,13 @@ export const api = {
   },
   orient: (model_id: string, mode: "flat" | "auto" | "face", normal?: [number, number, number]) =>
     post(`/api/models/${model_id}/orient`, { mode, normal }).then(j<{ rotation: [number, number, number]; dims: [number, number, number]; before: { overhang_percent: number }; after: { overhang_percent: number; contact_mm2: number } }>),
-  assign: (model_id: string, filament: string, t: Transform, nozzle_mm: number) =>
-    post("/api/assign", { model_id, filament, nozzle_mm, ...t }).then(j<AssignResult>),
-  slice: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string } & Transform) =>
+  assign: (plate: PlateSpec, filament: string, nozzle_mm: number) =>
+    post("/api/assign", { ...plate, filament, nozzle_mm }).then(j<AssignResult>),
+  arrange: (parts: PartPayload[], printer_model: string, filament: string, preset: string) =>
+    post("/api/plate/arrange", { parts, printer_model, filament, preset }).then(j<{ parts: { position: [number, number]; rotation_z: number }[] }>),
+  slice: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string }) =>
     post("/api/slice", body).then(j<Job>),
-  draft: (body: { model_id: string; filament: string; preset: string; settings: Record<string, unknown> } & Transform) =>
+  draft: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown> }) =>
     post("/api/jobs/preview", body).then(j<Job>),
   forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
   submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean }) => {

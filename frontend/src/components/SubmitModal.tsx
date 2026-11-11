@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { api, type Forecast, type Job, type Transform } from "../api";
+import { api, type Forecast, type Job, type PlateSpec } from "../api";
 import { fmtTime } from "./JobsModal";
 
 type Props = {
-  spec: { model_id: string; filament: string; preset: string; settings: Record<string, unknown> } & Transform;
+  spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown> };
   onClose: () => void; onDone: (j: Job) => void;
 };
 

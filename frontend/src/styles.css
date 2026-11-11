@@ -294,3 +294,18 @@ ul.history { margin: 4px 0 0; padding-left: 18px; }
 .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
 .legend label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .legend i { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid rgb(0 0 0 / 0.2); }
+.parts { display: flex; flex-direction: column; gap: 8px; }
+.parts-head { display: flex; align-items: center; gap: 6px; }
+.parts-head .grow { flex: 1; }
+.parts-head .mini { display: inline-flex; align-items: center; gap: 4px; }
+.part-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow: auto; }
+.part-list li { display: flex; align-items: center; gap: 4px; border-radius: 6px; border: 1px solid transparent; }
+.part-list li.on { border-color: var(--brand-primary); background: var(--surface-2); }
+.part-list li.clash { border-color: var(--danger); }
+.part-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 5px 6px; text-align: left; }
+.part-row .n { flex: none; width: 18px; height: 18px; border-radius: 9px; background: var(--surface-2); font-size: 11px; display: grid; place-items: center; }
+.part-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.part-row .dims { flex: none; font-size: 11px; }
+.copies { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.copies label { display: flex; align-items: center; gap: 8px; flex: 1; }
+.copies input { width: 54px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
