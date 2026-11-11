@@ -49,15 +49,22 @@ def process_config(printer_model: str, preset: str, overrides: dict[str, Any]) -
 
 def run(workdir: Path, model_path: Path | list[Path], printer_model: str, preset: str, filament: str,
         overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None,
-        offset: tuple[float, float] | None = None) -> dict[str, Any]:
+        offset: tuple[float, float] | None = None,
+        placements: list[tuple[Path, tuple[float, float]]] | None = None, rearrange: bool = False) -> dict[str, Any]:
     """Slice one model, or several that share a plate (the slicer arranges them). `object_settings` gives each of several
     models its own settings on top of the plate's (the same order as the models). `offset` places a single model by hand: its
-    centre goes that many mm from the middle of the printer's bed, and the slicer does not move it."""
+    centre goes that many mm from the middle of the printer's bed, and the slicer does not move it. `placements` does the same
+    for several models, each with its own offset (a plate laid out in the editor); with `rearrange` the slicer may still move them
+    (a preview does not know which printer's bed the plate was laid out for)."""
     workdir.mkdir(parents=True, exist_ok=True)
     models = list(model_path) if isinstance(model_path, (list, tuple)) else [model_path]
+    if placements is None and offset and any(offset) and len(models) == 1:
+        placements = [(models[0], tuple(offset))]
+    if placements:
+        models = [p for p, _ in placements]
     if SLICER_MODE == "orca":
-        return _run_orca(workdir, models, printer_model, preset, filament, overrides, object_settings, offset)
-    return _run_mock(workdir, models, printer_model, filament, overrides, offset)
+        return _run_orca(workdir, models, printer_model, preset, filament, overrides, object_settings, placements, rearrange)
+    return _run_mock(workdir, models, printer_model, filament, overrides, None if rearrange else placements)
 
 
 # ---------------------------------------------------------------- OrcaSlicer
@@ -83,21 +90,21 @@ def _plate_3mf(workdir: Path, models: list[Path], object_settings: list[dict[str
     return out
 
 
-def _placed_3mf(workdir: Path, model: Path, bed: tuple[float, float, float], offset: tuple[float, float]) -> Path:
-    """A 3MF holding the model with its centre at (bed middle + offset), sitting on the bed; used with the slicer's arrange switched off."""
-    mesh = load_mesh(model)
-    lo, hi = mesh.bounds
-    mesh.apply_translation([bed[0] / 2 + offset[0] - (lo[0] + hi[0]) / 2, bed[1] / 2 + offset[1] - (lo[1] + hi[1]) / 2, -lo[2]])
+def _placed_3mf(workdir: Path, placements: list[tuple[Path, tuple[float, float]]], bed: tuple[float, float, float]) -> Path:
+    """A 3MF holding each model with its centre at (bed middle + its offset), sitting on the bed; used with the slicer's arrange
+    switched off. The same file may appear more than once (copies)."""
     scene = trimesh.Scene()
-    scene.add_geometry(mesh, node_name="part", geom_name="part")
+    for i, (path, offset) in enumerate(placements):
+        mesh = load_mesh(path)
+        lo, hi = mesh.bounds
+        mesh.apply_translation([bed[0] / 2 + offset[0] - (lo[0] + hi[0]) / 2, bed[1] / 2 + offset[1] - (lo[1] + hi[1]) / 2, -lo[2]])
+        scene.add_geometry(mesh, node_name=f"part{i + 1}", geom_name=f"part{i + 1}")
     out = workdir / "placed.3mf"
     scene.export(str(out), file_type="3mf")
     return out
 
 
-def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
-              overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None,
-              offset: tuple[float, float] | None = None) -> dict[str, Any]:
+def _write_settings(workdir: Path, printer_model: str, preset: str, filament: str, overrides: dict[str, Any]) -> tuple[Path, Path, Path]:
     pm = PRINTER_MODELS[printer_model]
     nozzle = preset_nozzle(preset)
     machine = profiles.machine_name(pm["machine"], nozzle)
@@ -120,16 +127,24 @@ def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str
     machine_file.write_text(json.dumps(machine_json))
     process_file.write_text(json.dumps(process_json))
     fil_file.write_text(json.dumps(fil_json))
+    return machine_file, process_file, fil_file
 
+
+def _run_orca(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str,
+              overrides: dict[str, Any], object_settings: list[dict[str, Any]] | None = None,
+              placements: list[tuple[Path, tuple[float, float]]] | None = None, rearrange: bool = False) -> dict[str, Any]:
+    pm = PRINTER_MODELS[printer_model]
+    machine_file, process_file, fil_file = _write_settings(workdir, printer_model, preset, filament, overrides)
     out = workdir / "out"
     out.mkdir(exist_ok=True)
     n_models = len(models)
-    placed = bool(offset and any(offset) and n_models == 1)
+    placed = bool(placements)
     if placed:
-        models = [_placed_3mf(workdir, models[0], pm["bed"], offset)]
+        models = [_placed_3mf(workdir, placements, pm["bed"])]
+        n_models = len(placements)
     if object_settings and n_models > 1 and any(object_settings):
         models = [_plate_3mf(workdir, models, object_settings)]
-    cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "0" if placed else "1",
+    cmd = [*_orca_cmd(), "--slice", "0", "--arrange", "0" if placed and not rearrange else "1",
            "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
            "--outputdir", str(out), "--export-3mf", "sliced.gcode.3mf", *[str(m.resolve()) for m in models]]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SLICE_TIMEOUT_S, cwd=workdir)
@@ -194,25 +209,107 @@ def parse_stats(gcode: Path) -> dict[str, Any]:
     return stats
 
 
+# ------------------------------------------------------------------- arrange
+
+def arrange(workdir: Path, models: list[Path], printer_model: str, preset: str, filament: str) -> list[dict[str, Any]]:
+    """The slicer's own arrangement of these parts on the printer's bed, without slicing. Each part is taken as it is (centred on its
+    own origin, standing on the bed); the answer, in the same order, is where its centre goes (mm from the middle of the bed) and the
+    turn about the vertical axis (degrees, counter-clockwise) the slicer gave it to pack tighter. Raises PlateOverflow if they do not fit."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    bed = PRINTER_MODELS[printer_model]["bed"]
+    if SLICER_MODE != "orca":
+        return _arrange_mock(models, bed)
+    machine_file, process_file, fil_file = _write_settings(workdir, printer_model, preset, filament, {})
+    scene = trimesh.Scene()
+    for i, path in enumerate(models):
+        mesh = load_mesh(path)
+        lo, hi = mesh.bounds
+        mesh.apply_translation([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]])
+        scene.add_geometry(mesh, node_name=f"p{i}", geom_name=f"p{i}")
+    src = workdir / "arrange_in.3mf"
+    scene.export(str(src), file_type="3mf")
+    out = workdir / "arranged"
+    out.mkdir(exist_ok=True)
+    cmd = [*_orca_cmd(), "--arrange", "1", "--load-settings", f"{machine_file};{process_file}", "--load-filaments", str(fil_file),
+           "--outputdir", str(out), "--export-3mf", "arranged.3mf", str(src.resolve())]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SLICE_TIMEOUT_S, cwd=workdir)
+    result = out / "arranged.3mf"
+    if proc.returncode != 0 or not result.exists():
+        raise SliceError(_failure_reason(proc, out))
+    with zipfile.ZipFile(result) as z:
+        model = z.read("3D/3dmodel.model").decode("utf-8", "ignore")
+        config = z.read("Metadata/model_settings.config").decode("utf-8", "ignore")
+    names = {}
+    for m in re.finditer(r'<object id="(\d+)">(.*?)</object>', config, re.S):
+        if n := re.search(r'key="name" value="p(\d+)"', m.group(2)):
+            names[m.group(1)] = int(n.group(1))
+    placed: dict[int, dict[str, Any]] = {}
+    for m in re.finditer(r'<item objectid="(\d+)"[^>]*?transform="([^"]+)"', model):
+        t = [float(v) for v in m.group(2).split()]
+        idx = names.get(m.group(1))
+        if idx is None or len(t) != 12:
+            continue
+        # 3MF stores a row-vector matrix: the part's x axis lands on (t[0], t[1]); its old centre lands on (t[9], t[10]). A turned part's
+        # bounding box is centred somewhere else, and that centre is what an offset means here, so shift by how far it moved.
+        theta = math.atan2(t[1], t[0])
+        v = load_mesh(models[idx]).vertices[:, :2]
+        v = v - (v.min(axis=0) + v.max(axis=0)) / 2
+        c, s = math.cos(theta), math.sin(theta)
+        w = v @ np.array([[c, s], [-s, c]])
+        shift = (w.min(axis=0) + w.max(axis=0)) / 2
+        placed[idx] = {"position": [round(t[9] - bed[0] / 2 + shift[0], 2), round(t[10] - bed[1] / 2 + shift[1], 2)],
+                       "rotation_z": round(math.degrees(theta), 2)}
+    if len(placed) != len(models):
+        raise SliceError("The slicer could not place every part on one plate")
+    return [placed[i] for i in range(len(models))]
+
+
+def _arrange_mock(models: list[Path], bed: tuple[float, float, float]) -> list[dict[str, Any]]:
+    """Mock arrange: rows of parts, never turned, 6 mm apart (the real slicer packs tighter and may turn parts)."""
+    gap, margin = 6.0, 5.0
+    x = y = row = 0.0
+    out = []
+    for path in models:
+        lo, hi = load_mesh(path).bounds
+        w, d = hi[0] - lo[0], hi[1] - lo[1]
+        if x + w > bed[0] - 2 * margin and x > 0:
+            x, y, row = 0.0, y + row + gap, 0.0
+        if y + d > bed[1] - 2 * margin or w > bed[0] - 2 * margin:
+            raise PlateOverflow("The parts do not all fit on one plate")
+        out.append({"position": [round(margin + x + w / 2 - bed[0] / 2, 2), round(margin + y + d / 2 - bed[1] / 2, 2)], "rotation_z": 0.0})
+        x += w + gap
+        row = max(row, d)
+    return out
+
+
 # ---------------------------------------------------------------------- mock
 
 def _run_mock(workdir: Path, models: list[Path], printer_model: str, filament: str,
-              overrides: dict[str, Any], offset: tuple[float, float] | None = None) -> dict[str, Any]:   # per-object settings are not modelled by the mock
+              overrides: dict[str, Any], placements: list[tuple[Path, tuple[float, float]]] | None = None) -> dict[str, Any]:   # per-object settings are not modelled by the mock
     """Perimeter-only slicer: good enough to drive and demo the G-code viewer."""
     lh = float(overrides.get("layer_height", 0.2))
     width = float(overrides.get("line_width", 0.42))
     speed = float(overrides.get("outer_wall_speed", 200))
     bed = PRINTER_MODELS[printer_model]["bed"]
-    meshes = [load_mesh(m) for m in models]
-    x = 0.0                                   # mock arrange: parts side by side along X, 10 mm apart
-    for mesh in meshes:
-        mesh.apply_translation([x - mesh.bounds[0][0], -(mesh.bounds[0][1] + mesh.bounds[1][1]) / 2, -mesh.bounds[0][2]])
-        x = mesh.bounds[1][0] + 10
-    if len(meshes) > 1 and x - 10 > bed[0]:
-        raise PlateOverflow("The parts do not all fit on one plate")
-    mesh = trimesh.util.concatenate(meshes)
-    mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2, 0, 0])
-    cx, cy = bed[0] / 2 + (offset[0] if offset else 0), bed[1] / 2 + (offset[1] if offset else 0)
+    if placements:                            # laid out by hand: each centre is that far from the middle of the bed
+        meshes = []
+        for path, off in placements:
+            m = load_mesh(path)
+            lo, hi = m.bounds
+            m.apply_translation([off[0] - (lo[0] + hi[0]) / 2, off[1] - (lo[1] + hi[1]) / 2, -lo[2]])
+            meshes.append(m)
+        mesh = trimesh.util.concatenate(meshes)
+    else:
+        meshes = [load_mesh(m) for m in models]
+        x = 0.0                               # mock arrange: parts side by side along X, 10 mm apart
+        for mesh in meshes:
+            mesh.apply_translation([x - mesh.bounds[0][0], -(mesh.bounds[0][1] + mesh.bounds[1][1]) / 2, -mesh.bounds[0][2]])
+            x = mesh.bounds[1][0] + 10
+        if len(meshes) > 1 and x - 10 > bed[0]:
+            raise PlateOverflow("The parts do not all fit on one plate")
+        mesh = trimesh.util.concatenate(meshes)
+        mesh.apply_translation([-(mesh.bounds[0][0] + mesh.bounds[1][0]) / 2, 0, 0])
+    cx, cy = bed[0] / 2, bed[1] / 2
     height = float(mesh.bounds[1][2])
     n_layers = max(1, int(math.ceil(height / lh)))
     zs = np.minimum((np.arange(n_layers) + 1) * lh, height) - lh / 2 + 1e-6

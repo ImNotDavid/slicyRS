@@ -84,6 +84,11 @@ def job_position(job: dict[str, Any]) -> tuple[float, float]:
     return float(p[0]), float(p[1])
 
 
+def job_is_plate(job: dict[str, Any]) -> bool:
+    """A job made of several parts laid out in the editor (never combined with other people's jobs)."""
+    return len((job.get("spec") or {}).get("parts") or []) > 1
+
+
 def job_nozzle(job: dict[str, Any]) -> float:
     """The nozzle size a job needs, from its process preset (jobs made before nozzle sizes existed are 0.4 mm)."""
     return preset_nozzle((job.get("spec") or {}).get("preset") or job.get("preset"))

@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 from . import assign, forecast, jobstate, pipelinecfg, slicer, store
-from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS, job_nozzle, job_position
+from .catalog import DEFAULT_BED_TYPE, PRINTER_MODELS, job_is_plate, job_nozzle, job_position
 from .defaults import effective_overrides
 from .meshio import load_mesh
 from .storage import JOBS, files
@@ -167,7 +167,8 @@ def find_partners(lead: dict[str, Any], printer: dict[str, Any], pool: list[dict
     bed = PRINTER_MODELS[printer["model"]]["bed"]
     chosen: list[dict[str, Any]] = []
     for cand in pool:
-        if cand["id"] == lead["id"] or not cand.get("allow_batching") or cand.get("phase") != "pooled" or any(job_position(cand)):
+        if (cand["id"] == lead["id"] or not cand.get("allow_batching") or cand.get("phase") != "pooled" or any(job_position(cand))
+                or job_is_plate(cand)):
             continue
         if cand["id"] in (lead.get("no_batch_with") or []) or lead["id"] in (cand.get("no_batch_with") or []):
             continue
@@ -188,7 +189,7 @@ def find_partners(lead: dict[str, Any], printer: dict[str, Any], pool: list[dict
 
 def hold_reason(job: dict[str, Any], now: float) -> str | None:
     """Why an opted-in job with no partner yet should keep waiting for one (None = go ahead alone)."""
-    if not job.get("allow_batching") or any(job_position(job)):    # a part placed by hand is not moved to make room
+    if not job.get("allow_batching") or any(job_position(job)) or job_is_plate(job):    # a part placed by hand, or a laid-out plate, is not moved to make room
         return None
     cfg = pipelinecfg.get()
     waited = now - (job.get("submitted_at") or now)

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .. import assign, bedstate, meshio, retention, store
+from .. import assign, bedstate, meshio, multipart, retention, store
 from ..auth import is_admin
 from ..catalog import DEFAULT_BED_TYPE
 from ..storage import MODELS, files
@@ -58,3 +58,16 @@ def _source_file(model_id: str, user: dict[str, Any]) -> Path:
 
 def _transformed(model_id: str, rotation, scale, user: dict[str, Any]):
     return meshio.apply_transform(meshio.load_mesh(_source_file(model_id, user)), rotation, scale)
+
+
+def plate_instances(parts, user: dict[str, Any], check: bool = True):
+    """The parts of a plate as meshes with outlines, after checking the person may use each model and (unless `check` is off, for a request
+    that asks the slicer to lay the parts out) that the layout makes sense."""
+    try:
+        inst = multipart.build([p.model_dump() for p in parts], lambda mid, rot, sc: _transformed(mid, rot, sc, user),
+                               lambda mid: files.read_text(MODELS, mid, "name.txt"))
+        if check:
+            multipart.check_layout(inst)
+    except multipart.PlateError as e:
+        raise HTTPException(400, str(e))
+    return inst

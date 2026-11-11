@@ -1,17 +1,19 @@
 """Uploaded models: upload, orientation, preview and printer assignment."""
+import tempfile
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .. import assign, meshcheck, meshio, orient, retention, store
-from ..catalog import DEFAULT_NOZZLE, FILAMENTS
+from .. import assign, meshcheck, meshio, multipart, orient, retention, slicer, store
+from ..catalog import DEFAULT_NOZZLE, FILAMENTS, PRINTER_MODELS, PROCESS_PRESETS
 from ..config import MAX_UPLOAD_MB
 from ..storage import MODELS, files
-from .common import User, _fleet, _source_file, _transformed, _checked_model
+from .common import User, _fleet, _source_file, _transformed, _checked_model, plate_instances
 
 router = APIRouter()
 
@@ -65,24 +67,94 @@ def preview(model_id: str, user: dict = User):
     return FileResponse(files.path(MODELS, _checked_model(model_id, user), "preview.stl"), media_type="model/stl")
 
 
+class PartIn(BaseModel):
+    """One part of a plate: which uploaded model, how it is turned and scaled, and where its bounding-box centre goes (mm from the middle of the bed)."""
+    model_id: str
+    rotation: tuple[float, float, float] = (0, 0, 0)
+    scale: float = Field(1.0, gt=0, le=100)
+    position: tuple[float, float] = (0.0, 0.0)
+
+
 class TransformIn(BaseModel):
     rotation: tuple[float, float, float] = (0, 0, 0)
     scale: float = Field(1.0, gt=0, le=100)
     position: tuple[float, float] = Field((0.0, 0.0), description="where the part was placed by hand: mm from the middle of the bed; (0, 0) lets the slicer place it")
+    parts: list[PartIn] | None = Field(None, max_length=multipart.MAX_PARTS, description="several parts laid out on one plate; leave out for a single part")
+
+
+def plate_of(body: Any) -> list[PartIn] | None:
+    """The parts of a several-part plate, or None for a single part (then `model_id` and the transform on `body` describe it). A plate of
+    one part is turned into the single-part form so everything that handles one part keeps working unchanged."""
+    if body.parts and len(body.parts) > 1:
+        return body.parts
+    if body.parts:
+        p = body.parts[0]
+        body.model_id, body.rotation, body.scale, body.position, body.parts = p.model_id, p.rotation, p.scale, p.position, None
+    if not body.model_id:
+        raise HTTPException(422, "Give a model_id, or a list of parts")
+    return None
 
 
 class AssignIn(TransformIn):
-    model_id: str
+    model_id: str | None = None
     filament: str
     nozzle_mm: float = Field(DEFAULT_NOZZLE, gt=0, le=2)     # the nozzle size the job will need (its process preset decides)
+
+
+def _annotate_overflow(ranked, instances) -> None:
+    """For each printer a plate does not fit, say which parts are the problem."""
+    for c in ranked:
+        if not c.eligible and instances:
+            bed = PRINTER_MODELS[c.model]["bed"]
+            names = multipart.overflow_names(instances, bed, assign.BED_MARGIN_MM)
+            if names:
+                c.blockers.append("Parts that do not fit: " + ", ".join(names))
 
 
 @router.post("/api/assign")
 def assign_printer(body: AssignIn, user: dict = User):
     if body.filament not in FILAMENTS:
         raise HTTPException(400, "Unknown filament")
-    size = meshio.dims(_transformed(body.model_id, body.rotation, body.scale, user))
-    ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, tuple(body.position))
+    parts = plate_of(body)
+    if parts is None:
+        size = meshio.dims(_transformed(body.model_id, body.rotation, body.scale, user))
+        ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, tuple(body.position))
+    else:
+        instances = plate_instances(parts, user)
+        size, centre = multipart.envelope(instances)
+        ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, centre)
+        _annotate_overflow(ranked, instances)
     best = ranked[0] if ranked and ranked[0].eligible else None
     return {"dims": size, "chosen": best.printer_id if best else None,
             "candidates": [c.asdict() for c in ranked]}
+
+
+class ArrangeIn(BaseModel):
+    parts: list[PartIn] = Field(max_length=multipart.MAX_PARTS, min_length=1)
+    printer_model: str
+    filament: str = "PLA"
+    preset: str = "0.20mm Standard"
+
+
+@router.post("/api/plate/arrange")
+def arrange_plate(body: ArrangeIn, user: dict = User):
+    """The slicer's own arrangement of these parts on a printer model's bed. Returns, per part in order, where its centre goes and an extra
+    turn about the vertical axis (degrees) to add to the part's Z rotation; the slicer may turn parts to pack them tighter."""
+    if body.printer_model not in PRINTER_MODELS:
+        raise HTTPException(400, "Unknown printer model")
+    if body.filament not in FILAMENTS or body.preset not in {p["id"] for p in PROCESS_PRESETS}:
+        raise HTTPException(400, "Unknown filament or process preset")
+    instances = plate_instances(body.parts, user, check=False)
+    with tempfile.TemporaryDirectory(prefix="arrange-") as tmp:
+        paths = []
+        for k, inst in enumerate(instances):
+            p = Path(tmp) / f"part{k}.stl"
+            meshio.export_stl(inst.mesh, p)
+            paths.append(p)
+        try:
+            placed = slicer.arrange(Path(tmp) / "work", paths, body.printer_model, body.preset, body.filament)
+        except slicer.PlateOverflow as e:
+            raise HTTPException(409, f"{e}. Try a larger printer or fewer parts.")
+        except slicer.SliceError as e:
+            raise HTTPException(409, str(e))
+    return {"parts": placed}

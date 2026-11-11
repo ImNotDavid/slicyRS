@@ -8,19 +8,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import allocator, assign, forecast, jobstate, meshio, pipeline, printing, slicer, store, thumbnail
+from .. import allocator, assign, forecast, jobstate, meshio, multipart, pipeline, printing, slicer, store, thumbnail
 from ..auth import audit, is_admin
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
 from ..storage import JOBS, MODELS, files
-from .common import User, _fleet, _source_file, _transformed, pool
-from .models import TransformIn
+from .common import User, _fleet, _source_file, _transformed, plate_instances, pool
+from .models import TransformIn, _annotate_overflow, plate_of
 
 router = APIRouter()
 
 
 class SliceIn(TransformIn):
-    model_id: str
+    model_id: str | None = None
     filament: str
     preset: str = "0.20mm Standard"
     settings: dict[str, Any] = {}
@@ -51,6 +51,8 @@ def start_slice(body: SliceIn, user: dict = User):
         raise HTTPException(400, why)
     body.settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
 
+    if (plate := plate_of(body)):
+        return _slice_plate(body, plate, user)
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
     ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset), tuple(body.position))
@@ -93,14 +95,15 @@ def start_slice(body: SliceIn, user: dict = User):
     return store.jobs.get(job_id)
 
 
-def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, body: SliceIn, bed_type: str) -> None:
+def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, body: SliceIn, bed_type: str,
+              placements: list[tuple[Path, tuple[float, float]]] | None = None) -> None:
     # only what the user changed goes to the slicer, so the printer's own profile stays in charge of everything else;
     # the plate is fixed by the assigned printer, so the sliced file always matches what is physically installed
     overrides = effective_overrides(body.preset, body.settings, bed_type)
     try:
         result = slicer.run(workdir, input_path, printer_model, body.preset, body.filament, overrides,
-                            offset=tuple(body.position) if any(body.position) else None)
-        if result.get("bundle"):
+                            offset=tuple(body.position) if any(body.position) and not placements else None, placements=placements)
+        if result.get("bundle") and not placements:
             thumbnail.maybe_add(files.path(JOBS, job_id, result["bundle"]), input_path)
         files.publish(JOBS, job_id)
         jobstate.transition(job_id, "ready", None, state="done", stats=result, gcode=result["gcode"], bundle=result.get("bundle"))
@@ -181,7 +184,7 @@ def print_job(job_id: str, user: dict = User):
 # ------------------------------------------------------------------- job pipeline (A.1, A.2)
 
 class DraftIn(TransformIn):
-    model_id: str
+    model_id: str | None = None
     filament: str
     preset: str = "0.20mm Standard"
     settings: dict[str, Any] = {}
@@ -200,6 +203,8 @@ def create_draft(body: DraftIn, user: dict = User):
     if (why := validate_settings({k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS})):
         raise HTTPException(400, why)
     settings = {k: v for k, v in body.settings.items() if k not in SERVER_MANAGED_SETTINGS}
+    if (plate := plate_of(body)):
+        return _draft_plate(body, plate, settings, user)
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
     nozzle = preset_nozzle(body.preset)
@@ -227,6 +232,78 @@ def create_draft(body: DraftIn, user: dict = User):
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})
     pipeline.request_preview(job_id)
+    return store.jobs.get(job_id)
+
+
+def _write_plate_files(job_id: str, instances) -> list[dict[str, Any]]:
+    """One input file per distinct (model, turn, scale); copies share a file. Returns what the job remembers about each part."""
+    names: dict[tuple, str] = {}
+    out = []
+    for inst in instances:
+        if inst.key() not in names:
+            names[inst.key()] = f"input_{len(names)}.stl"
+            meshio.export_stl(inst.mesh, files.path(JOBS, job_id, names[inst.key()]))
+        out.append({"model_id": inst.model_id, "name": inst.name, "rotation": list(inst.rotation), "scale": inst.scale,
+                    "position": list(inst.position), "file": names[inst.key()]})
+    files.publish(JOBS, job_id)
+    return out
+
+
+def _plate_blockers(ranked, instances, ignore_offline: bool = False) -> str:
+    _annotate_overflow(ranked, instances)
+    return "; ".join(sorted({b for c in ranked for b in c.blockers if not (ignore_offline and b == "Printer is offline")}))
+
+
+def _draft_plate(body: DraftIn, plate, settings: dict[str, Any], user: dict[str, Any]):
+    instances = plate_instances(plate, user)
+    size, centre = multipart.envelope(instances)
+    nozzle = preset_nozzle(body.preset)
+    if not forecast.eligible_printers(size, body.filament, nozzle, centre):
+        ranked = assign.rank(_fleet(), size, body.filament, nozzle, centre)
+        raise HTTPException(409, "No printer in the fleet can ever print this plate. " + _plate_blockers(ranked, instances, True))
+    job_id = uuid.uuid4().hex[:12]
+    files.create(JOBS, job_id)
+    parts = _write_plate_files(job_id, instances)
+    store.jobs.put(job_id, {
+        "id": job_id, "name": multipart.plate_name(instances), "draft": True, "state": "submitted", "phase": "submitted", "phase_at": time.time(),
+        "created": time.time(), "owner_id": user["id"], "owner_email": user["email"], "printer_id": None, "printer_name": None, "printer_model": None,
+        "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
+        "input_file": parts[0]["file"], "pickup_by": None, "submitted_at": None,
+        "spec": {"parts": parts, "position": list(centre), "filament": body.filament, "preset": body.preset, "settings": settings},
+    })
+    jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})
+    pipeline.request_preview(job_id)
+    return store.jobs.get(job_id)
+
+
+def _slice_plate(body: SliceIn, plate, user: dict[str, Any]):
+    instances = plate_instances(plate, user)
+    size, centre = multipart.envelope(instances)
+    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset), centre)
+    if body.printer_id:
+        chosen = next((c for c in ranked if c.printer_id == body.printer_id), None)
+        if not chosen or not chosen.eligible:
+            why = "; ".join((chosen.blockers if chosen else []) or ["Unknown printer"])
+            raise HTTPException(409, f"Selected printer cannot print this plate: {why}")
+    else:
+        chosen = ranked[0] if ranked and ranked[0].eligible else None
+        if not chosen:
+            raise HTTPException(409, "No printer in the fleet can print this plate. " + _plate_blockers(ranked, instances))
+    job_id = uuid.uuid4().hex[:12]
+    workdir = files.create(JOBS, job_id)
+    parts = _write_plate_files(job_id, instances)
+    printer = store.printers.get(chosen.printer_id) or {}
+    store.jobs.put(job_id, {
+        "id": job_id, "name": multipart.plate_name(instances), "model_id": plate[0].model_id, "draft": True, "direct": True, "state": "slicing",
+        "created": time.time(), "owner_id": user["id"], "owner_email": user["email"],
+        "printer_id": chosen.printer_id, "printer_name": printer.get("name"), "printer_model": chosen.model,
+        "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
+        "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
+        "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(), "submitted_at": time.time(),
+    })
+    jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "slicing", "reason": "plate sliced directly for a chosen printer"})
+    placements = [(files.path(JOBS, job_id, q["file"]), tuple(q["position"])) for q in parts]
+    pool.submit(_do_slice, job_id, workdir, placements[0][0], chosen.model, body, printer.get("bed_type") or DEFAULT_BED_TYPE, placements)
     return store.jobs.get(job_id)
 
 

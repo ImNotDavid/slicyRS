@@ -207,3 +207,45 @@ def test_a_part_placed_by_hand_is_printed_where_it_was_put(engine, tmp_path):
         engine.run(tmp_path / tag, FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", plate, offset=off)
         cx, cy = _x_extent(tmp_path / tag / "model.gcode")
         assert cx == pytest.approx(ax + off[0], abs=1.0) and cy == pytest.approx(ay + off[1], abs=1.0), (tag, cx, cy)
+
+
+def test_the_slicers_arrange_gives_every_part_a_place_that_does_not_overlap_another(engine, tmp_path):
+    """The positions and turns it returns must describe a layout where no two parts touch, with the parts in the order given."""
+    import numpy as np
+    from shapely import affinity
+    from shapely.geometry import MultiPoint
+    from app.catalog import PRINTER_MODELS
+    from app.meshio import load_mesh
+    files = [FIX / f for f in ("cube_binary.stl", "sphere.stl", "cube_binary.stl", "tube.stl", "sphere.stl", "plate_250.stl")[:5]]
+    got = engine.arrange(tmp_path, files, "P1S", "0.20mm Standard", "PLA")
+    assert len(got) == 5
+    bed = PRINTER_MODELS["P1S"]["bed"]
+    shapes = []
+    for f, g in zip(files, got):
+        v = load_mesh(f).vertices[:, :2]
+        v = v - (v.min(axis=0) + v.max(axis=0)) / 2
+        poly = affinity.rotate(MultiPoint(v).convex_hull, g["rotation_z"], origin=(0, 0))
+        b = poly.bounds
+        poly = affinity.translate(poly, g["position"][0] - (b[0] + b[2]) / 2, g["position"][1] - (b[1] + b[3]) / 2)   # offsets are bounding-box centres
+        minx, miny, maxx, maxy = poly.bounds
+        assert -bed[0] / 2 <= minx and maxx <= bed[0] / 2 and -bed[1] / 2 <= miny and maxy <= bed[1] / 2, (f.name, g)
+        shapes.append(poly)
+    for i in range(5):
+        for j in range(i + 1, 5):
+            assert shapes[i].distance(shapes[j]) > 0.5, (i, j, got)                  # the same shape twice would overlap if mixed up
+
+
+def test_a_plate_laid_out_by_hand_prints_each_part_where_it_was_put(engine, tmp_path):
+    """Two parts placed 80 mm apart come out 80 mm apart in the G-code, each at its own offset."""
+    from app.meshio import apply_transform, export_stl, load_mesh
+    a, b = tmp_path / "a.stl", tmp_path / "b.stl"
+    export_stl(apply_transform(load_mesh(FIX / "cube_binary.stl"), (0, 0, 0), 1.0), a)
+    export_stl(apply_transform(load_mesh(FIX / "sphere.stl"), (0, 0, 0), 1.0), b)
+    plate = {"curr_bed_type": "Textured PEI Plate"}
+    engine.run(tmp_path / "ref", FIX / "cube_binary.stl", "P1S", "0.20mm Standard", "PLA", plate)
+    rx, _ = _x_extent(tmp_path / "ref" / "model.gcode")
+    got = engine.run(tmp_path / "plate", [a, b], "P1S", "0.20mm Standard", "PLA", plate, placements=[(a, (-40.0, 0.0)), (b, (40.0, 10.0))])
+    text = (tmp_path / "plate" / got["gcode"]).read_text(errors="ignore")
+    import re
+    xs = [float(m.group(1)) for line in text.splitlines() if line.startswith("G1") and " E" in line for m in [re.search(r" X([-\d.]+)", line)] if m]
+    assert min(xs) == pytest.approx(rx - 40 - 20, abs=1.5) and max(xs) == pytest.approx(rx + 40 + 15, abs=1.5)     # cube 40 wide, sphere 30 wide
