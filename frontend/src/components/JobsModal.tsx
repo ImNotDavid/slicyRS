@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Frame from "./Frame";
+import { Harry } from "./Brand";
 import { api, type Job, type JobEvent } from "../api";
 
 export const fmtTime = (s?: number) => {
@@ -19,7 +20,7 @@ export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onCl
   const label = (j: Job) => j.result ? "" : j.phase && j.phase !== "failed" && WAITING[j.phase] && !(j.phase === "printing" && j.printed) ? WAITING[j.phase] : "";
   return (
     <Frame title="Jobs" inline={inline} onClose={onClose}>
-          {!jobs.length && <p className="muted">No jobs yet.</p>}
+          {!jobs.length && <div className="empty-state"><Harry height={48} /><p>No jobs yet. Start in the Workspace and your prints will show up here.</p></div>}
           {jobs.map((j) => (
             <div className="fleet-row" key={j.id}>
               <div className="fleet-main">
@@ -34,7 +35,7 @@ export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onCl
                   : j.result.layer != null && j.result.total_layers ? `failed at layer ${j.result.layer}/${j.result.total_layers}` : "failed")
                   : label(j) || (j.printed ? "printing / sent" : j.queued ? "queued" : j.state)}
               </span>
-              <span className="muted">{fmtTime(j.stats?.time_s ?? j.preview?.time_s)}</span>
+              <span className="muted dot">{fmtTime(j.stats?.time_s ?? j.preview?.time_s)}</span>
               {j.phase && CANCELLABLE.includes(j.phase) && <button className="btn" onClick={() => api.cancel(j.id).then(load)}>Cancel</button>}
               <button className="btn" onClick={async () => setHistory(history?.id === j.id ? null : { id: j.id, events: await api.events(j.id) })}>History</button>
               {j.state === "done" && !j.files_deleted_at && <button className="btn" onClick={() => onOpen(j)}>Open</button>}

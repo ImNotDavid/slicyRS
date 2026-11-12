@@ -4,6 +4,7 @@ import { Box, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, Shiel
 import { api, type Catalog, type Job, type Printer, type User } from "./api";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
+import { Harry, Lettermark } from "./components/Brand";
 import ErrorBoundary from "./components/ErrorBoundary";
 import JobsModal from "./components/JobsModal";
 import AdminModal from "./components/AdminModal";
@@ -61,7 +62,8 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   return (
     <div className={"shell" + (compact ? " compact" : "")}>
       <aside className="sidebar">
-        <div className="brand"><span className="mark">slicy<b>RS</b></span><span className="hatch-chip" aria-hidden="true" /></div>
+        <div className="brand"><Harry height={28} className="brand-harry" /><span className="mark">slicy<b>RS</b></span></div>
+        <Lettermark height={16} className="brand-letters" />
         <nav aria-label="Main">
           {items.map(({ id, icon: Icon }) => (
             <button key={id} className={"nav" + (page === id ? " on" : "")} aria-current={page === id ? "page" : undefined} title={TITLES[id]} onClick={() => go(id)}>

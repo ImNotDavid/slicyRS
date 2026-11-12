@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type AuthConfig, type User } from "./api";
 import Shell from "./Shell";
+import { Harry, Lettermark } from "./components/Brand";
 
 const LOGIN_ERRORS: Record<string, string> = {
   not_invited: "Your account has not been invited yet. Ask a slicyRS admin to invite your Imperial email address.",
@@ -43,7 +44,7 @@ function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   return (
     <main className="login">
       <div className="login-card">
-        <div className="logo big-logo" aria-hidden>SP</div>
+        <div className="login-marks"><Harry height={64} /><Lettermark height={26} /></div>
         <h1>slicyRS</h1>
         <p className="muted">Cloud slicing for the Bambu Lab printer fleet. The right printer is chosen for you.</p>
         {error && <p className="form-error" role="alert">{error}</p>}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Frame from "./Frame";
+import { Harry } from "./Brand";
 import { api, type Printer } from "../api";
 
 type Props = { printers: Printer[]; onClose?: () => void; onChanged?: () => void; inline?: boolean };
@@ -23,7 +24,7 @@ export default function FleetModal({ printers, onClose, onChanged, inline }: Pro
   };
   return (
     <Frame title="Printer fleet" inline={inline} cards onClose={onClose}>
-          {!visible.length && <p className="muted">No printers are available yet. An admin needs to add them.</p>}
+          {!visible.length && <div className="empty-state"><Harry height={48} /><p>No printers are available yet. An admin needs to add them.</p></div>}
           {visible.map((p) => (
             <div className="fleet-row" key={p.id}>
               <div className="fleet-main">

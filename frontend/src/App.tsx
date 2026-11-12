@@ -314,7 +314,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
             </div>
             <div className="plate">{bed[0]}×{bed[1]}</div>
           </div>
-          <select className="row-select" value={manualPrinter} onChange={(e) => setManualPrinter(e.target.value)} disabled={!assignment}>
+          <select className="row-select" aria-label="Printer" value={manualPrinter} onChange={(e) => setManualPrinter(e.target.value)} disabled={!assignment}>
             <option value="">{!model ? "Auto: open a model first" : assignment?.chosen ? "Auto (recommended)" : "Auto: none eligible"}</option>
             {assignment?.candidates.map((c) => (
               <option key={c.printer_id} value={c.printer_id} disabled={!c.eligible}>
@@ -408,7 +408,22 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
         <>
           <div className="step-head"><span className="lbl">Step 2 of 4</span><h2>What do you need?</h2><p className="muted">Pick a goal and material. We set layer height, walls and infill for you.</p></div>
           {goalsBlock}
-          {filamentCard}
+          <section className="support-ctl" aria-label="Material and nozzle">
+            <div className="lbl">Material</div>
+            <div className="chips" role="radiogroup" aria-label="Material">
+              {Object.keys(catalog.filaments).map((key) => (
+                <button key={key} role="radio" aria-checked={filament === key} className={"chip" + (filament === key ? " on" : "")} onClick={() => setFilament(key)}>{key}</button>
+              ))}
+            </div>
+            <p className="muted">{catalog.filaments[filament].nozzle}° nozzle, {catalog.filaments[filament].bed}° bed{catalog.filaments[filament].enclosed ? ", needs an enclosed printer" : ""}</p>
+            <div className="lbl">Nozzle</div>
+            <div className="chips" role="radiogroup" aria-label="Nozzle size">
+              {fleetNozzles.map((n) => (
+                <button key={n} role="radio" aria-checked={nozzle === n} className={"chip" + (nozzle === n ? " on" : "")} onClick={() => changeNozzle(n)}>{n} mm</button>
+              ))}
+            </div>
+            <p className="muted">Only sizes fitted to a connected printer are offered.</p>
+          </section>
           <SupportControl settings={settings} onChange={(k, v) => { if (k === "support_critical_regions_only") criticalTouched.current = true; setSettings((st) => ({ ...st, [k]: v })); }} showOverhang={showOverhang}
             onToggleOverhang={() => setShowOverhang(!showOverhang)} overhangPercent={overhangPercent} />
           <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
@@ -424,9 +439,9 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           {job && ready && (
             <dl className="review-facts">
               <dt>Printer</dt><dd>{job.printer_name ?? "—"}</dd>
-              <dt>Time</dt><dd>{fmtTime(job.stats?.time_s)}</dd>
+              <dt>Time</dt><dd className="dot">{fmtTime(job.stats?.time_s)}</dd>
               <dt>Filament</dt><dd>{filament}{job.stats?.filament_g != null ? ` · ${job.stats.filament_g} g` : ""}</dd>
-              <dt>Layers</dt><dd>{job.stats?.layers ?? "—"}</dd>
+              <dt>Layers</dt><dd className="dot">{job.stats?.layers ?? "—"}</dd>
             </dl>
           )}
           {stale && <p className="form-error">You changed something since this slice. Slice again to refresh the preview.</p>}
@@ -599,7 +614,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
               onChange={(e) => setLayerRange([Math.min(+e.target.value, layerRange[1]), layerRange[1]])} />
             <input type="range" className="v" min={0} max={layerCount - 1} value={layerRange[1]} aria-label="Top layer"
               onChange={(e) => setLayerRange([layerRange[0], Math.max(+e.target.value, layerRange[0])])} />
-            <span className="readout">{layerRange[0] + 1}–{layerRange[1] + 1} / {layerCount}</span>
+            <span className="readout dot">{layerRange[0] + 1}–{layerRange[1] + 1} / {layerCount}</span>
           </div>
         )}
 
@@ -615,8 +630,8 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
                 <dt>Size</dt><dd>{dims ? dims.map((d) => d.toFixed(1)).join(" × ") + " mm" : "—"}</dd>
                 <dt>Printer</dt><dd>{job?.printer_name ?? chosenPrinter?.name ?? "—"}</dd>
                 <dt>Filament</dt><dd>{filament}{job?.stats?.filament_g != null ? ` · ${job.stats.filament_g} g` : ""}</dd>
-                <dt>Time</dt><dd>{fmtTime(job?.stats?.time_s)}</dd>
-                <dt>Layers</dt><dd>{job?.stats?.layers ?? "—"}</dd>
+                <dt>Time</dt><dd className="dot">{fmtTime(job?.stats?.time_s)}</dd>
+                <dt>Layers</dt><dd className="dot">{job?.stats?.layers ?? "—"}</dd>
               </dl>
             )}
           </div>
