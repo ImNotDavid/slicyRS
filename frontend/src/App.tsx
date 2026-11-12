@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
+  AlertTriangle, ArrowDownToLine, Sparkles, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
 import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type Printer, type Transform, type User } from "./api";
@@ -60,6 +60,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
   const [workflow, setWorkflowState] = useState<"guided" | "full">(() => { try { return localStorage.getItem("workflow") === "full" ? "full" : "guided"; } catch { return "guided"; } });
   const setWorkflow = (w: "guided" | "full") => { setWorkflowState(w); try { localStorage.setItem("workflow", w); } catch { /* not remembered */ } };
   const [step, setStep] = useState(1);
+  const criticalTouched = useRef(false);                 // once the person sets it themselves, the guided default stops applying
   const [sliceSig, setSliceSig] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
@@ -74,6 +75,11 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     const t = setInterval(refreshPrinters, 5000);
     return () => clearInterval(t);
   }, [refreshPrinters]);
+
+  // the guided view starts with "support critical regions only" on: fewer supports, less to clean up
+  useEffect(() => {
+    if (workflow === "guided" && catalog && !criticalTouched.current) setSettings((s) => (s.support_critical_regions_only ? s : { ...s, support_critical_regions_only: true }));
+  }, [workflow, catalog, preset]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const changePreset = (id: string) => {
     setGoal(null);
@@ -241,7 +247,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     return () => clearTimeout(t);
   }, [message]);
 
-  useEffect(() => { if (tool !== "rotate" || mode !== "prepare") setPickFace(false); }, [tool, mode]);
+  useEffect(() => { if (mode !== "prepare" || tool) setPickFace(false); }, [mode, tool]);
 
   // a new G-code starts with everything shown and no playback
   useEffect(() => { setHidden([]); setTravel(false); setProgress(null); setPlaying(false); }, [gcode]);
@@ -403,7 +409,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           <div className="step-head"><span className="lbl">Step 2 of 4</span><h2>What do you need?</h2><p className="muted">Pick a goal and material. We set layer height, walls and infill for you.</p></div>
           {goalsBlock}
           {filamentCard}
-          <SupportControl settings={settings} onChange={(k, v) => setSettings((st) => ({ ...st, [k]: v }))} showOverhang={showOverhang}
+          <SupportControl settings={settings} onChange={(k, v) => { if (k === "support_critical_regions_only") criticalTouched.current = true; setSettings((st) => ({ ...st, [k]: v })); }} showOverhang={showOverhang}
             onToggleOverhang={() => setShowOverhang(!showOverhang)} overhangPercent={overhangPercent} />
           <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
         </>
@@ -510,9 +516,13 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
             <button title="Move" className={tool === "move" ? "on" : ""} onClick={() => setTool(tool === "move" ? null : "move")}><Move3d size={20} /></button>
             <button title="Rotate" className={tool === "rotate" ? "on" : ""} onClick={() => setTool(tool === "rotate" ? null : "rotate")}><RotateCw size={20} /></button>
             <button title="Scale" className={tool === "scale" ? "on" : ""} onClick={() => setTool(tool === "scale" ? null : "scale")}><Scaling size={20} /></button>
+            <button title="Lay flat: then click the face of the part that should lie on the bed" aria-pressed={pickFace} className={pickFace ? "on" : ""} disabled={busy}
+              onClick={() => { setPickFace(!pickFace); if (!pickFace) setTool(null); }}><ArrowDownToLine size={20} /></button>
+            <button title="Auto-orient: turn the part to need the least support" disabled={busy} onClick={() => orientTo("auto")}><Sparkles size={20} /></button>
             <button title="Show the faces that will need support (an estimate)" aria-pressed={showOverhang} className={showOverhang ? "on" : ""}
               onClick={() => setShowOverhang(!showOverhang)}><AlertTriangle size={20} /></button>
             <button title="Reset view" onClick={() => setFitSignal((n) => n + 1)}><Maximize size={20} /></button>
+            {pickFace && <div className="popover"><p className="hint">Click the face of the part that should lie on the bed.</p></div>}
             {tool === "move" && (
               <div className="popover">
                 {(["X", "Y"] as const).map((ax, i) => (
@@ -541,12 +551,8 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
                   </label>
                 ))}
                 <div className="actions">
-                  <button className={"mini" + (pickFace ? " on" : "")} aria-pressed={pickFace} disabled={busy}
-                    title="Then click the face of the part that should lie on the bed" onClick={() => setPickFace(!pickFace)}>Lay flat</button>
-                  <button className="mini" disabled={busy} title="Turn the part to need the least support" onClick={() => orientTo("auto")}>Auto-orient</button>
                   <button className="mini" disabled={busy} onClick={() => setTransform({ ...transform, rotation: [0, 0, 0] })}>Reset</button>
                 </div>
-                {pickFace && <p className="hint">Click the face that should lie on the bed.</p>}
               </div>
             )}
             {tool === "scale" && (

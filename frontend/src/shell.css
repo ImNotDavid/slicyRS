@@ -29,7 +29,7 @@ main.page { padding: 20px 28px 40px; display: flex; flex-direction: column; gap:
 .who-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .who-text i { font-style: normal; color: var(--text-muted); font-size: 12px; }
 
-.menu { min-width: 240px; background: var(--surface); border: 1px solid var(--text); box-shadow: 6px 6px 0 var(--brand-primary-soft); z-index: 30; }
+.acct-menu { min-width: 240px; background: var(--surface); border: 1px solid var(--text); box-shadow: 6px 6px 0 var(--brand-primary-soft); z-index: 30; }
 .menu-head { padding: 12px 14px; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .menu-item { display: flex; gap: 8px; align-items: center; padding: 10px 14px; cursor: pointer; outline: none; font-size: 14px; }
 .menu-item[data-highlighted] { background: var(--brand-primary-soft); color: var(--brand-primary); }

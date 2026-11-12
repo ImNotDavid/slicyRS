@@ -79,7 +79,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
               <span className="who-text"><b>{user.name || user.email}</b><i>{isAdmin ? "Admin" : user.operator ? "Operator" : "Member"}</i></span>
             </Menu.Trigger>
             <Menu.Portal>
-              <Menu.Content className="menu" side="top" align="start" sideOffset={8}>
+              <Menu.Content className="acct-menu" side="top" align="start" sideOffset={8}>
                 <div className="menu-head"><strong>{user.name || user.email}</strong><span className="muted">{user.email}</span></div>
                 <Menu.Item className="menu-item" onSelect={onSignOut}><LogOut size={16} /> Sign out</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={async () => { await api.logoutAll().catch(() => {}); onSignOut(); }}><LogOut size={16} /> Sign out all devices</Menu.Item>

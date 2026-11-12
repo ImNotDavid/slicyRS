@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 
 type Value = number | string | boolean;
-export const SUPPORT_KEYS = ["enable_support", "support_type", "support_on_build_plate_only", "support_threshold_angle"];
+export const SUPPORT_KEYS = ["enable_support", "support_type", "support_on_build_plate_only", "support_threshold_angle", "support_critical_regions_only"];
 
 /** Supports in plain words: off, or normal or tree, with the two choices people actually make. The full list stays in All settings. */
 export default function SupportControl({ settings, onChange, showOverhang, onToggleOverhang, overhangPercent }: {
@@ -27,6 +27,7 @@ export default function SupportControl({ settings, onChange, showOverhang, onTog
       {on && (
         <>
           <label className="check-row"><input type="checkbox" checked={!!settings.support_on_build_plate_only} onChange={(e) => onChange("support_on_build_plate_only", e.target.checked)} /> Only from the build plate</label>
+          <label className="check-row"><input type="checkbox" checked={!!settings.support_critical_regions_only} onChange={(e) => onChange("support_critical_regions_only", e.target.checked)} /> Critical overhangs only</label>
           <label className="check-row angle">Overhang angle
             <span className="num"><input type="number" min={1} max={90} value={Number(settings.support_threshold_angle) || 30} aria-label="Support threshold angle in degrees"
               onChange={(e) => e.target.value !== "" && onChange("support_threshold_angle", Number(e.target.value))} /><em>°</em></span>
