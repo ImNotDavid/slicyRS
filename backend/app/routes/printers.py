@@ -18,7 +18,8 @@ router = APIRouter()
 @router.get("/api/printers")
 def list_printers(user: dict = User):
     """Fleet status for every signed-in user (connection details are admin-only)."""
-    return [_public_printer(p, is_admin(user)) for p in store.printers.all()]
+    operator = is_admin(user) or bool(user.get("operator"))    # only operators and admins see who is using a printer
+    return [_public_printer(p, is_admin(user), operator) for p in store.printers.all()]
 
 
 class PrinterIn(BaseModel):

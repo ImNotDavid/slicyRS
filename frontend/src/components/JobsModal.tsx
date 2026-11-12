@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import Frame from "./Frame";
 import { api, type Job, type JobEvent } from "../api";
 
 export const fmtTime = (s?: number) => {
@@ -8,7 +8,7 @@ export const fmtTime = (s?: number) => {
   return h ? `${h}h ${m}m` : `${m}m`;
 };
 
-export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () => void; onOpen: (j: Job) => void; showOwner?: boolean }) {
+export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onClose?: () => void; onOpen: (j: Job) => void; showOwner?: boolean; inline?: boolean }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [history, setHistory] = useState<{ id: string; events: JobEvent[] } | null>(null);
   const load = () => api.jobs().then(setJobs);
@@ -18,10 +18,7 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
   const when = (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const label = (j: Job) => j.result ? "" : j.phase && j.phase !== "failed" && WAITING[j.phase] && !(j.phase === "printing" && j.printed) ? WAITING[j.phase] : "";
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <header><h3>Jobs</h3><button className="icon" onClick={onClose} aria-label="Close"><X size={18} /></button></header>
-        <div className="modal-body">
+    <Frame title="Jobs" inline={inline} onClose={onClose}>
           {!jobs.length && <p className="muted">No jobs yet.</p>}
           {jobs.map((j) => (
             <div className="fleet-row" key={j.id}>
@@ -51,8 +48,6 @@ export default function JobsModal({ onClose, onOpen, showOwner }: { onClose: () 
               {j.result && <p className={"result-note" + (j.result.outcome === "failed" ? " bad" : "")}>{j.result.summary}</p>}
             </div>
           ))}
-        </div>
-      </div>
-    </div>
+    </Frame>
   );
 }

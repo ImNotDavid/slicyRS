@@ -106,3 +106,11 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 2. Restart, confirm each plate clear, submit a short job to the pool and watch it through to a real print on the A1 Mini.
 3. Merge `milestone-a` into `main` once that works.
 4. Then A.6, A.7, A.9, and a P2S profile for an accurate preview.
+
+
+## UI rework: shell and pages (built, checked in the browser pane except the Workspace)
+
+- `frontend/src/Shell.tsx` is the new top level: sidebar (icon strip on the Workspace, full elsewhere, bottom tab bar under 900 px), hash routes `#/workspace|jobs|fleet|admin`, light/dark/auto switch (stored in localStorage), account menu (Radix dropdown). The Workspace (`App.tsx`) stays mounted behind an error boundary so a plate in progress survives a look at Jobs, and a browser without WebGL shows a message instead of a blank app.
+- `components/Frame.tsx` lets JobsModal, FleetModal and AdminModal render either as pop-ups or inline as pages (`inline` prop). `shell.css` holds the ICRS look; `theme.css` the brand tokens; fonts: Geist (body), Geist Mono (headings), London Underground (`public/fonts/london-underground`, OFL, not yet used on screen).
+- Backend: `GET /api/printers` adds `users` and `last_user` for operators and admins (`routes/common.printer_people`, `tests/test_printer_people.py`).
+- Not verified: the Workspace itself (the browser pane has no WebGL), the opening of a job from Jobs into the Workspace, and the Jobs page (no jobs to show). The workspace panel, settings and Submit dialog still have the old look.

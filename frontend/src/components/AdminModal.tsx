@@ -1,36 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
+import Frame from "./Frame";
 import { api, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
-type Props = { catalog: Catalog; me: User; onClose: () => void; onPrintersChanged: () => void };
+type Props = { catalog: Catalog; me: User; onClose?: () => void; onPrintersChanged: () => void; inline?: boolean };
 type Tab = "printers" | "gateways" | "users" | "storage" | "pipeline" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
-export default function AdminModal({ catalog, me, onClose, onPrintersChanged }: Props) {
+export default function AdminModal({ catalog, me, onClose, onPrintersChanged, inline }: Props) {
   const [tab, setTab] = useState<Tab>("printers");
-  return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide-modal" role="dialog" aria-label="Admin" onClick={(e) => e.stopPropagation()}>
-        <header>
-          <h3>Admin</h3>
-          <div className="tabs inline">
-            {(["printers", "gateways", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
-              <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
-            ))}
-          </div>
-          <button className="icon" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        </header>
-        <div className="modal-body">
-          {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
-          {tab === "gateways" && <GatewaysTab />}
-          {tab === "users" && <UsersTab me={me} />}
-          {tab === "storage" && <StorageTab />}
-          {tab === "pipeline" && <PipelineTab />}
-          {tab === "audit" && <AuditTab />}
-        </div>
-      </div>
+  const tabs = (
+    <div className="tabs inline" role="tablist">
+      {(["printers", "gateways", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
+        <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
+      ))}
     </div>
+  );
+  return (
+    <Frame title="Admin" inline={inline} onClose={onClose} wide header={tabs}>
+      {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
+      {tab === "gateways" && <GatewaysTab />}
+      {tab === "users" && <UsersTab me={me} />}
+      {tab === "storage" && <StorageTab />}
+      {tab === "pipeline" && <PipelineTab />}
+      {tab === "audit" && <AuditTab />}
+    </Frame>
   );
 }
 

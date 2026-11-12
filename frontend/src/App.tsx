@@ -10,16 +10,14 @@ import Viewport from "./components/Viewport";
 import { TRAVEL, type FeatureInfo } from "./gcode";
 import SettingsPanel from "./components/SettingsPanel";
 import SavedPresets from "./components/SavedPresets";
-import FleetModal from "./components/FleetModal";
-import AdminModal from "./components/AdminModal";
-import JobsModal, { fmtTime } from "./components/JobsModal";
+import { fmtTime } from "./components/JobsModal";
 import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
 const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
-export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+export default function App({ user, openRequest, onOpened }: { user: User; openRequest: Job | null; onOpened: () => void }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
@@ -56,8 +54,7 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [layerRange, setLayerRange] = useState<[number, number]>([0, 0]);
   const [fitSignal, setFitSignal] = useState(0);
   const [infoOpen, setInfoOpen] = useState(() => window.innerWidth > 900);
-  const [modal, setModal] = useState<null | "fleet" | "jobs" | "admin" | "submit">(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [modal, setModal] = useState<null | "submit">(null);
   const isAdmin = user.role === "admin";
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
@@ -181,6 +178,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     setModal(null);
   };
 
+  useEffect(() => { if (openRequest) { openJob(openRequest).finally(onOpened); } }, [openRequest]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const slice = async () => {
     if (!model) return;
     setBusy(true); setMessage(null);
@@ -270,33 +269,10 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
       <input ref={fileInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
       <input ref={addInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) addPart(f); }} />
 
-      <nav className="rail">
-        <div className="logo" aria-label="slicyRS">SP</div>
-        <button className={modal ? "" : "on"} title="Prepare" onClick={() => setModal(null)}><Box size={22} /></button>
-        <button title="Open model" onClick={() => fileInput.current?.click()}><FolderOpen size={22} /></button>
-        <button className={modal === "fleet" ? "on" : ""} title="Printer fleet" onClick={() => setModal("fleet")}><PrinterIcon size={22} /></button>
-        <button className={modal === "jobs" ? "on" : ""} title="Jobs" onClick={() => setModal("jobs")}><ListChecks size={22} /></button>
-        {isAdmin && <button className={modal === "admin" ? "on" : ""} title="Admin" onClick={() => setModal("admin")}><ShieldCheck size={22} /></button>}
-      </nav>
 
       <header className="topbar">
-        <Menu size={20} />
         <span className="spacer" />
         <span className="muted engine-note">{catalog.slicer_mode === "mock" ? "Mock slicer: perimeters only, not real G-code" : `${catalog.engine} engine`}</span>
-        <div className="user-menu">
-          <button className="user" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
-            <div className="avatar">{(user.name || user.email)[0].toUpperCase()}</div>
-            <span>{user.name || user.email}</span>
-            {isAdmin && <em className="role-badge">admin</em>}
-          </button>
-          {menuOpen && (
-            <div className="menu" role="menu">
-              <div className="menu-head"><strong>{user.name || user.email}</strong><span className="muted">{user.email}</span></div>
-              <button role="menuitem" onClick={onSignOut}><LogOut size={16} /> Sign out</button>
-              <button role="menuitem" onClick={async () => { await api.logoutAll().catch(() => {}); onSignOut(); }}><LogOut size={16} /> Sign out all devices</button>
-            </div>
-          )}
-        </div>
       </header>
 
       <aside className="panel">
@@ -541,12 +517,9 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
         </div>
       </main>
 
-      {modal === "fleet" && <FleetModal printers={printers} onClose={() => setModal(null)} onChanged={refreshPrinters} />}
       {modal === "submit" && model && <SubmitModal spec={{ ...plateSpec(parts), filament, preset, settings }} onClose={() => setModal(null)}
         onDone={(j) => {
           setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
-      {modal === "admin" && isAdmin && <AdminModal catalog={catalog} me={user} onClose={() => setModal(null)} onPrintersChanged={refreshPrinters} />}
-      {modal === "jobs" && <JobsModal onClose={() => setModal(null)} onOpen={openJob} showOwner={isAdmin} />}
     </div>
   );
 }

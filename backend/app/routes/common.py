@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from .. import assign, bedstate, meshio, multipart, retention, store
-from ..auth import is_admin
+from ..auth import find_user_by_email, is_admin
 from ..catalog import DEFAULT_BED_TYPE
 from ..storage import MODELS, files
 from fastapi import Depends
@@ -19,16 +19,44 @@ User = Depends(current_user)
 
 
 
-def _public_printer(p: dict[str, Any], admin: bool) -> dict[str, Any]:
+def _public_printer(p: dict[str, Any], admin: bool, people: bool = False) -> dict[str, Any]:
     """Everyone sees status; connection details are admin-only and the access code is never returned."""
     out = {"id": p["id"], "name": p["name"], "model": p["model"], "status": p.get("status", {}),
            "hardened_nozzle": p.get("hardened_nozzle", False), "enabled": p.get("enabled", True),
            "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p), "nozzle_mm": assign.nozzle_of(p),
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host"))}
+    if people or admin:
+        out.update(printer_people(p))
     if admin:
         out.update(host=p.get("host"), port=p.get("port") or 8883, serial=p.get("serial"),
                    has_access_code=bool(p.get("access_code")), demo=p.get("demo", False), gateway=p.get("gateway"))
     return out
+
+
+ACTIVE_PHASES = {"assigned", "slicing", "ready", "printing"}
+
+
+def printer_people(printer: dict[str, Any]) -> dict[str, Any]:
+    """Who is using a printer, for operators and admins only: the owners of the jobs on it now (a shared plate
+    can have several), and whoever used it last. A finished job counts as in use until the plate is cleared."""
+    jobs = [j for j in store.jobs.all() if j.get("printer_id") == printer["id"] and not j.get("draft")]
+    bed = bedstate.get(printer) or {}
+    now_phases = ACTIVE_PHASES | ({"printed", "failed", "unknown"} if bed.get("state") == "occupied" else set())
+    current = [j for j in jobs if j.get("phase") in now_phases]
+    finished = sorted((j for j in jobs if j.get("phase") in {"printed", "failed", "unknown"}), key=lambda j: j.get("phase_at") or j.get("created") or 0)
+
+    def who(j: dict[str, Any]) -> dict[str, Any]:
+        u = find_user_by_email(j.get("owner_email") or "")
+        return {"email": j.get("owner_email"), "name": (u or {}).get("name") or j.get("owner_email"),
+                "job_id": j["id"], "job_name": j.get("name"), "phase": j.get("phase")}
+    seen: set[str] = set()
+    users = []
+    for j in current:
+        if j.get("owner_email") not in seen:
+            seen.add(j.get("owner_email"))
+            users.append(who(j))
+    last = who(finished[-1]) if finished and not users else None
+    return {"users": users, "last_user": last}
 
 
 def _queue_depth(printer_id: str) -> int:

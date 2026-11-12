@@ -1,10 +1,10 @@
-/* Design tokens extracted from the brand file ("[shh] ICRS stuuff.fig", node 2712:65):
-   blue #001eff, sky #0084ff, yellow #f2ff00, green #00b523, greys #f5f5f5/#d9d9d9/#666666,
-   Geist Mono for UI text. The display face (London Underground) is a licensed font and is
-   not bundled; add it to --font-display if you have the files. */
+/* Design tokens from the ICRS brand kit: blue #001eff, sky #0084ff, alert yellow #f2ff00, greys #f5f5f5/#d9d9d9/#666666.
+   Geist Mono for headings and labels (capitals, wide spacing), Geist for body text, London Underground dot matrix (OFL,
+   public/fonts) for display numbers and the odd big label. */
 :root {
   color-scheme: light dark;
   --brand-primary: #001eff;
+  --brand-primary-soft: #e3e7ff;
   --brand-primary-contrast: #ffffff;
   --brand-accent: #00b523;
   --brand-sky: #0084ff;
@@ -19,9 +19,13 @@
   --warn: #d97706;
   --viewport-bg: #eceef1;
   --bed: #15171a;
-  --radius: 6px;
-  --font: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font-display: var(--font);
+  --radius: 0px;
+  --font: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-display: "London Underground", var(--font-mono);
+  --hatch: repeating-linear-gradient(135deg, var(--text-muted) 0 1px, transparent 1px 5px);
+  --hatch-accent: repeating-linear-gradient(135deg, var(--brand-primary) 0 1px, transparent 1px 5px);
+  --chamfer: 9px;
   --rail-w: 76px;
   --panel-w: 425px;
 }
@@ -32,3 +36,11 @@
     --text-muted: #98a1ad; --viewport-bg: #12151a; --bed: #0a0b0d;
   }
 }
+
+:root:not([data-theme="light"]) { }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --brand-primary: #0084ff; --brand-primary-contrast: #000000; --brand-primary-soft: #06224a; --surface: #0d0d0d; --surface-2: #1a1a1a; --border: #3a3a3a; --text: #ffffff; --text-muted: #a8a8a8; --viewport-bg: #000000; }
+}
+:root[data-theme="dark"] { --brand-primary: #0084ff; --brand-primary-contrast: #000000; --brand-primary-soft: #06224a; --surface: #0d0d0d; --surface-2: #1a1a1a; --border: #3a3a3a; --text: #ffffff; --text-muted: #a8a8a8; --viewport-bg: #000000; color-scheme: dark; }
+@font-face { font-family: "London Underground"; src: url("/fonts/london-underground/regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "London Underground"; src: url("/fonts/london-underground/bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }

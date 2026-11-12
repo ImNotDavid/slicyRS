@@ -23,8 +23,10 @@ export type Catalog = {
 };
 export type AmsSlot = { slot: number; type: string; color: string; remain: number };
 export type Bed = { state: "occupied" | "clear" | "unknown"; source: string | null; by?: string | null; at: number | null; finished?: boolean };
+export type PrinterPerson = { email: string; name: string; job_id: string; job_name: string; phase: string };
 export type Printer = {
   bed?: Bed;
+  users?: PrinterPerson[]; last_user?: PrinterPerson | null;   // operators and admins only
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null };
   // admin only

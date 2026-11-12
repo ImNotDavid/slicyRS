@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import Frame from "./Frame";
 import { api, type Printer } from "../api";
 
-type Props = { printers: Printer[]; onClose: () => void; onChanged?: () => void };
+type Props = { printers: Printer[]; onClose?: () => void; onChanged?: () => void; inline?: boolean };
 
 // black or white text, whichever reads better on a filament colour
 const textOn = (hex: string) => {
@@ -11,7 +11,7 @@ const textOn = (hex: string) => {
 };
 
 /** Read-only fleet status for every user; admins configure printers in the Admin console. */
-export default function FleetModal({ printers, onClose, onChanged }: Props) {
+export default function FleetModal({ printers, onClose, onChanged, inline }: Props) {
   const visible = printers.filter((p) => p.enabled);
   const [open, setOpen] = useState<string | null>(null);
   const [ticks, setTicks] = useState({ bed_empty: false, plate_matches: false, filament_matches: false });
@@ -22,16 +22,16 @@ export default function FleetModal({ printers, onClose, onChanged }: Props) {
     catch (e) { setErr((e as Error).message); }
   };
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="Printer fleet" onClick={(e) => e.stopPropagation()}>
-        <header><h3>Printer fleet</h3><button className="icon" onClick={onClose} aria-label="Close"><X size={18} /></button></header>
-        <div className="modal-body">
+    <Frame title="Printer fleet" inline={inline} cards onClose={onClose}>
           {!visible.length && <p className="muted">No printers are available yet. An admin needs to add them.</p>}
           {visible.map((p) => (
             <div className="fleet-row" key={p.id}>
               <div className="fleet-main">
                 <strong>{p.name}</strong>
                 <span className="muted">{p.model}{p.queue_depth ? ` · ${p.queue_depth} queued` : ""}</span>
+                {p.users && (p.users.length
+                  ? <span className="who"><b>{p.users.length > 1 ? `${p.users.length} people share this plate` : p.users[0].name}</b> <span className="muted">{p.users.length > 1 ? p.users.map((u) => u.name).join(", ") : p.users[0].job_name}</span></span>
+                  : <span className="who muted">{p.last_user ? `Nobody now. Last used by ${p.last_user.name}` : "Nobody now"}</span>)}
               </div>
               <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
               {p.bed && <span className={"pill bed-" + p.bed.state} title={p.bed.by ? `confirmed by ${p.bed.by}` : "build plate"}>plate {p.bed.state}</span>}
@@ -52,8 +52,6 @@ export default function FleetModal({ printers, onClose, onChanged }: Props) {
               )}
             </div>
           ))}
-        </div>
-      </div>
-    </div>
+    </Frame>
   );
 }

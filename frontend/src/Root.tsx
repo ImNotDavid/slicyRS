@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type AuthConfig, type User } from "./api";
-import App from "./App";
+import Shell from "./Shell";
 
 const LOGIN_ERRORS: Record<string, string> = {
   not_invited: "Your account has not been invited yet. Ask a slicyRS admin to invite your Imperial email address.",
@@ -24,7 +24,7 @@ export default function Root() {
 
   if (!ready) return <div className="loading">Loading…</div>;
   if (!user) return <Login onSignedIn={setUser} />;
-  return <App user={user} onSignOut={async () => { await api.logout(); setUser(null); }} />;
+  return <Shell user={user} onSignOut={async () => { await api.logout(); setUser(null); }} />;
 }
 
 function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {
