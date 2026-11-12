@@ -56,6 +56,10 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
   const [infoOpen, setInfoOpen] = useState(() => window.innerWidth > 900);
   const [modal, setModal] = useState<null | "submit">(null);
   const isAdmin = user.role === "admin";
+  const [workflow, setWorkflowState] = useState<"guided" | "full">(() => { try { return localStorage.getItem("workflow") === "full" ? "full" : "guided"; } catch { return "guided"; } });
+  const setWorkflow = (w: "guided" | "full") => { setWorkflowState(w); try { localStorage.setItem("workflow", w); } catch { /* not remembered */ } };
+  const [step, setStep] = useState(1);
+  const [sliceSig, setSliceSig] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -176,6 +180,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     setGcode(await fetch(gcodeUrl(j.id)).then((r) => r.text()));
     setMode("preview");
     setModal(null);
+    setStep(3);
   };
 
   useEffect(() => { if (openRequest) { openJob(openRequest).finally(onOpened); } }, [openRequest]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -256,28 +261,19 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
+  useEffect(() => { if (workflow === "guided" && step <= 2) setMode("prepare"); }, [step, workflow]);
+  useEffect(() => { if (!parts.length) setStep(1); }, [parts.length]);
+
   const onLayerCount = useCallback((n: number) => { setLayerCount(n); setLayerRange([0, Math.max(0, n - 1)]); }, []);
 
   if (!catalog) return <div className="loading">{message?.text ?? "Loading…"}</div>;
 
+  const currentSig = JSON.stringify([plateSpec(parts), filament, preset, settings, manualPrinter]);
   const dims = assignment?.dims ?? model?.dims;
   const ready = job?.state === "done";
 
-  return (
-    <div className="app" onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) (parts.length ? addPart(f) : upload(f)); }}>
-      <input ref={fileInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
-      <input ref={addInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) addPart(f); }} />
-
-
-      <header className="topbar">
-        <span className="spacer" />
-        <span className="muted engine-note">{catalog.slicer_mode === "mock" ? "Mock slicer: perimeters only, not real G-code" : `${catalog.engine} engine`}</span>
-      </header>
-
-      <aside className="panel">
-        <div className="card select-card"><span className="engine">{catalog.engine}</span><ChevronDown size={18} /></div>
-
+  const modelBlock = (
+    <>
         {parts.length > 0 && (
           <PartsPanel parts={parts} selectedUid={selectedPart?.uid ?? null} overlapping={overlapPairs} busy={busy} onSelect={setSelectedUid} onRemove={removePart}
             onAdd={() => addInput.current?.click()} onArrange={() => arrangeAll(parts)} onCopies={addCopies} />
@@ -298,6 +294,10 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           </div>
         )}
 
+    </>
+  );
+  const printerCard = (
+    <>
         <div className="card">
           <div className="printer-head">
             <div className="printer-icon"><PrinterIcon size={34} /></div>
@@ -327,6 +327,10 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           )}
         </div>
 
+    </>
+  );
+  const filamentCard = (
+    <>
         <div className="card">
           <div className="printer-head">
             <div className="spool" style={{ background: chosenPrinter?.status.ams?.find((s) => s.slot === chosen?.loaded_slot)?.color ?? "#2f6bff" }} />
@@ -345,6 +349,10 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           </select>
         </div>
 
+    </>
+  );
+  const goalsBlock = (
+    <>
         <div className="goals" role="group" aria-label="Print goal">
           {catalog.goals.map((g) => (
             <button key={g.id} className={"goal" + (goal === g.id ? " on" : "")} aria-pressed={goal === g.id} title={g.description}
@@ -355,6 +363,10 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           <p className="goal-note muted">{catalog.goals.find((g) => g.id === goal)?.description}{goalNotes.length ? " " + goalNotes.join(" ") : ""}</p>
         )}
 
+    </>
+  );
+  const fullSettings = (
+    <>
         <div className="preset-row">
           <select value={preset} onChange={(e) => changePreset(e.target.value)}>
             {catalog.process_presets.filter((p) => p.nozzle === nozzle).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -369,6 +381,102 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
 
         <SettingsPanel catalog={catalog} values={settings} baseline={catalog.preset_defaults[preset]}
           onChange={(k, v) => { setGoal(null); setSettings((s) => ({ ...s, [k]: v })); }} />
+    </>
+  );
+
+  const STEPS = ["Model", "Goal and material", "Review", "Submit"];
+  const canStep = (n: number) => n === 1 || (n >= 2 && !!model);
+  const stale = !!job && sliceSig !== currentSig;
+  const sliceNow = () => { setSliceSig(currentSig); slice(); };
+  const guidedPanel = (
+    <>
+      {step === 1 && (
+        <>
+          <div className="step-head"><span className="lbl">Step 1 of 4</span><h2>Add your model</h2><p className="muted">STL, 3MF, OBJ or STEP. Add more parts to share one plate.</p></div>
+          {!parts.length && <button className="btn primary big" onClick={() => fileInput.current?.click()} disabled={busy}>{busy ? "Uploading…" : "Open a model"}</button>}
+          {modelBlock}
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <div className="step-head"><span className="lbl">Step 2 of 4</span><h2>What do you need?</h2><p className="muted">Pick a goal and material. We set layer height, walls and infill for you.</p></div>
+          {goalsBlock}
+          {filamentCard}
+          <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
+        </>
+      )}
+      {step === 3 && (
+        <>
+          <div className="step-head"><span className="lbl">Step 3 of 4</span><h2>Check the result</h2><p className="muted">Slice it to see the real layers, time and supports before you send it.</p></div>
+          {printerCard}
+          <button className="btn primary big" disabled={!model || busy || overlapPairs.length > 0 || (!assignment?.chosen && !manualPrinter)} onClick={sliceNow}>
+            <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : job && !stale ? "SLICE AGAIN" : "SLICE"}
+          </button>
+          {job && ready && (
+            <dl className="review-facts">
+              <dt>Printer</dt><dd>{job.printer_name ?? "—"}</dd>
+              <dt>Time</dt><dd>{fmtTime(job.stats?.time_s)}</dd>
+              <dt>Filament</dt><dd>{filament}{job.stats?.filament_g != null ? ` · ${job.stats.filament_g} g` : ""}</dd>
+              <dt>Layers</dt><dd>{job.stats?.layers ?? "—"}</dd>
+            </dl>
+          )}
+          {stale && <p className="form-error">You changed something since this slice. Slice again to refresh the preview.</p>}
+          {showOverhang && overhangPercent != null && <p className="muted">Overhang estimate: about {Math.round(overhangPercent)}% needs support.</p>}
+          <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
+        </>
+      )}
+      {step === 4 && (
+        <>
+          <div className="step-head"><span className="lbl">Step 4 of 4</span><h2>Send it</h2><p className="muted">The pool picks the first free printer that fits. Nothing is queued until you press the button.</p></div>
+          <dl className="review-facts">
+            <dt>Part</dt><dd>{plateName}</dd>
+            <dt>Material</dt><dd>{filament}, {nozzle} mm nozzle</dd>
+            <dt>Goal</dt><dd>{goal ? catalog.goals.find((g) => g.id === goal)?.name : "Custom settings"}</dd>
+          </dl>
+          <button className="btn primary big" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")}>SUBMIT TO POOL</button>
+        </>
+      )}
+      <div className="step-nav">
+        <button className="btn" disabled={step === 1} onClick={() => setStep(step - 1)}>Back</button>
+        {step < 4 && <button className="btn primary" disabled={!canStep(step + 1)} onClick={() => setStep(step + 1)}>Continue</button>}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="app" onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) (parts.length ? addPart(f) : upload(f)); }}>
+      <input ref={fileInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
+      <input ref={addInput} type="file" hidden accept=".stl,.3mf,.obj,.step,.stp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) addPart(f); }} />
+
+
+      <header className="topbar">
+        <span className="spacer" />
+        <span className="muted engine-note">{catalog.slicer_mode === "mock" ? "Mock slicer: perimeters only, not real G-code" : `${catalog.engine} engine`}</span>
+      </header>
+
+      <aside className="panel">
+        <div className="workflow-bar">
+          <div className="stepper" role="group" aria-label="Steps">
+            {workflow === "guided" && STEPS.map((label, i) => (
+              <button key={label} className={"stp" + (step === i + 1 ? " on" : step > i + 1 ? " done" : "")} disabled={!canStep(i + 1)} aria-current={step === i + 1 ? "step" : undefined}
+                onClick={() => setStep(i + 1)}><i>{step > i + 1 ? "✓" : i + 1}</i><span>{label}</span></button>
+            ))}
+            {workflow === "full" && <strong className="muted">All settings</strong>}
+          </div>
+          <button className="link" onClick={() => setWorkflow(workflow === "guided" ? "full" : "guided")}>{workflow === "guided" ? "All settings" : "Guided steps"}</button>
+        </div>
+        {workflow === "full" ? (
+          <>
+        <div className="card select-card"><span className="engine">{catalog.engine}</span><ChevronDown size={18} /></div>
+
+            {modelBlock}
+            {printerCard}
+            {filamentCard}
+            {goalsBlock}
+            {fullSettings}
+          </>
+        ) : guidedPanel}
       </aside>
 
       <main className="viewport">
@@ -508,12 +616,14 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
         <div className="bottombar">
           <span className="filename">{plateName}</span>
           <a className={"btn" + (ready ? "" : " disabled")} href={ready ? gcodeUrl(job!.id) : undefined} aria-label="Download G-code" title="Download G-code"><Download size={16} /></a>
-          <button className="btn primary" disabled={!model || busy || overlapPairs.length > 0 || !assignment?.chosen && !manualPrinter} onClick={slice}>
-            <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
-          </button>
-          <button className="btn dark" disabled={!ready || job?.queued} onClick={queue}>QUEUE</button>
-          <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
-          <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
+          {workflow === "full" && <>
+            <button className="btn primary" disabled={!model || busy || overlapPairs.length > 0 || !assignment?.chosen && !manualPrinter} onClick={slice}>
+              <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
+            </button>
+            <button className="btn dark" disabled={!ready || job?.queued} onClick={queue}>QUEUE</button>
+            <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
+            <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
+          </>}
         </div>
       </main>
 

@@ -34,7 +34,7 @@ type Props = {
   onMove?: (uid: string, position: [number, number]) => void;   // new offset (mm) from the middle of the bed for a dragged part
 };
 
-export default function Viewport(p: Props) {
+function ViewportGL(p: Props) {
   const host = useRef<HTMLDivElement>(null);
   const bedRef = useRef(p.bed);
   bedRef.current = p.bed;
@@ -424,4 +424,12 @@ function frame(t: { camera: THREE.PerspectiveCamera; controls: OrbitControls; re
   t.camera.far = dist * 10;
   t.camera.updateProjectionMatrix();
   t.controls.update();
+}
+
+const hasWebGL = (() => { try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; } })();
+
+/** The 3D view needs WebGL; without it the rest of the workspace still loads and says why the view is empty. */
+export default function Viewport(props: React.ComponentProps<typeof ViewportGL>) {
+  if (!hasWebGL) return <div className="viewport-canvas no-gl" role="alert"><p>This browser cannot show 3D graphics (WebGL is off or unavailable). Try another browser or turn on hardware acceleration.</p></div>;
+  return <ViewportGL {...props} />;
 }
