@@ -426,7 +426,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           </section>
           <SupportControl settings={settings} onChange={(k, v) => { if (k === "support_critical_regions_only") criticalTouched.current = true; setSettings((st) => ({ ...st, [k]: v })); }} showOverhang={showOverhang}
             onToggleOverhang={() => setShowOverhang(!showOverhang)} overhangPercent={overhangPercent} />
-          <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
+          <button className="mini wide" onClick={() => setWorkflow("full")}>Open all settings</button>
         </>
       )}
       {step === 3 && (
@@ -446,7 +446,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           )}
           {stale && <p className="form-error">You changed something since this slice. Slice again to refresh the preview.</p>}
           {showOverhang && overhangPercent != null && <p className="muted">Overhang estimate: about {Math.round(overhangPercent)}% needs support.</p>}
-          <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
+          <button className="mini wide" onClick={() => setWorkflow("full")}>Open all settings</button>
         </>
       )}
       {step === 4 && (
@@ -481,14 +481,18 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
 
       <aside className="panel">
         <div className="workflow-bar">
-          <div className="stepper" role="group" aria-label="Steps">
-            {workflow === "guided" && STEPS.map((label, i) => (
-              <button key={label} className={"stp" + (step === i + 1 ? " on" : step > i + 1 ? " done" : "")} disabled={!canStep(i + 1)} aria-current={step === i + 1 ? "step" : undefined}
-                onClick={() => setStep(i + 1)}><i>{step > i + 1 ? "✓" : i + 1}</i><span>{label}</span></button>
-            ))}
-            {workflow === "full" && <strong className="muted">All settings</strong>}
+          <div className="seg view-toggle" role="radiogroup" aria-label="Settings view">
+            <button role="radio" aria-checked={workflow === "guided"} className={workflow === "guided" ? "on" : ""} onClick={() => setWorkflow("guided")}>Guided steps</button>
+            <button role="radio" aria-checked={workflow === "full"} className={workflow === "full" ? "on" : ""} onClick={() => setWorkflow("full")}>All settings</button>
           </div>
-          <button className="link" onClick={() => setWorkflow(workflow === "guided" ? "full" : "guided")}>{workflow === "guided" ? "All settings" : "Guided steps"}</button>
+          {workflow === "guided" && (
+            <div className="stepper" role="group" aria-label="Steps">
+              {STEPS.map((label, i) => (
+                <button key={label} className={"stp" + (step === i + 1 ? " on" : step > i + 1 ? " done" : "")} disabled={!canStep(i + 1)} aria-current={step === i + 1 ? "step" : undefined}
+                  onClick={() => setStep(i + 1)}><i>{step > i + 1 ? "✓" : i + 1}</i><span>{label}</span></button>
+              ))}
+            </div>
+          )}
         </div>
         {workflow === "full" ? (
           <>
