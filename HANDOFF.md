@@ -55,6 +55,8 @@ A.6 plates and batching, A.7 printer gateway and A.9 storage interfaces are done
 
 - Not built, on purpose: alerts for problems *during* a print (pause, printer error codes, offline mid-job). Today only the final result is recorded and only finish, uncleared-plate and pickup-time emails exist. It is roadmap item 2.16, built with 2.6 and 2.14; ask the owner the design questions in that row first. Also deferred by the owner: 1.12 (cut and measure) and the Filament and Printer settings pages and more materials (until the permission system).
 
+- UI rework (Milestone U) in progress: design decisions are in the ROADMAP row U.1. Mockups live in a Claude Design canvas (private, owner's account): https://claude.ai/artifact/TrffeSf7WRGRLEF9ADmUnv with a design system sheet (light and dark, violet accent, Space Grotesk and Inter), Jobs and Fleet pages (desktop, interactive) and a phone job-status screen. Awaiting the owner's feedback before any code changes; the guided-steps workspace, the Submit to pool dialog and Admin are not mocked up yet.
+
 ## Printer gateway (A.7)
 
 - A printer is reached either directly by the server (as before) or through a **gateway**: `python -m app.gateway_agent` (image: `Dockerfile.gateway`, compose: `deploy/docker-compose.gateway.yml`) on the printers' network. It connects *out* to the server over a WebSocket (`/gateway/ws`), so the server needs no route to the printers and the site opens no port.
