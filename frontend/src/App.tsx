@@ -10,6 +10,7 @@ import Viewport from "./components/Viewport";
 import { TRAVEL, type FeatureInfo } from "./gcode";
 import SettingsPanel from "./components/SettingsPanel";
 import SavedPresets from "./components/SavedPresets";
+import SupportControl, { SUPPORT_KEYS } from "./components/SupportControl";
 import { fmtTime } from "./components/JobsModal";
 import SubmitModal from "./components/SubmitModal";
 
@@ -98,7 +99,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
   const applyGoal = async (id: string, material = filament, n = nozzle) => {
     try {
       const r = await api.goal(id, material, n);
-      setPreset(r.preset); setSettings(r.settings); setGoal(id); setGoalNotes(r.notes);
+      setPreset(r.preset); setSettings((prev) => ({ ...r.settings, ...Object.fromEntries(SUPPORT_KEYS.filter((k) => k in prev).map((k) => [k, prev[k]])) })); setGoal(id); setGoalNotes(r.notes);
     } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
   };
   // a goal follows the material: switching filament re-applies it with that material's adjustments
@@ -384,7 +385,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     </>
   );
 
-  const STEPS = ["Model", "Goal and material", "Review", "Submit"];
+  const STEPS = ["Model", "Goal", "Review", "Submit"];
   const canStep = (n: number) => n === 1 || (n >= 2 && !!model);
   const stale = !!job && sliceSig !== currentSig;
   const sliceNow = () => { setSliceSig(currentSig); slice(); };
@@ -402,6 +403,8 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           <div className="step-head"><span className="lbl">Step 2 of 4</span><h2>What do you need?</h2><p className="muted">Pick a goal and material. We set layer height, walls and infill for you.</p></div>
           {goalsBlock}
           {filamentCard}
+          <SupportControl settings={settings} onChange={(k, v) => setSettings((st) => ({ ...st, [k]: v }))} showOverhang={showOverhang}
+            onToggleOverhang={() => setShowOverhang(!showOverhang)} overhangPercent={overhangPercent} />
           <button className="link" onClick={() => setWorkflow("full")}>Open all settings</button>
         </>
       )}
