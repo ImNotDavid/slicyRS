@@ -5,29 +5,40 @@
 main.page { padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 18px; }
 
 .sidebar { flex: 0 0 232px; display: flex; flex-direction: column; gap: 20px; padding: 20px 12px; background: var(--surface); border-right: 1px solid var(--border); min-height: 0; }
-.shell.compact .sidebar { flex-basis: 64px; padding: 16px 8px; align-items: center; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font-family: var(--font-mono); font-size: 20px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .brand b { color: var(--brand-primary); font-weight: 600; }
 .hatch-chip { width: 28px; height: 12px; background: var(--hatch-accent); flex: none; }
 .hatch-chip.wide { width: 56px; height: 12px; }
-.shell.compact .brand .mark { display: none; }
-.shell.compact .hatch-chip { display: none; }
 .sidebar nav { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .nav { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 12px; border: 0; border-left: 3px solid transparent; background: none; border-radius: 0;
   font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); text-align: left; }
 .nav:hover { background: var(--surface-2); color: var(--text); }
 .nav.on { background: var(--brand-primary-soft); color: var(--brand-primary); border-left-color: var(--brand-primary); }
-.shell.compact .nav { justify-content: center; padding: 0; }
-.shell.compact .nav span, .shell.compact .who-text { display: none; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .hatch-strip { height: 32px; background: var(--hatch); }
 .who-box { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); background: var(--surface); border-radius: 0; text-align: left; }
-.shell.compact .who-box { padding: 4px; justify-content: center; }
 .av { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; background: var(--brand-primary); color: var(--brand-primary-contrast); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
 .who-text { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
 .who-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .who-text i { font-style: normal; color: var(--text-muted); font-size: 12px; }
 
+
+/* Sidebar geometry: every row is a 48 px icon cell (centre at 24 px from the content edge) plus a label. Collapsing only narrows the
+   sidebar and fades the labels, so the icons, the brand marks and the account avatar never move sideways. */
+.sidebar { overflow: hidden; padding: 20px 8px; gap: 16px; transition: flex-basis 0.22s ease; }
+.shell.compact .sidebar { flex-basis: 64px; }
+.sidebar > * { width: 216px; flex: none; }
+.sidebar .side-foot, .sidebar nav { width: 216px; }
+.brand { padding: 0 0 0 12px; gap: 14px; height: 48px; }
+.brand-harry { flex: none; }
+.brand-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; white-space: nowrap; }
+.brand-letters { color: var(--text-muted); }
+.brand .mark, .brand-letters, .nav span, .who-text, .hatch-strip { transition: opacity 0.15s ease; white-space: nowrap; }
+.shell.compact .brand-text, .shell.compact .nav span, .shell.compact .who-text { opacity: 0; pointer-events: none; }
+.nav { padding: 0 0 0 12px; gap: 14px; overflow: hidden; }
+.nav svg { flex: none; }
+.who-box { width: 216px; padding: 8px 8px; gap: 12px; overflow: hidden; }
+.shell.compact .hatch-strip { opacity: 0.6; }
 .acct-menu { min-width: 240px; background: var(--surface); border: 1px solid var(--text); box-shadow: 6px 6px 0 var(--brand-primary-soft); z-index: 30; }
 .menu-head { padding: 12px 14px; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .menu-item { display: flex; gap: 8px; align-items: center; padding: 10px 14px; cursor: pointer; outline: none; font-size: 14px; }
@@ -56,6 +67,10 @@ h2, h3 { font-weight: 500; }
 @media (max-width: 900px) {
   .shell, .shell.compact { flex-direction: column-reverse; height: auto; min-height: 100vh; }
   .shell .sidebar, .shell.compact .sidebar { flex: none; flex-direction: row; padding: 0; gap: 0; border-right: 0; border-top: 1px solid var(--border); position: sticky; bottom: 0; z-index: 20; align-items: stretch; }
+  .sidebar > *, .sidebar .side-foot, .sidebar nav, .who-box { width: auto; }
+  .shell.compact .sidebar { flex-basis: auto; }
+  .shell.compact .nav span { opacity: 1; pointer-events: auto; }
+  .nav { padding: 0 4px; gap: 4px; }
   .sidebar .brand, .sidebar .hatch-strip, .sidebar .who-text, .sidebar .nav.expand { display: none; }
   .sidebar nav { flex-direction: row; flex: 1; gap: 0; }
   .sidebar .nav, .shell.compact .nav { flex: 1; flex-direction: column; justify-content: center; gap: 4px; height: 56px; border-left: 0; border-top: 3px solid transparent; font-size: 10px; padding: 0 4px; }
@@ -64,6 +79,7 @@ h2, h3 { font-weight: 500; }
   .side-foot { margin: 0; flex-direction: row; width: auto; gap: 0; align-items: center; padding: 0 8px; }
   .sidebar .side-foot .nav span { display: none; }
   .who-box { border: 0; width: auto; padding: 4px; }
+  .sidebar { overflow: visible; padding: 0; }
   .page { height: auto; overflow: visible; }
   main.page { padding: 16px; }
 }
@@ -195,8 +211,6 @@ select, input[type="text"], input[type="number"], input[type="datetime-local"] {
 
 .mark-img { display: inline-block; background: currentColor; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: contain; mask-size: contain; -webkit-mask-position: center; mask-position: center; flex: none; }
 
-.brand-letters { margin-left: 8px; color: var(--text-muted); }
-.shell.compact .brand-letters { display: none; }
 .brand-harry { color: var(--text); }
 .login-marks { display: flex; align-items: flex-end; justify-content: center; gap: 18px; color: var(--text); margin-bottom: 8px; }
 .login-card { border-radius: 0; border: 1px solid var(--text-muted); }

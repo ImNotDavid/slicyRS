@@ -64,7 +64,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
           {ready && (
             <dl className="submit-facts">
               <dt>Part</dt><dd>{job!.name}</dd>
-              <dt>Estimated print time</dt><dd className="dot">{fmtTime(job!.preview?.time_s)}</dd>
+              <dt>Estimated print time</dt><dd>{fmtTime(job!.preview?.time_s)}</dd>
               <dt>Filament</dt><dd>{job!.filament}{job!.preview?.filament_g != null ? ` · ${job!.preview.filament_g} g` : ""}</dd>
               <dt>Expected ready</dt>
               <dd>{forecast?.feasible && forecast.earliest_finish ? `${fmt(forecast.earliest_finish)}${forecast.jobs_ahead ? ` (${forecast.jobs_ahead} ahead of you)` : ""}` : "no printer can print this"}</dd>

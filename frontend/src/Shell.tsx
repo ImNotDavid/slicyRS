@@ -62,8 +62,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   return (
     <div className={"shell" + (compact ? " compact" : "")}>
       <aside className="sidebar">
-        <div className="brand"><Harry height={28} className="brand-harry" /><span className="mark">slicy<b>RS</b></span></div>
-        <Lettermark height={16} className="brand-letters" />
+        <div className="brand"><Harry height={28} className="brand-harry" /><div className="brand-text"><span className="mark">slicy<b>RS</b></span><Lettermark height={14} className="brand-letters" /></div></div>
         <nav aria-label="Main">
           {items.map(({ id, icon: Icon }) => (
             <button key={id} className={"nav" + (page === id ? " on" : "")} aria-current={page === id ? "page" : undefined} title={TITLES[id]} onClick={() => go(id)}>

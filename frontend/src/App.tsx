@@ -439,9 +439,9 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
           {job && ready && (
             <dl className="review-facts">
               <dt>Printer</dt><dd>{job.printer_name ?? "—"}</dd>
-              <dt>Time</dt><dd className="dot">{fmtTime(job.stats?.time_s)}</dd>
+              <dt>Time</dt><dd>{fmtTime(job.stats?.time_s)}</dd>
               <dt>Filament</dt><dd>{filament}{job.stats?.filament_g != null ? ` · ${job.stats.filament_g} g` : ""}</dd>
-              <dt>Layers</dt><dd className="dot">{job.stats?.layers ?? "—"}</dd>
+              <dt>Layers</dt><dd>{job.stats?.layers ?? "—"}</dd>
             </dl>
           )}
           {stale && <p className="form-error">You changed something since this slice. Slice again to refresh the preview.</p>}
@@ -614,7 +614,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
               onChange={(e) => setLayerRange([Math.min(+e.target.value, layerRange[1]), layerRange[1]])} />
             <input type="range" className="v" min={0} max={layerCount - 1} value={layerRange[1]} aria-label="Top layer"
               onChange={(e) => setLayerRange([layerRange[0], Math.max(+e.target.value, layerRange[0])])} />
-            <span className="readout dot">{layerRange[0] + 1}–{layerRange[1] + 1} / {layerCount}</span>
+            <span className="readout">{layerRange[0] + 1}–{layerRange[1] + 1} / {layerCount}</span>
           </div>
         )}
 
@@ -630,8 +630,8 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
                 <dt>Size</dt><dd>{dims ? dims.map((d) => d.toFixed(1)).join(" × ") + " mm" : "—"}</dd>
                 <dt>Printer</dt><dd>{job?.printer_name ?? chosenPrinter?.name ?? "—"}</dd>
                 <dt>Filament</dt><dd>{filament}{job?.stats?.filament_g != null ? ` · ${job.stats.filament_g} g` : ""}</dd>
-                <dt>Time</dt><dd className="dot">{fmtTime(job?.stats?.time_s)}</dd>
-                <dt>Layers</dt><dd className="dot">{job?.stats?.layers ?? "—"}</dd>
+                <dt>Time</dt><dd>{fmtTime(job?.stats?.time_s)}</dd>
+                <dt>Layers</dt><dd>{job?.stats?.layers ?? "—"}</dd>
               </dl>
             )}
           </div>
