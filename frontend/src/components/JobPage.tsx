@@ -23,7 +23,7 @@ function statusLine(p: Page): string {
     case "pooled": return j.waiting_for ?? "Waiting in the pool for a printer that fits.";
     case "assigned": return `Going to ${p.printer?.name ?? "a printer"}; it will be sliced for it next.`;
     case "slicing": return `Being sliced for ${p.printer?.name ?? "its printer"}.`;
-    case "ready": return `Sliced for ${p.printer?.name}. It is waiting to be started.`;
+    case "ready": return j.pooled ? `Sliced for ${p.printer?.name}; it starts by itself in a moment.` : `Sliced for ${p.printer?.name}. It is waiting to be started.`;
     case "printing": return `Printing on ${p.printer?.name}.`;
     case "cancelled": return "This job was cancelled.";
     default: return j.error ?? "";

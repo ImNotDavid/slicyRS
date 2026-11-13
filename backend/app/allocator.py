@@ -136,11 +136,12 @@ def assign_pool() -> int:
 
 
 def expire_holds(now: float) -> int:
-    """A sliced job its owner has not started goes back to the pool so the printer is not held for ever."""
+    """A sliced pool job that has not started (its automatic start failed, for example the printer refused it) goes back to the
+    pool after the hold time so the printer is not held for ever."""
     hold = pipelinecfg.get()["ready_hold_min"] * 60
     n = 0
     for j in store.jobs.all():
-        if (j.get("phase") == "ready" and j.get("pooled") and not j.get("batch_lead") and not plates.auto_start(j)
+        if (j.get("phase") == "ready" and j.get("pooled") and not j.get("batch_lead") 
                 and now - (j.get("phase_at") or now) > hold):
             jobstate.transition(j["id"], "pooled", "allocator", state="pooled", reason="not started within the hold time",
                                 printer_id=None, printer_name=None)

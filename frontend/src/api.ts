@@ -82,7 +82,7 @@ export type Job = {
   allow_batching?: boolean; members?: string[]; batch_lead?: string | null; plate_share?: number | null;
   preview?: { time_s?: number; filament_g?: number; layers?: number };
   printer_id: string | null; printer_name: string | null; printer_model: string | null; filament: string; preset: string;
-  queued: boolean; printed: boolean; created: number; plate_to_clear?: boolean; spec?: { goal?: string | null }; live?: Live; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
+  queued: boolean; printed: boolean; pooled?: boolean; created: number; plate_to_clear?: boolean; spec?: { goal?: string | null }; live?: Live; bundle?: string | null; owner_email?: string; files_deleted_at?: number | null;
   result?: { outcome: "finished" | "failed" | "unknown"; summary: string; layer: number | null; total_layers: number | null;
              hms: { code: string; text: string }[]; duration_s: number | null } | null;
   stats?: { time_s?: number; filament_g?: number; layers?: number; mock?: boolean };

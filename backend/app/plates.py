@@ -49,8 +49,9 @@ def plate_id(job: dict[str, Any]) -> str | None:
 
 
 def auto_start(lead: dict[str, Any]) -> bool:
-    """A plate starts by itself only if everybody on it asked for that."""
-    return all(j.get("auto_start") for j in jobs_on_plate(lead))
+    """Owner decision: a pool job starts by itself as soon as it is sliced and its printer's plate is confirmed clear, whether or
+    not anyone is around. (It used to need every owner on the plate to ask for it.)"""
+    return True
 
 
 # ------------------------------------------------------------------ compatibility

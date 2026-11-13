@@ -260,14 +260,12 @@ def test_expired_hold_dissolves_a_plate(client, fleet):
     assert not store.jobs.get(lead["id"]).get("members")
 
 
-def test_a_plate_starts_by_itself_only_if_everyone_asked(client, fleet):
+def test_a_plate_always_starts_by_itself(client, fleet):
     me = client.get("/api/me").json()
     a, b = pooled_job(me, "a", 1), pooled_job(me, "b", 2)
     store.jobs.update(a, auto_start=True, members=[b])
     store.jobs.update(b, auto_start=False, batch_lead=a)
-    assert plates.auto_start(store.jobs.get(a)) is False
-    store.jobs.update(b, auto_start=True)
-    assert plates.auto_start(store.jobs.get(a)) is True
+    assert plates.auto_start(store.jobs.get(a)) is True            # owner decision: pool plates always start by themselves
 
 
 def test_slices_and_previews_are_drafts_that_leave_no_job_until_sent_somewhere(client, fleet):

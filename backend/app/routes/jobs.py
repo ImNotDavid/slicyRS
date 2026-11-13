@@ -341,7 +341,7 @@ def job_forecast(job_id: str, pickup_by: float | None = None, user: dict = User)
 class SubmitIn(BaseModel):
     pickup_by: float | None = None           # epoch seconds; None = whenever
     colour: str = Field("any", max_length=40)  # recorded for later colour matching
-    auto_start: bool = False                 # start printing as soon as it is sliced and the plate is clear
+    auto_start: bool = True                  # ignored: pool jobs always start by themselves now (owner decision); kept for old clients
     allow_batching: bool = False             # may share a plate with other people's parts (they wait for a partner while there is time)
 
 
@@ -364,7 +364,7 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
                                        "Choose a later time or submit without one.",
                              "earliest_pickup": check["earliest_finish"]}, status_code=409)
     jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, draft=False, submitted_at=now, pickup_by=body.pickup_by,
-                        colour=body.colour, auto_start=body.auto_start, allow_batching=body.allow_batching, at_risk=False)
+                        colour=body.colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False)
     _discard_slice_drafts(user, (job.get("spec") or {}).get("model_id"), keep=job_id)
     audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
     allocator.tick()

@@ -38,7 +38,7 @@ function nextLine(j: Job, s: Status): string {
   if (j.plate_to_clear) return "Collect it and confirm the plate is clear";
   if (j.result?.outcome === "failed") return j.result.layer != null && j.result.total_layers ? `Stopped at layer ${j.result.layer} of ${j.result.total_layers}` : "Stopped before the end";
   if (s.key === "wait") return j.waiting_for ?? (j.phase === "assigned" ? `Going to ${j.printer_name}` : "Waiting for a free printer");
-  if (s.key === "ready") return j.printer_name ? `Sliced for ${j.printer_name}: press Print` : "Sliced";
+  if (s.key === "ready") return j.pooled ? `Starting on ${j.printer_name ?? "its printer"}` : j.printer_name ? `Sliced for ${j.printer_name}: press Print` : "Sliced";
   if (s.key === "print") return j.printer_name ? `On ${j.printer_name}` : "Printing";
   if (s.key === "slice") return j.printer_name ? `Preparing for ${j.printer_name}` : "Preparing";
   if (j.error) return j.error;
