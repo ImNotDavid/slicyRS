@@ -67,3 +67,18 @@ def test_unknown_action_is_a_bug_not_a_no():
 def test_every_action_is_documented():
     doc = permissions.__doc__ or ""
     assert all(a in doc for a in permissions.ACTIONS)
+
+
+def test_a_finished_job_on_an_occupied_plate_offers_its_owner_the_plate_check(client):
+    from conftest import make_user
+    c = make_user(client, "plate.owner@imperial.ac.uk")
+    me = c.get("/api/me").json()
+    pid = uuid.uuid4().hex[:8]
+    store.printers.put(pid, {"id": pid, "name": "P", "model": "P1S", "bed": {"state": "occupied"}})
+    jid = uuid.uuid4().hex[:8]
+    store.jobs.put(jid, {"id": jid, "name": "x", "owner_id": me["id"], "owner_email": me["email"], "printer_id": pid, "phase": "printed",
+                         "state": "done", "started_at": 70, "created": 70})
+    flag = lambda: next(j for j in c.get("/api/jobs").json() if j["id"] == jid).get("plate_to_clear")
+    assert flag() is True
+    assert c.post(f"/api/printers/{pid}/bed/clear", json={"bed_empty": True, "plate_matches": True, "filament_matches": True}).status_code == 200
+    assert not flag()

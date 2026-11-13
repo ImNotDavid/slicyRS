@@ -135,3 +135,9 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - Moved onto it: Jobs list and every job action (`routes/jobs._owned_job`), model access (`routes/common._checked_model`), plate clear and mark occupied (`bedstate`), who sees printer users and connection details (`routes/printers`), sharing and deleting presets (`routes/catalog`), and which notification events a person sees in their settings (`notify.preferences`). Removed the unused `plates.is_owner` and `presets.can_delete`.
 - One small behaviour change: a disabled account is refused every action even if its session were still alive (sessions are already revoked on disable). Emitting to operators still uses the operator flag only, as before.
 - Tests: `tests/test_permissions.py`. New actions for 2.2 and 2.4 (queue, pause, resume) belong in `ACTIONS` with a row in the table.
+
+## Staff-only pages (owner request after 2.15)
+
+- Fleet is for operators and admins only; Admin for admins. In the menu they sit under a "Staff" divider with a yellow edge (the brand's alert yellow), and their page header carries a yellow tag ("Operators and admins only" / "Admins only"). Members do not see the Fleet link and `#/fleet` falls back to the Workspace for them (`Shell.tsx`, `allowed()`); `/api/printers` stays open because the Workspace needs it.
+- Members confirm their own plate is clear from Jobs: `GET /api/jobs` adds `plate_to_clear` when the job's print is over and its plate is still occupied, and Jobs shows a "Confirm plate is clear" button with the same three ticks (`components/PlateCheck.tsx`, shared with Fleet).
+- A home overview for members is on the roadmap as 2.18.

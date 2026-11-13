@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .. import allocator, assign, forecast, jobstate, meshio, multipart, pipeline, printing, slicer, store, thumbnail
-from .. import permissions
+from .. import bedstate, permissions
 from ..auth import audit
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
@@ -117,7 +117,18 @@ def list_jobs(user: dict = User):
     """Your jobs; admins see everyone's."""
     see_all = permissions.can(user, "job.see_all")
     jobs = [j for j in store.jobs.all() if not j.get("draft") and (see_all or j.get("owner_id") == user["id"])]
-    return sorted(jobs, key=lambda j: -j["created"])
+    return sorted((_with_plate_flag(j) for j in jobs), key=lambda j: -j["created"])
+
+
+def _with_plate_flag(job: dict[str, Any]) -> dict[str, Any]:
+    """`plate_to_clear`: the job's print is over but its plate is still on the printer, so its owner can confirm it is clear from
+    Jobs (members do not see the Fleet page)."""
+    pid = job.get("printer_id")
+    if not pid or job.get("phase") not in ("printed", "failed", "unknown"):
+        return job
+    p = store.printers.get(pid)
+    on_plate = p and bedstate.get(p).get("state") == "occupied" and any(j["id"] == job["id"] for j in bedstate.last_plate(pid))
+    return {**job, "plate_to_clear": True} if on_plate else job
 
 
 def _owned_job(job_id: str, user: dict[str, Any]) -> dict[str, Any]:

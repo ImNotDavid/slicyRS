@@ -1,7 +1,8 @@
 import { useState } from "react";
 import Frame from "./Frame";
 import { Harry } from "./Brand";
-import { api, type Printer } from "../api";
+import type { Printer } from "../api";
+import PlateCheck from "./PlateCheck";
 
 type Props = { printers: Printer[]; onClose?: () => void; onChanged?: () => void; inline?: boolean };
 
@@ -15,13 +16,6 @@ const textOn = (hex: string) => {
 export default function FleetModal({ printers, onClose, onChanged, inline }: Props) {
   const visible = printers.filter((p) => p.enabled);
   const [open, setOpen] = useState<string | null>(null);
-  const [ticks, setTicks] = useState({ bed_empty: false, plate_matches: false, filament_matches: false });
-  const [err, setErr] = useState("");
-  const confirm = async (id: string) => {
-    setErr("");
-    try { await api.bedClear(id, ticks); setOpen(null); setTicks({ bed_empty: false, plate_matches: false, filament_matches: false }); onChanged?.(); }
-    catch (e) { setErr((e as Error).message); }
-  };
   return (
     <Frame title="Printer fleet" inline={inline} cards onClose={onClose}>
           {!visible.length && <div className="empty-state"><Harry height={48} /><p>No printers are available yet. An admin needs to add them.</p></div>}
@@ -36,21 +30,13 @@ export default function FleetModal({ printers, onClose, onChanged, inline }: Pro
               </div>
               <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
               {p.bed && <span className={"pill bed-" + p.bed.state} title={p.bed.by ? `confirmed by ${p.bed.by}` : "build plate"}>plate {p.bed.state}</span>}
-              {p.bed && p.bed.state !== "clear" && p.status.state !== "RUNNING" && <button className="btn" onClick={() => { setOpen(open === p.id ? null : p.id); setErr(""); }}>Confirm plate clear</button>}
+              {p.bed && p.bed.state !== "clear" && p.status.state !== "RUNNING" && <button className="btn" onClick={() => { setOpen(open === p.id ? null : p.id); }}>Confirm plate clear</button>}
               <div className="ams">
                 {(p.status.ams ?? []).map((s) => (
                   <span key={s.slot} className="slot" title={`${s.type} ${s.remain}%`} style={{ background: s.color, color: textOn(s.color) }}>{s.type}</span>
                 ))}
               </div>
-              {open === p.id && (
-                <div className="bed-check">
-                  {([["bed_empty", "The build plate is empty"], ["plate_matches", "The plate type matches the printer's setting"], ["filament_matches", "The loaded filament matches the next job"]] as const).map(([k, label]) => (
-                    <label className="check" key={k}><input type="checkbox" checked={ticks[k]} onChange={(e) => setTicks({ ...ticks, [k]: e.target.checked })} /> {label}</label>
-                  ))}
-                  {err && <p className="form-error" role="alert">{err}</p>}
-                  <button className="btn primary" disabled={!Object.values(ticks).every(Boolean)} onClick={() => confirm(p.id)}>Confirm clear</button>
-                </div>
-              )}
+              {open === p.id && <PlateCheck printerId={p.id} onDone={() => { setOpen(null); onChanged?.(); }} />}
             </div>
           ))}
     </Frame>

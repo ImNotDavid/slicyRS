@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Frame from "./Frame";
+import PlateCheck from "./PlateCheck";
 import { Harry } from "./Brand";
 import { api, type Job, type JobEvent } from "../api";
 
@@ -11,6 +12,7 @@ export const fmtTime = (s?: number) => {
 
 export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onClose?: () => void; onOpen: (j: Job) => void; showOwner?: boolean; inline?: boolean }) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [clearing, setClearing] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; events: JobEvent[] } | null>(null);
   const load = () => api.jobs().then(setJobs);
   useEffect(() => { load(); }, []);
@@ -37,6 +39,7 @@ export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onCl
               </span>
               <span className="muted">{fmtTime(j.stats?.time_s ?? j.preview?.time_s)}</span>
               {j.phase && CANCELLABLE.includes(j.phase) && <button className="btn" onClick={() => api.cancel(j.id).then(load)}>Cancel</button>}
+              {j.plate_to_clear && j.printer_id && <button className="btn primary" onClick={() => setClearing(clearing === j.id ? null : j.id)}>Confirm plate is clear</button>}
               <button className="btn" onClick={async () => setHistory(history?.id === j.id ? null : { id: j.id, events: await api.events(j.id) })}>History</button>
               {j.state === "done" && !j.files_deleted_at && <button className="btn" onClick={() => onOpen(j)}>Open</button>}
               {j.files_deleted_at && <span className="muted" title="Files are removed after a retention period; slice the part again">files removed</span>}
@@ -45,6 +48,7 @@ export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onCl
                   {history.events.map((e) => <li key={e.id}>{when(e.at)} · {e.kind === "phase" ? `${e.data.from ?? "new"} → ${e.data.to}${e.data.reason ? ` (${e.data.reason})` : ""}` : e.kind.replace(/_/g, " ")}</li>)}
                 </ul>
               )}
+              {clearing === j.id && j.printer_id && <PlateCheck printerId={j.printer_id} onDone={() => { setClearing(null); load(); }} />}
               {j.error && <p className="result-note bad">{j.error}</p>}
               {j.result && <p className={"result-note" + (j.result.outcome === "failed" ? " bad" : "")}>{j.result.summary}</p>}
             </div>

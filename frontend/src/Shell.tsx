@@ -14,16 +14,19 @@ type Page = "workspace" | "jobs" | "fleet" | "admin";
 type Theme = "auto" | "light" | "dark";
 const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "Jobs", fleet: "Fleet", admin: "Admin" };
 
-const readPage = (admin: boolean): Page => {
+// pages only some people have: Fleet for operators and admins, Admin for admins
+const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" ? operator : true);
+const readPage = (admin: boolean, operator: boolean): Page => {
   const p = window.location.hash.replace(/^#\/?/, "") as Page;
-  return p in TITLES && (p !== "admin" || admin) ? p : "workspace";
+  return p in TITLES && allowed(p, admin, operator) ? p : "workspace";
 };
 const storedTheme = (): Theme => { try { return (localStorage.getItem("theme") as Theme) || "auto"; } catch { return "auto"; } };
 
 /** Pages with a left menu (a bottom tab bar on phones). The workspace stays mounted so a plate in progress survives a look at Jobs. */
 export default function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const isAdmin = user.role === "admin";
-  const [page, setPage] = useState<Page>(() => readPage(isAdmin));
+  const isOperator = isAdmin || !!user.operator;
+  const [page, setPage] = useState<Page>(() => readPage(isAdmin, isOperator));
   const [wide, setWide] = useState(false);                   // the workspace menu is an icon strip unless expanded
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -32,10 +35,10 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [printers, setPrinters] = useState<Printer[]>([]);
 
   useEffect(() => {
-    const onHash = () => setPage(readPage(isAdmin));
+    const onHash = () => setPage(readPage(isAdmin, isOperator));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [isAdmin]);
+  }, [isAdmin, isOperator]);
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", theme);
@@ -52,10 +55,13 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   }, [page, catalog, refreshPrinters]);
 
   const go = (p: Page) => { window.location.hash = "/" + p; };
-  const items: { id: Page; icon: typeof Box }[] = [
-    { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks }, { id: "fleet", icon: PrinterIcon },
-    ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck }] : []),
+  // staff pages carry the yellow staff marker so nobody mistakes them for something every member has
+  const items: { id: Page; icon: typeof Box; staff?: string }[] = [
+    { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks },
+    ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
+    ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck, staff: "Admins only" }] : []),
   ];
+  const staffNote = items.find((i) => i.id === page)?.staff;
   const compact = page === "workspace" && !wide;
   const initials = (user.name || user.email).split(/[\s.@]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
   const nextTheme: Theme = theme === "auto" ? "light" : theme === "light" ? "dark" : "auto";
@@ -66,10 +72,14 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
       <aside className="sidebar">
         <div className="brand"><Harry height={28} className="brand-harry" /><div className="brand-text"><span className="mark">slicy<b>RS</b></span><Lettermark height={14} className="brand-letters" /></div></div>
         <nav aria-label="Main">
-          {items.map(({ id, icon: Icon }) => (
-            <button key={id} className={"nav" + (page === id ? " on" : "")} aria-current={page === id ? "page" : undefined} title={TITLES[id]} onClick={() => go(id)}>
-              <Icon size={18} strokeWidth={2} /><span>{TITLES[id]}</span>
-            </button>
+          {items.map(({ id, icon: Icon, staff }, i) => (
+            <div key={id} className="nav-wrap">
+              {staff && !items[i - 1]?.staff && <div className="staff-rule" aria-hidden="true"><span>Staff</span></div>}
+              <button className={"nav" + (page === id ? " on" : "") + (staff ? " staff" : "")} aria-current={page === id ? "page" : undefined}
+                title={staff ? `${TITLES[id]} (${staff.toLowerCase()})` : TITLES[id]} onClick={() => go(id)}>
+                <Icon size={18} strokeWidth={2} /><span>{TITLES[id]}</span>
+              </button>
+            </div>
           ))}
         </nav>
         <div className="side-foot">
@@ -99,9 +109,9 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
       </div>
       {page !== "workspace" && (
         <main className="page">
-          <header className="page-head"><h1>{TITLES[page]}</h1><span className="hatch-chip wide" aria-hidden="true" /></header>
+          <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>
           {page === "jobs" && <JobsModal inline showOwner={isAdmin || !!user.operator} onOpen={setOpenRequest} />}
-          {page === "fleet" && <FleetModal inline printers={printers} onChanged={refreshPrinters} />}
+          {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} />}
           {page === "admin" && isAdmin && (catalog ? <AdminModal inline catalog={catalog} me={user} onPrintersChanged={refreshPrinters} /> : <p className="muted">Loading…</p>)}
         </main>
       )}

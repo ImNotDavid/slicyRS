@@ -256,3 +256,21 @@ select, input[type="text"], input[type="number"], input[type="datetime-local"] {
 .dlg-head [id] { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 16px; margin: 0; font-weight: 500; }
 .dlg-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .notify-events { display: flex; flex-direction: column; gap: 6px; }
+
+/* staff-only pages and menus: the brand's alert yellow marks what not every member has */
+.nav-wrap { display: flex; flex-direction: column; width: 100%; }
+.staff-rule { display: flex; align-items: center; gap: 8px; height: 22px; margin: 8px 0 2px; padding-left: 12px; font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.staff-rule::before { content: ""; width: 24px; height: 8px; flex: none; background: repeating-linear-gradient(135deg, var(--brand-yellow) 0 2px, transparent 2px 5px); }
+.shell.compact .staff-rule span { opacity: 0; }
+.nav.staff { position: relative; }
+.nav.staff::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--brand-yellow); }
+.nav.staff.on { border-left-color: transparent; }
+.nav.staff.on::after { width: 5px; }
+.staff-tag { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; background: var(--brand-yellow); color: #000; font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%); }
+@media (max-width: 900px) {
+  .nav-wrap { flex: 1; }
+  .staff-rule { display: none; }
+  .nav.staff::after { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 3px; }
+}
