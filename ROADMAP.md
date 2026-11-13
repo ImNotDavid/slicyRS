@@ -151,7 +151,7 @@ Do this once the viewport-heavy Milestone 1 items (1.2 move and arrange, 1.4 sup
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| 2.1 | **Live print progress**: percent, time left, temperatures, layer, on job and fleet pages | M | MQTT status already carries most of it. |
+| 2.1 | **Live print progress**: percent, time left, temperatures, layer, on job and fleet pages | M | **DONE, NEEDS A REAL PRINT TO CHECK.** `routes/common.live_progress` reads the status every printer already reports (percent, minutes left, layer, nozzle and bed temperature) for a job that is printing on a busy printer, so an old reading never shows on a finished job. Shown as a bar and numbers on job cards, a "Live from <printer>" panel on the job page (refreshing every 5 s, with a clock time for the finish) and on Fleet cards; a paused print turns the bar yellow. |
 | 2.2 | **Real per-printer queue with automatic dispatch** when a printer becomes free | L | Needs a "bed cleared" confirmation so the next job never starts on a full bed. Jobs wait unassigned when no printer is eligible and dispatch when one is. |
 | 2.3 | **Notifications**: email on finished or failed, optional Slack or Teams; per-user opt-out. **Now delivered as part of 2.14 (the notification service).** | M | Brevo is already available for email. |
 | 2.4 | **Cancel, pause and resume** from the web | M | Owner or admin only. |

@@ -14,7 +14,7 @@ from ..auth import audit
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
 from ..storage import JOBS, MODELS, files
-from .common import User, _fleet, _source_file, _transformed, plate_instances, pool
+from .common import User, _fleet, _source_file, _transformed, live_progress, plate_instances, pool
 from .models import TransformIn, _annotate_overflow, plate_of
 
 router = APIRouter()
@@ -123,7 +123,7 @@ def list_jobs(scope: str = "mine", user: dict = User):
     if scope == "all":
         permissions.require(user, "job.see_all", message="Only operators and admins can see everyone's jobs")
     jobs = [j for j in store.jobs.all() if not j.get("draft") and (scope == "all" or j.get("owner_id") == user["id"])]
-    return sorted((_with_plate_flag(j) for j in jobs), key=lambda j: -j["created"])
+    return sorted((_with_live(_with_plate_flag(j)) for j in jobs), key=lambda j: -j["created"])
 
 
 def _with_plate_flag(job: dict[str, Any]) -> dict[str, Any]:
@@ -135,6 +135,11 @@ def _with_plate_flag(job: dict[str, Any]) -> dict[str, Any]:
     p = store.printers.get(pid)
     on_plate = p and bedstate.get(p).get("state") == "occupied" and any(j["id"] == job["id"] for j in bedstate.last_plate(pid))
     return {**job, "plate_to_clear": True} if on_plate else job
+
+
+def _with_live(job: dict[str, Any]) -> dict[str, Any]:
+    live = live_progress(job)
+    return {**job, "live": live} if live else job
 
 
 def _owned_job(job_id: str, user: dict[str, Any]) -> dict[str, Any]:

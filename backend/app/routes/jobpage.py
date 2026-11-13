@@ -11,7 +11,7 @@ from .. import bedstate, goals, jobstate, meshio, permissions, plates, store, th
 from ..catalog import FIELDS, job_nozzle
 from ..defaults import ui_defaults
 from ..storage import JOBS, MODELS, files
-from .common import User
+from .common import User, live_progress
 from .jobs import _viewable_job
 
 router = APIRouter()
@@ -88,6 +88,7 @@ def job_page(job_id: str, user: dict = User):
         "files_deleted": bool(lead.get("files_deleted_at")),
         "plate_to_clear": bool(printer and job.get("phase") in FINISHED and bed.get("state") == "occupied"
                                and any(j["id"] == job["id"] for j in bedstate.last_plate(printer["id"]))),
+        "live": live_progress(job),         # percent, time left, layer and temperatures while it prints (2.1)
         "photo": None,                      # a camera picture of the finished plate (2.7) lands here
         "events": jobstate.events_for(job["id"]),
     }

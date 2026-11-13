@@ -3,6 +3,7 @@ import { ArrowLeft, Camera, Download, Repeat, X } from "lucide-react";
 import { api, gcodeUrl, type Catalog, type JobPage as Page } from "../api";
 import Viewport from "./Viewport";
 import PlateCheck from "./PlateCheck";
+import LiveProgress from "./LiveProgress";
 import { statusOf } from "./JobsGrid";
 import { fmtTime } from "../format";
 import { TRAVEL, type FeatureInfo } from "../gcode";
@@ -45,6 +46,12 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
   const [clearing, setClearing] = useState(false);
   const load = () => api.jobPage(id).then(setP).catch((e) => setErr(e.message));
   useEffect(() => { setP(null); setGcode(null); setTab("settings"); setView("toolpaths"); load(); }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const printing = p?.job.phase === "printing" || !!p?.live;
+  useEffect(() => {                         // while it prints, keep the numbers fresh
+    if (!printing) return;
+    const t = setInterval(() => api.jobPage(id).then(setP).catch(() => {}), 5000);
+    return () => clearInterval(t);
+  }, [printing, id]);
   useEffect(() => { if (p?.gcode) fetch(gcodeUrl(id)).then((r) => (r.ok ? r.text() : null)).then(setGcode).catch(() => setGcode(null)); }, [p?.gcode, id]);
 
   const bed = useMemo<[number, number, number]>(() => (p?.printer && catalog?.printer_models[p.printer.model]?.bed) || [256, 256, 256], [p, catalog]);
@@ -77,6 +84,7 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
           {p.can_manage && j.phase && CANCELLABLE.includes(j.phase) && <button className="btn danger" onClick={() => confirm(`Cancel ${j.name}?`) && api.cancel(id).then(load)}><X size={14} /> Cancel job</button>}
         </div>
       </header>
+      {p.live && <section className="live-panel" aria-label="Live progress"><span className="lbl">Live from {p.printer?.name}</span><LiveProgress live={p.live} full /></section>}
       {clearing && p.printer && <PlateCheck printerId={p.printer.id} onDone={() => { setClearing(false); load(); }} />}
 
       <section className="stats-strip" aria-label="Key numbers">

@@ -67,3 +67,19 @@ def test_a_plate_job_picture_shows_all_its_parts(client, fleet):
     from conftest import wait_job
     job = wait_job(client, r.json()["id"])
     assert client.get(f"/api/jobs/{job['id']}/thumbnail.png").status_code == 200
+
+
+def test_live_progress_shows_only_while_the_printer_is_busy_with_the_job(client, fleet):
+    import time
+    m = upload(client, VALID / "cube_binary.stl").json()
+    _, job = slice_model(client, m["id"])
+    pid = job["printer_id"]
+    store.jobs.update(job["id"], phase="printing", printed=True, draft=False)
+    store.printers.update(pid, status={"state": "RUNNING", "progress": 42, "remaining_min": 18, "layer_num": 90, "total_layer_num": 214,
+                                       "nozzle_c": 220, "bed_c": 55, "updated": time.time()})
+    live = page(client, job["id"]).json()["live"]
+    assert live["percent"] == 42 and live["remaining_min"] == 18 and live["layer"] == 90 and live["nozzle_c"] == 220 and live["eta"] > time.time()
+    assert next(j for j in client.get("/api/jobs").json() if j["id"] == job["id"])["live"]["percent"] == 42
+    store.printers.update(pid, status={"state": "FINISH", "progress": 100})
+    assert page(client, job["id"]).json()["live"] is None              # an old reading never shows once the printer has moved on
+    store.printers.update(pid, status={"state": "IDLE"})

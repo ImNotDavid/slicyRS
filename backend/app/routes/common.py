@@ -34,6 +34,24 @@ def _public_printer(p: dict[str, Any], admin: bool, people: bool = False) -> dic
 
 
 ACTIVE_PHASES = {"assigned", "slicing", "ready", "printing"}
+LIVE_STATES = {"RUNNING", "PAUSE", "PREPARE", "SLICING"}       # the printer is busy with the print (preparing, printing or paused)
+
+
+def live_progress(job: dict[str, Any]) -> dict[str, Any] | None:
+    """What the printer says right now about a job it is printing (2.1): from the status every printer already reports.
+    Only for a job that is printing and whose printer is busy, so an old reading never shows on a finished job."""
+    if job.get("phase") != "printing" or not job.get("printer_id"):
+        return None
+    p = store.printers.get(job["printer_id"]) or {}
+    st = p.get("status") or {}
+    if st.get("state") not in LIVE_STATES:
+        return None
+    remaining = st.get("remaining_min")
+    updated = st.get("updated")
+    return {"state": st.get("state"), "percent": st.get("progress"), "remaining_min": remaining,
+            "eta": (updated + remaining * 60) if updated and isinstance(remaining, (int, float)) else None,
+            "layer": st.get("layer_num"), "total_layers": st.get("total_layer_num") or (job.get("stats") or {}).get("layers"),
+            "nozzle_c": st.get("nozzle_c"), "bed_c": st.get("bed_c"), "updated": updated}
 
 
 def printer_people(printer: dict[str, Any]) -> dict[str, Any]:

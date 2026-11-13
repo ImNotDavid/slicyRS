@@ -3,6 +3,7 @@ import { ArrowDownUp, Search } from "lucide-react";
 import { api, type Catalog, type Job } from "../api";
 import { fmtTime } from "../format";
 import { Harry } from "./Brand";
+import LiveProgress from "./LiveProgress";
 
 type Status = { key: "wait" | "slice" | "ready" | "print" | "done" | "fail" | "off"; label: string; pill: string; rank: number };
 type Sort = "date" | "name" | "status" | "time" | "material" | "owner";
@@ -132,7 +133,7 @@ export default function JobsGrid({ scope, catalog, onOpen }: { scope: "mine" | "
               <div className="meta"><span>{j.filament}</span>{goalName(j.spec?.goal) && <span>{goalName(j.spec?.goal)}</span>}<span>{fmtTime(time)}</span>
                 {j.members?.length || j.batch_lead ? <span>shared plate</span> : null}</div>
               {scope === "all" && j.owner_email && <div className="meta owner">{j.owner_email}</div>}
-              {nextLine(j, s) && <div className="next">{nextLine(j, s)}</div>}
+              {j.live ? <LiveProgress live={j.live} /> : nextLine(j, s) && <div className="next">{nextLine(j, s)}</div>}
             </div>
           </button>
         ))}

@@ -3,6 +3,7 @@ import Frame from "./Frame";
 import { Harry } from "./Brand";
 import type { Printer } from "../api";
 import PlateCheck from "./PlateCheck";
+import LiveProgress from "./LiveProgress";
 
 type Props = { printers: Printer[]; onClose?: () => void; onChanged?: () => void; inline?: boolean; onOpenJob?: (id: string) => void };
 
@@ -30,6 +31,10 @@ export default function FleetModal({ printers, onClose, onChanged, inline, onOpe
                   : <span className="who muted">{p.last_user ? `Nobody now. Last used by ${p.last_user.name}` : "Nobody now"}</span>)}
               </div>
               <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
+              {["RUNNING", "PAUSE", "PREPARE"].includes(p.status.state) && p.status.progress != null && (
+                <LiveProgress full live={{ state: p.status.state, percent: p.status.progress, remaining_min: p.status.remaining_min ?? null, eta: null,
+                  layer: p.status.layer_num ?? null, total_layers: p.status.total_layer_num ?? null, nozzle_c: p.status.nozzle_c ?? null, bed_c: p.status.bed_c ?? null, updated: null }} />
+              )}
               {p.bed && <span className={"pill bed-" + p.bed.state} title={p.bed.by ? `confirmed by ${p.bed.by}` : "build plate"}>plate {p.bed.state}</span>}
               {p.bed && p.bed.state !== "clear" && p.status.state !== "RUNNING" && <button className="btn" onClick={() => { setOpen(open === p.id ? null : p.id); }}>Confirm plate clear</button>}
               <div className="ams">
