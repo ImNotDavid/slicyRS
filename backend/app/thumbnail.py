@@ -1,7 +1,7 @@
 """Plate thumbnail for the print bundle (Milestone 1.11). The slicer's headless export names `Metadata/plate_1.png` and
 `plate_1_small.png` in the bundle but does not make them, so a printer has no picture to show for the job. This renders one
 with plain numpy (no GPU, no image library): a shaded view of the part from the front corner, on a transparent background.
-Off unless BUNDLE_THUMBNAIL=1, until it has been seen working on a real printer."""
+On by default (owner decision); BUNDLE_THUMBNAIL=0 switches it off. Not yet seen on a real printer's screen."""
 import logging
 import math
 import os
@@ -14,7 +14,7 @@ import numpy as np
 import trimesh
 
 log = logging.getLogger("thumbnail")
-ENABLED = os.environ.get("BUNDLE_THUMBNAIL", "0") == "1"
+ENABLED = os.environ.get("BUNDLE_THUMBNAIL", "1") == "1"
 AZIMUTH, ELEVATION = math.radians(35), math.radians(35)
 DEFAULT_COLOUR = (0, 174, 66)         # Bambu green, used when the plate does not say which filament it is
 LIGHT = np.array([-0.45, -0.55, 0.7])

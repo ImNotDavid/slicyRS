@@ -81,10 +81,12 @@ def test_an_existing_picture_is_left_alone(tmp_path):
     assert zipfile.ZipFile(p).read("Metadata/plate_1.png") == b"already"
 
 
-def test_it_does_nothing_unless_switched_on_and_never_fails_a_slice(tmp_path, monkeypatch):
+def test_on_by_default_can_be_switched_off_and_never_fails_a_slice(tmp_path, monkeypatch):
+    assert thumbnail.ENABLED is True                                              # owner decision: on unless BUNDLE_THUMBNAIL=0
     p = bundle(tmp_path)
+    monkeypatch.setattr(thumbnail, "ENABLED", False)
     thumbnail.maybe_add(p, tmp_path / "missing.stl")
-    assert "Metadata/plate_1.png" not in zipfile.ZipFile(p).namelist()            # off by default
+    assert "Metadata/plate_1.png" not in zipfile.ZipFile(p).namelist()            # switched off: nothing added
     monkeypatch.setattr(thumbnail, "ENABLED", True)
     thumbnail.maybe_add(p, tmp_path / "missing.stl")                              # cannot read the model: logged, not raised
     thumbnail.maybe_add(None, tmp_path / "missing.stl")
