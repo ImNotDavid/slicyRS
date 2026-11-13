@@ -174,3 +174,10 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - `app/printcontrol.py`: checks the job is printing and the printer state allows the command, stores `control: {action, by, at}` on every job on the plate and an event, sends the command, audits it. `POST /api/jobs/{id}/pause|resume|stop`; permissions `print.pause` and `print.stop`.
 - Follow-on effects keyed off `recent_control` (2 minutes): `alerts` names who paused and skips them (`notify.emit(skip=…)`); `outcomes` writes "Stopped from the web by …", tells the others, and does not flag the printer.
 - UI: job page live panel (Pause or Resume, Stop with a confirm, and a note when a shared plate can only be stopped by staff); Fleet cards (staff) for the printer's current job. Checked in the pane only for the no-connection message; the real commands need a printer.
+
+## Staff queue (2.2)
+
+- `app/queue.py`: jobs carry `queue_rank` (position in their lane) and `pinned_printer`. `sort_key` puts lined-up jobs first, then hand-placed pool jobs, then the automatic order. `allocator.assign_pool` uses it and offers a lined-up job only to its own printer; batching partners never come from another printer's line; `waiting_reason` says "Lined up for <printer>, N ahead: …"; `forecast.predict` uses only the pinned printer.
+- `fits(job, printer)` refuses a line-up when the printer cannot print the job (assign rules with `assume_available`) or is in maintenance or needs attention; the Queue page uses the same answers to colour drop targets red.
+- API (permission `queue.manage`, operators and admins): `GET /api/queue`, `POST /api/queue/move {job_id, lane, index}` (re-numbers the whole lane), `POST /api/queue/reset`. Moves are audited and recorded as `queue_moved` events on the job.
+- `components/QueuePage.tsx` at `#/queue` (staff menu): HTML5 drag and drop with drop position from the pointer, plus arrows and a "Line up for…" menu per card; printing and already-assigned jobs show as locked cards. Checked in the browser pane with synthetic drag events (reorder, refused ABS on an open printer, line-up); not yet with a real mouse.

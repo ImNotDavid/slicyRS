@@ -51,6 +51,8 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     cfg = pipelinecfg.get()
     margin = cfg["cooling_margin_min"] * 60
     printers = eligible_printers(job["dims"], job["filament"], job_nozzle(job), job_position(job))
+    if job.get("pinned_printer"):                       # lined up for one printer by staff (2.2)
+        printers = [p for p in printers if p["id"] == job["pinned_printer"]] or printers
     if not printers:
         return {"feasible": False, "earliest_finish": None, "jobs_ahead": 0, "printer_id": None, "printer_name": None}
 

@@ -40,6 +40,10 @@ export type NotifyOverview = { events: { kind: string; label: string; owners: bo
   recent: { at: number; kind: string; channel: string; to: string; ok: boolean; error: string }[] };
 export type Live = { state: string; percent: number | null; remaining_min: number | null; eta: number | null; layer: number | null; total_layers: number | null;
   nozzle_c: number | null; bed_c: number | null; updated: number | null };
+export type QueueCard = { id: string; name: string; owner: string | null; filament: string; nozzle_mm: number; enclosed: boolean; estimate_s: number | null;
+  pickup_by: number | null; at_risk: boolean; shared: boolean; phase: string; waiting_for: string | null; hand_placed: boolean; fits: Record<string, string | null>; live?: Live | null };
+export type QueueLane = { id: string; name?: string; model?: string; nozzle_mm?: number; state?: string | null; unavailable?: string | null; wait_s?: number | null;
+  bed?: string; now?: QueueCard | null; coming?: QueueCard[]; jobs: QueueCard[] };
 export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
 export type JobPage = {
   job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
@@ -176,6 +180,9 @@ export const api = {
   events: (id: string) => fetch(`/api/jobs/${id}/events`).then(j<JobEvent[]>),
   setMaintenance: (id: string, on: boolean, note = "") => post(`/api/printers/${id}/maintenance`, { on, note }).then(j<Printer>),
   controlPrint: (jobId: string, action: "pause" | "resume" | "stop") => post(`/api/jobs/${jobId}/${action}`).then(j<{ ok: boolean; done: boolean; state: string }>),
+  queueBoard: () => fetch("/api/queue").then(j<{ lanes: QueueLane[]; at: number }>),
+  queueMove: (job_id: string, lane: string, index: number) => post("/api/queue/move", { job_id, lane, index }).then(j<{ ok: boolean; lane: string; position: number }>),
+  queueReset: () => post("/api/queue/reset").then(j<{ ok: boolean; reset: number }>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Bell, Box, ClipboardList, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { Bell, Box, ClipboardList, Columns3, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
 import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User } from "./api";
 import JobPage from "./components/JobPage";
+import QueuePage from "./components/QueuePage";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -11,13 +12,13 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
-type Page = "workspace" | "jobs" | "alljobs" | "job" | "fleet" | "admin";
+type Page = "workspace" | "jobs" | "alljobs" | "queue" | "job" | "fleet" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "My jobs", alljobs: "All jobs", job: "Job", fleet: "Fleet", admin: "Admin" };
-const HASH: Record<Page, string> = { workspace: "workspace", jobs: "jobs", alljobs: "all-jobs", job: "jobs", fleet: "fleet", admin: "admin" };
+const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "My jobs", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", admin: "Admin" };
+const HASH: Record<Page, string> = { workspace: "workspace", jobs: "jobs", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
-const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" || p === "alljobs" ? operator : true);
+const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" || p === "alljobs" || p === "queue" ? operator : true);
 // routes: #/workspace, #/jobs, #/jobs/<id>, #/all-jobs, #/fleet, #/admin
 const readRoute = (admin: boolean, operator: boolean): { page: Page; jobId: string | null } => {
   const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -66,6 +67,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const items: { id: Page; icon: typeof Box; staff?: string }[] = [
     { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks },
     ...(isOperator ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
+    ...(isOperator ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
     ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck, staff: "Admins only" }] : []),
   ];
@@ -120,6 +122,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
         <main className="page">
           {page !== "job" && <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>}
           {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
+          {page === "queue" && isOperator && <QueuePage onOpenJob={openJobPage} />}
           {page === "alljobs" && isOperator && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}
           {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
           {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}

@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from . import assign, bedstate, forecast, jobstate, notify, pipeline, upkeep, pipelinecfg, plates, store, taskqueue
+from . import assign, bedstate, forecast, jobstate, notify, pipeline, upkeep, pipelinecfg, plates, queue, store, taskqueue
 from .bedstate import BUSY
 from .catalog import job_nozzle, job_position
 
@@ -54,6 +54,16 @@ def waiting_reason(job: dict[str, Any]) -> str:
            if c.eligible}
     if not can:
         return "No printer can print this part"
+    if job.get("pinned_printer"):                  # lined up for one printer by an operator: only that one matters
+        pinned = store.printers.get(job["pinned_printer"])
+        if pinned:
+            printers = [pinned]
+            ahead = [j for j in queue.lane_jobs(pinned["id"]) if queue.sort_key(j) < queue.sort_key(job)]
+            prefix = f"Lined up for {pinned['name']}" + (f", {len(ahead)} ahead" if ahead else "") + ": "
+            rest = waiting_reason({**job, "pinned_printer": None, "_only": pinned["id"]})
+            return prefix + rest
+    if job.get("_only"):
+        printers = [p for p in printers if p["id"] == job["_only"]]
     why = []
     free_ids = {f["id"] for f in free_printers()}
     for p in printers:
@@ -89,7 +99,7 @@ def assign_pool() -> int:
                 store.jobs.update(j["id"], waiting_for=w)
     n = 0
     now = time.time()
-    pooled = sorted((j for j in store.jobs.all() if j.get("phase") == "pooled"), key=priority)
+    pooled = sorted((j for j in store.jobs.all() if j.get("phase") == "pooled"), key=queue.sort_key)   # staff order first (2.2)
     taken: set[str] = set()                      # jobs that joined another job's plate during this pass
     for job in pooled:
         if job["id"] in taken:
@@ -97,6 +107,10 @@ def assign_pool() -> int:
         free = free_printers()
         if not free:
             break
+        if job.get("pinned_printer"):              # lined up for one printer: it waits for that one only
+            free = [p for p in free if p["id"] == job["pinned_printer"]]
+            if not free:
+                continue
         ranked = assign.rank([{**p, "queue_depth": 0} for p in free], tuple(job["dims"]), job["filament"], job_nozzle(job), job_position(job))
         best = next((c for c in ranked if c.eligible), None)
         if best is None:
@@ -104,7 +118,8 @@ def assign_pool() -> int:
         printer = store.printers.get(best.printer_id)
         reason = "; ".join(best.reasons)
         if job.get("allow_batching"):
-            partners = plates.find_partners(job, printer, [j for j in pooled if j["id"] not in taken], now)
+            partners = plates.find_partners(job, printer, [j for j in pooled if j["id"] not in taken
+                                                           and j.get("pinned_printer") in (None, printer["id"])], now)
             if not partners and plates.hold_reason(job, now):
                 continue                         # keep the printer for others while this job waits for a partner
             if partners:
