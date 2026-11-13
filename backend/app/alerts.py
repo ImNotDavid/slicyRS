@@ -16,12 +16,12 @@ def _owners(jobs: list[dict[str, Any]]) -> list[str]:
     return [j["owner_email"] for j in jobs if j.get("owner_email")]
 
 
-def _alert(kind: str, p: dict[str, Any], jobs: list[dict[str, Any]], what: str, detail: str = "") -> None:
+def _alert(kind: str, p: dict[str, Any], jobs: list[dict[str, Any]], what: str, detail: str = "", skip: str | None = None) -> None:
     names = ", ".join(j["name"] for j in jobs)
     who = ", ".join(sorted(set(_owners(jobs))))
     notify.emit(kind, f"{p['name']}: {what}",
                 f"{what.capitalize()} while printing {names}.{(' ' + detail) if detail else ''}\n\nGo to the printer and check it.",
-                owners=_owners(jobs), link="/#/fleet", job=jobs[0],
+                owners=_owners(jobs), link="/#/fleet", job=jobs[0], skip=skip,
                 operator_body=f"{p['name']}: {what} ({who}, {names}).{(' ' + detail) if detail else ''}")
 
 
@@ -33,7 +33,10 @@ def on_status(printer_id: str, prev_state: str | None, status: dict[str, Any]) -
     state = status.get("state")
     if state == "PAUSE" and prev_state != "PAUSE":
         layer = status.get("layer_num")
-        _alert("print_paused", p, jobs, "the print was paused", f"It stopped at layer {layer}." if layer is not None else "")
+        from .printcontrol import recent_control
+        web = recent_control(jobs[0], "pause")
+        _alert("print_paused", p, jobs, f"the print was paused{(' from the web by ' + web['by']) if web else ''}",
+               f"It stopped at layer {layer}." if layer is not None else "", skip=web["by"] if web else None)
     elif state == "OFFLINE" and prev_state not in (None, "OFFLINE"):
         _alert("printer_lost", p, jobs, "the printer went offline", "It may still be printing; check the printer.")
     # printer error codes raised since the print started, each reported once per job

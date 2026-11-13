@@ -42,7 +42,7 @@ export type Live = { state: string; percent: number | null; remaining_min: numbe
   nozzle_c: number | null; bed_c: number | null; updated: number | null };
 export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
 export type JobPage = {
-  job: Job; mine: boolean; can_manage: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
+  job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
   changed_settings: { key: string; label: string; value: number | string | boolean; default: number | string | boolean | null; unit?: string }[];
   settings: Record<string, number | string | boolean>; parts: JobPart[]; shared_with: { name: string; owner?: string }[];
   printer: { id: string; name: string; model: string; bed_type: string } | null; estimate_s: number | null; actual_s: number | null;
@@ -175,6 +175,7 @@ export const api = {
   cancel: (id: string) => post(`/api/jobs/${id}/cancel`).then(j<Job>),
   events: (id: string) => fetch(`/api/jobs/${id}/events`).then(j<JobEvent[]>),
   setMaintenance: (id: string, on: boolean, note = "") => post(`/api/printers/${id}/maintenance`, { on, note }).then(j<Printer>),
+  controlPrint: (jobId: string, action: "pause" | "resume" | "stop") => post(`/api/jobs/${jobId}/${action}`).then(j<{ ok: boolean; done: boolean; state: string }>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

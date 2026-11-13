@@ -35,6 +35,14 @@ export default function FleetModal({ printers, onClose, onChanged, inline, onOpe
                   : <span className="who muted">{p.last_user ? `Nobody now. Last used by ${p.last_user.name}` : "Nobody now"}</span>)}
               </div>
               <span className={"pill " + p.status.state.toLowerCase()}>{p.status.state}</span>
+              {["RUNNING", "PAUSE", "PREPARE"].includes(p.status.state) && p.users?.[0] && (
+                <div className="live-controls">
+                  {p.status.state === "PAUSE"
+                    ? <button className="btn primary" onClick={() => act(() => api.controlPrint(p.users![0].job_id, "resume"))}>Resume</button>
+                    : <button className="btn" onClick={() => act(() => api.controlPrint(p.users![0].job_id, "pause"))}>Pause</button>}
+                  <button className="btn danger" onClick={() => confirm(`Stop the print on ${p.name}? It cannot be resumed.`) && act(() => api.controlPrint(p.users![0].job_id, "stop"))}>Stop</button>
+                </div>
+              )}
               {["RUNNING", "PAUSE", "PREPARE"].includes(p.status.state) && p.status.progress != null && (
                 <LiveProgress full live={{ state: p.status.state, percent: p.status.progress, remaining_min: p.status.remaining_min ?? null, eta: null,
                   layer: p.status.layer_num ?? null, total_layers: p.status.total_layer_num ?? null, nozzle_c: p.status.nozzle_c ?? null, bed_c: p.status.bed_c ?? null, updated: null }} />

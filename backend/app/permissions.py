@@ -11,6 +11,8 @@ printers); everyone else is a member. An admin can do everything an operator can
     job.see_all             operators and admins (the All jobs page); everyone has My jobs
     job.view                the job's owner, an operator or an admin (the job page, its preview and history; read only)
     job.manage              the job's owner, or an admin (download, queue, print, submit, cancel, discard)
+    print.pause             an owner of any part on the plate, an operator or an admin (pause and resume a running print)
+    print.stop              operators and admins; an owner too unless the plate is shared (stopping ruins every part on it)
     model.use               the model's uploader, or an admin
     plate.clear             an operator or admin, or any owner of a part on the printer's latest plate
     plate.mark_occupied     an operator or admin
@@ -24,7 +26,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain",
+ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain",
            "printer.see_connection", "preset.share", "preset.delete"}
 
 
@@ -51,6 +53,16 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         return is_admin(user)
     if action in ("job.see_all", "plate.mark_occupied", "printer.see_people", "printer.maintain"):
         return is_operator(user)
+    if action in ("print.pause", "print.stop"):
+        if not target:
+            return False
+        if is_operator(user):
+            return True
+        from .plates import jobs_on_plate   # local import: plates imports the store at load time
+        plate = jobs_on_plate(target)
+        mine = any(j.get("owner_id") == user["id"] for j in plate)
+        shared = len({j.get("owner_id") for j in plate}) > 1
+        return mine and (action == "print.pause" or not shared)
     if action == "job.view":
         return bool(target) and (_owns(user, target) or is_operator(user))
     if action in ("job.manage", "model.use"):

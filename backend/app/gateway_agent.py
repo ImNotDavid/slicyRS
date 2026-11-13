@@ -119,6 +119,15 @@ class Agent:
         finally:
             path.unlink(missing_ok=True)
 
+    def handle_control(self, msg: dict[str, Any]) -> dict[str, Any]:
+        link = self.links.get(msg["printer_id"])
+        if link is None:
+            return {"ok": False, "error": "This gateway has no connection to that printer"}
+        try:
+            return {"ok": True, "done": bool(link.control(msg["action"]))}
+        except (bambulan.PrinterError, ValueError) as e:
+            return {"ok": False, "error": str(e)}
+
     def handle_probe(self, msg: dict[str, Any]) -> dict[str, Any]:
         try:
             bambulan.check_host(msg["host"], resolve=False)
@@ -147,8 +156,9 @@ class Agent:
                         log.info("connected to %s", self.core_url)
                     elif kind == "printers":
                         await self.loop.run_in_executor(None, self.set_printers, msg["printers"])
-                    elif kind in ("print", "probe"):
-                        t = asyncio.create_task(self._answer(msg, self.handle_print if kind == "print" else self.handle_probe))
+                    elif kind in ("print", "probe", "control"):
+                        handler = {"print": self.handle_print, "probe": self.handle_probe, "control": self.handle_control}[kind]
+                        t = asyncio.create_task(self._answer(msg, handler))
                         tasks.add(t)
                         t.add_done_callback(tasks.discard)
             finally:

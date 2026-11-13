@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Camera, Download, Repeat, X } from "lucide-react";
+import { ArrowLeft, Camera, Download, Pause, Play, Repeat, Square, X } from "lucide-react";
 import { api, gcodeUrl, type Catalog, type JobPage as Page } from "../api";
 import Viewport from "./Viewport";
 import PlateCheck from "./PlateCheck";
@@ -44,6 +44,14 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
   const [tab, setTab] = useState<Tab>("settings");
   const [allSettings, setAllSettings] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [busy, setBusy] = useState("");
+  const control = async (action: "pause" | "resume" | "stop") => {
+    if (action === "stop" && !confirm("Stop this print? It cannot be resumed, and the part on the plate is lost.")) return;
+    setBusy(action); setErr("");
+    try { const r = await api.controlPrint(id, action); if (!r.done) alert("Sent. The printer has not confirmed yet; check its screen if nothing changes."); }
+    catch (e) { alert((e as Error).message); }
+    setBusy(""); load();
+  };
   const load = () => api.jobPage(id).then(setP).catch((e) => setErr(e.message));
   useEffect(() => { setP(null); setGcode(null); setTab("settings"); setView("toolpaths"); load(); }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const printing = p?.job.phase === "printing" || !!p?.live;
@@ -84,7 +92,18 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
           {p.can_manage && j.phase && CANCELLABLE.includes(j.phase) && <button className="btn danger" onClick={() => confirm(`Cancel ${j.name}?`) && api.cancel(id).then(load)}><X size={14} /> Cancel job</button>}
         </div>
       </header>
-      {p.live && <section className="live-panel" aria-label="Live progress"><span className="lbl">Live from {p.printer?.name}</span><LiveProgress live={p.live} full /></section>}
+      {p.live && (
+        <section className="live-panel" aria-label="Live progress">
+          <div className="live-head"><span className="lbl">Live from {p.printer?.name}</span>
+            <div className="live-controls">
+              {p.can_pause && p.live.state !== "PAUSE" && <button className="btn" disabled={!!busy} onClick={() => control("pause")}><Pause size={14} /> {busy === "pause" ? "Pausing…" : "Pause"}</button>}
+              {p.can_pause && p.live.state === "PAUSE" && <button className="btn primary" disabled={!!busy} onClick={() => control("resume")}><Play size={14} /> {busy === "resume" ? "Resuming…" : "Resume"}</button>}
+              {p.can_stop && <button className="btn danger" disabled={!!busy} onClick={() => control("stop")}><Square size={14} /> {busy === "stop" ? "Stopping…" : "Stop"}</button>}
+              {p.can_pause && !p.can_stop && <span className="muted small">A shared plate can only be stopped by an operator.</span>}
+            </div></div>
+          <LiveProgress live={p.live} full />
+        </section>
+      )}
       {clearing && p.printer && <PlateCheck printerId={p.printer.id} onDone={() => { setClearing(false); load(); }} />}
 
       <section className="stats-strip" aria-label="Key numbers">

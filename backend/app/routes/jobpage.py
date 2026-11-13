@@ -68,6 +68,8 @@ def job_page(job_id: str, user: dict = User):
         "job": job,
         "mine": job.get("owner_id") == user["id"],
         "can_manage": permissions.can(user, "job.manage", job),
+        "can_pause": job.get("phase") == "printing" and permissions.can(user, "print.pause", job),
+        "can_stop": job.get("phase") == "printing" and permissions.can(user, "print.stop", job),
         "owner": job.get("owner_email") if staff or job.get("owner_id") == user["id"] else None,
         "goal": {"id": goal["id"], "name": goal["name"]} if goal else None,
         "preset": preset,

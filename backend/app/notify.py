@@ -97,19 +97,22 @@ def _run(jobs: list[tuple]) -> None:
 
 
 def emit(kind: str, subject: str, body: str, *, owners: list[str] | None = None, operator_body: str | None = None,
-         link: str | None = None, job: dict[str, Any] | None = None) -> int:
+         link: str | None = None, job: dict[str, Any] | None = None, skip: str | None = None) -> int:
     """Send an event. `owners` are email addresses of the people it is about; operators are told too when the event is one they
-    follow (with `operator_body` if given, a shorter text). Returns how many deliveries were queued."""
+    follow (with `operator_body` if given, a shorter text). `skip` is the email of the person who caused the event (for example
+    by pausing from the web): they are not told about their own action. Returns how many deliveries were queued."""
     if kind not in EVENTS:
         raise ValueError(f"Unknown notification event {kind}")
     url = f"{config.PUBLIC_URL}{link}" if link else None
     tail = f"\n\n{url}" if url else ""
     queued: list[tuple] = []
     told: set[str] = set()
+    if skip and (me := next((u for u in store.users.all() if skip in u.get("emails", [u["email"]])), None)):
+        told.add(me["id"])
     users = {e: u for u in store.users.all() for e in u.get("emails", [u["email"]]) if u.get("active", True)}
     for email in dict.fromkeys(owners or []):
         u = users.get(email)
-        if u and wants(u, kind, False) and EVENTS[kind]["owner_default"] is not None:
+        if u and u["id"] not in told and wants(u, kind, False) and EVENTS[kind]["owner_default"] is not None:
             queued.append((_email, (kind, u["email"], subject, body + tail)))
             told.add(u["id"])
     if EVENTS[kind]["operator_default"] is not None:

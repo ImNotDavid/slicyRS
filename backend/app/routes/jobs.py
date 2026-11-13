@@ -401,6 +401,23 @@ def cancel_job(job_id: str, user: dict = User):
     return out
 
 
+@router.post("/api/jobs/{job_id}/{action}")
+def control_print(job_id: str, action: str, user: dict = User):
+    """Pause, resume or stop a running print (2.4). Owners, operators and admins may pause and resume; a shared plate can only
+    be stopped by an operator or admin."""
+    from .. import printcontrol
+    if action not in ("pause", "resume", "stop"):
+        raise HTTPException(404, "Not found")
+    job = _viewable_job(job_id, user)
+    permissions.require(user, "print.stop" if action == "stop" else "print.pause", job,
+                        message="A shared plate can only be stopped by an operator or admin" if action == "stop" and permissions.can(user, "print.pause", job)
+                        else "You cannot control this print")
+    try:
+        return printcontrol.run(job, action, user)
+    except printcontrol.ControlError as e:
+        raise HTTPException(e.status, e.message)
+
+
 @router.get("/api/jobs/{job_id}/events")
 def job_events(job_id: str, user: dict = User):
     _viewable_job(job_id, user)

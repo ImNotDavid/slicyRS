@@ -167,3 +167,10 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - Out-of-pool printers: `assign.evaluate` adds the reason as a blocker unless `assume_available` (so feasibility and submission still work), `allocator.free_printers` skips them, and `waiting_reason` names them.
 - API: `POST /api/printers/{id}/maintenance {on, note}` and `POST /api/printers/{id}/ready`, both `printer.maintain` (operators and admins). `GET /api/printers` adds `maintenance` (note visible to everyone), `attention`, `unavailable` and `wait_s`; `/api/assign` candidates add `wait_s`.
 - UI: the Workspace printer menu shows the wait or the first blocker; Fleet cards show a yellow Needs attention box with Mark ready, an In maintenance box with Back in service, and a Maintenance… button with a note field.
+
+## Pause, resume and stop from the web (2.4)
+
+- `bambulan.LanLink.control(action)` publishes `{"print": {"command": "pause"|"resume"|"stop"}}` and waits up to 12 s for the reported state; `gateways.RemoteLink.control` forwards it as a `control` message and `gateway_agent.handle_control` runs it on the gateway's link (gateways need updating to this version for remote printers).
+- `app/printcontrol.py`: checks the job is printing and the printer state allows the command, stores `control: {action, by, at}` on every job on the plate and an event, sends the command, audits it. `POST /api/jobs/{id}/pause|resume|stop`; permissions `print.pause` and `print.stop`.
+- Follow-on effects keyed off `recent_control` (2 minutes): `alerts` names who paused and skips them (`notify.emit(skip=…)`); `outcomes` writes "Stopped from the web by …", tells the others, and does not flag the printer.
+- UI: job page live panel (Pause or Resume, Stop with a confirm, and a note when a shared plate can only be stopped by staff); Fleet cards (staff) for the printer's current job. Checked in the pane only for the no-connection message; the real commands need a printer.

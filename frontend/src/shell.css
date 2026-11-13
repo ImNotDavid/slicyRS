@@ -394,3 +394,6 @@ p.small { font-size: 12px; margin: 0; }
 .upkeep-form input { border: 1px solid var(--text); border-radius: 0; background: var(--surface); color: var(--text); padding: 8px 10px; }
 .upkeep-form .btn { align-self: flex-start; }
 span.small { font-size: 12px; }
+
+.live-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.live-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

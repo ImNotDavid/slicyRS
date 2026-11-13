@@ -175,6 +175,29 @@ class LanLink:
             time.sleep(0.5)
         return False
 
+    # what the printer reports once each command has taken effect
+    CONTROL_DONE = {"pause": {"PAUSE"}, "resume": {"RUNNING", "PREPARE"}, "stop": {"FAILED", "IDLE", "FINISH"}}
+
+    def control(self, action: str, wait_s: float = 12.0) -> bool:
+        """Pause, resume or stop the current print (2.4). True once the printer reports the new state; False if it has not
+        yet (the command was sent). Raises PrinterError if the command cannot be sent."""
+        if action not in self.CONTROL_DONE:
+            raise ValueError(f"Unknown printer command {action}")
+        if not self.client.is_connected():
+            raise PrinterError("The server is not connected to this printer's MQTT service (check IP, serial and access code)")
+        cmd = {"print": {"sequence_id": "0", "command": action, "param": ""}}
+        info = self.client.publish(f"device/{self.serial}/request", json.dumps(cmd), qos=1)
+        try:
+            info.wait_for_publish(timeout=10)
+        except (ValueError, RuntimeError) as e:
+            raise PrinterError(f"The {action} command could not be sent to the printer: {e}")
+        deadline = time.time() + wait_s
+        while time.time() < deadline:
+            if self.status_of().get("state") in self.CONTROL_DONE[action]:
+                return True
+            time.sleep(0.5)
+        return False
+
     def _upload(self, local_path: Path, remote_name: str) -> None:
         size = local_path.stat().st_size
         ftp = _ImplicitFTPS()

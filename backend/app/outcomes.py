@@ -136,9 +136,16 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
         "duration_s": round(now - started) if started else None,
     }
     result["summary"] = _summary(outcome, job, result)
+    from .printcontrol import recent_control
+    stopped = recent_control(job, "stop") if outcome == "failed" else None
+    if stopped:
+        result["summary"] = f"Stopped from the web by {stopped['by']}" + (f" at layer {result['layer']}." if result.get("layer") is not None else ".")
+        result["stopped_by"] = stopped["by"]
     store.jobs.update(job["id"], result=result)
     jobstate.transition(job["id"], "printed" if outcome == "finished" else "failed", None, force=True, state="done")
-    if outcome == "failed":
+    if outcome == "failed" and stopped:
+        _tell_failed(job, result, skip=stopped["by"])     # a person chose to stop it: not a printer fault, no "needs attention"
+    elif outcome == "failed":
         _tell_failed(job, result)
         from . import upkeep         # owner decision (2.6): a failed print takes the printer out of the pool until someone checks it
         upkeep.flag_attention(printer_id, f"the last print ({job['name']}) failed" + (f" at layer {result['layer']}" if result.get("layer") is not None else ""), job["id"])
@@ -148,11 +155,11 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
           + (f" [{', '.join(h['code'] for h in hms)}]" if hms else ""))
 
 
-def _tell_failed(job: dict[str, Any], result: dict[str, Any]) -> None:
+def _tell_failed(job: dict[str, Any], result: dict[str, Any], skip: str | None = None) -> None:
     from . import notify
     where = f" at layer {result['layer']} of {result['total_layers']}" if result.get("layer") is not None and result.get("total_layers") else ""
     owners = [j["owner_email"] for j in [job, *(store.jobs.get(m) or {} for m in job.get("members") or [])] if j.get("owner_email")]
     notify.emit("failed", f"Your print {job['name']} failed{where}", f"{job['name']} stopped on {job.get('printer_name')}{where}.\n\n{result['summary']}",
-                owners=owners, link="/#/jobs", job=job,
+                owners=owners, link=f"/#/jobs/{job['id']}", job=job, skip=skip,
                 operator_body=f"{job.get('printer_name')}: {job['name']} ({job.get('owner_email')}) failed{where}.")
 
