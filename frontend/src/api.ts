@@ -27,6 +27,8 @@ export type PrinterPerson = { email: string; name: string; job_id: string; job_n
 export type Printer = {
   bed?: Bed;
   users?: PrinterPerson[]; last_user?: PrinterPerson | null;   // operators and admins only
+  maintenance?: { on: boolean; note: string; by: string; at: number } | null; attention?: { reason: string; at: number; job_id?: string | null } | null;
+  unavailable?: string | null; wait_s?: number | null;
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null; remaining_min?: number; layer_num?: number; total_layer_num?: number; nozzle_c?: number; bed_c?: number };
   // admin only
@@ -66,7 +68,7 @@ export type AuditEntry = { id: string; at: number; actor: string; action: string
 export type ProbeResult = { ok: boolean; error: string | null; state?: string; ams?: AmsSlot[] };
 export type Candidate = {
   printer_id: string; name: string; model: string; eligible: boolean; score: number;
-  reasons: string[]; blockers: string[]; loaded_slot: number | null;
+  reasons: string[]; blockers: string[]; loaded_slot: number | null; wait_s?: number | null;
 };
 export type AssignResult = { dims: [number, number, number]; chosen: string | null; candidates: Candidate[] };
 export type Phase = "submitted" | "previewing" | "previewed" | "pooled" | "assigned" | "slicing" | "ready" | "printing" | "printed" | "failed" | "unknown" | "cancelled" | "rejected";
@@ -172,6 +174,8 @@ export const api = {
   discard: (id: string) => send("DELETE", `/api/jobs/${id}`).then(j<{ ok: boolean }>),
   cancel: (id: string) => post(`/api/jobs/${id}/cancel`).then(j<Job>),
   events: (id: string) => fetch(`/api/jobs/${id}/events`).then(j<JobEvent[]>),
+  setMaintenance: (id: string, on: boolean, note = "") => post(`/api/printers/${id}/maintenance`, { on, note }).then(j<Printer>),
+  markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),
   pipeline: () => fetch("/api/admin/pipeline").then(j<PipelineSettings>),

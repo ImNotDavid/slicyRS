@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import allocator, bedstate, crypto, gateways, permissions, store
+from .. import allocator, bedstate, crypto, gateways, permissions, store, upkeep
 from ..adapter import AdapterError
 from ..auth import audit, is_admin, require_admin
 from ..bambu import check_host, links, probe
@@ -150,6 +150,32 @@ def bed_clear(printer_id: str, body: BedClearIn, user: dict = User):
         raise HTTPException(400, str(e))
     allocator.tick()
     return bed
+
+
+class MaintenanceIn(BaseModel):
+    on: bool
+    note: str = Field("", max_length=200)
+
+
+@router.post("/api/printers/{printer_id}/maintenance")
+def printer_maintenance(printer_id: str, body: MaintenanceIn, user: dict = User):
+    """Take a printer out of the pool for maintenance (with a note everyone sees), or put it back."""
+    _printer_or_404(printer_id)
+    permissions.require(user, "printer.maintain", message="Only an operator or an admin can change maintenance")
+    p = upkeep.set_maintenance(printer_id, body.on, body.note, user)
+    if not body.on:
+        allocator.tick()
+    return _public_printer(p, permissions.can(user, "printer.see_connection"), True)
+
+
+@router.post("/api/printers/{printer_id}/ready")
+def printer_ready(printer_id: str, user: dict = User):
+    """After a failed print or an error: someone has checked the printer, so it can take jobs again."""
+    _printer_or_404(printer_id)
+    permissions.require(user, "printer.maintain", message="Only an operator or an admin can mark a printer ready")
+    p = upkeep.mark_ready(printer_id, user)
+    allocator.tick()
+    return _public_printer(p, permissions.can(user, "printer.see_connection"), True)
 
 
 @router.post("/api/printers/{printer_id}/bed/occupied")

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .. import assign, bedstate, meshio, multipart, permissions, retention, store
+from .. import assign, bedstate, meshio, multipart, permissions, retention, store, upkeep
 from ..auth import find_user_by_email
 from ..catalog import DEFAULT_BED_TYPE
 from ..storage import MODELS, files
@@ -24,7 +24,9 @@ def _public_printer(p: dict[str, Any], admin: bool, people: bool = False) -> dic
     out = {"id": p["id"], "name": p["name"], "model": p["model"], "status": p.get("status", {}),
            "hardened_nozzle": p.get("hardened_nozzle", False), "enabled": p.get("enabled", True),
            "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p), "nozzle_mm": assign.nozzle_of(p),
-           "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host"))}
+           "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host")),
+           "maintenance": p.get("maintenance") if (p.get("maintenance") or {}).get("on") else None,   # the note is for everyone (owner decision)
+           "attention": p.get("attention") or None, "unavailable": upkeep.unavailable(p), "wait_s": upkeep.wait_s(p)}
     if people or admin:
         out.update(printer_people(p))
     if admin:

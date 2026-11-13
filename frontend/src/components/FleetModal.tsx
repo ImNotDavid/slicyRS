@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "../api";
 import Frame from "./Frame";
 import { Harry } from "./Brand";
 import type { Printer } from "../api";
@@ -17,6 +18,9 @@ const textOn = (hex: string) => {
 export default function FleetModal({ printers, onClose, onChanged, inline, onOpenJob }: Props) {
   const visible = printers.filter((p) => p.enabled);
   const [open, setOpen] = useState<string | null>(null);
+  const [maint, setMaint] = useState<{ id: string; note: string } | null>(null);
+  const [err, setErr] = useState("");
+  const act = async (fn: () => Promise<unknown>) => { setErr(""); try { await fn(); setMaint(null); onChanged?.(); } catch (e) { setErr((e as Error).message); } };
   return (
     <Frame title="Printer fleet" inline={inline} cards onClose={onClose}>
           {!visible.length && <div className="empty-state"><Harry height={48} /><p>No printers are available yet. An admin needs to add them.</p></div>}
@@ -42,9 +46,27 @@ export default function FleetModal({ printers, onClose, onChanged, inline, onOpe
                   <span key={s.slot} className="slot" title={`${s.type} ${s.remain}%`} style={{ background: s.color, color: textOn(s.color) }}>{s.type}</span>
                 ))}
               </div>
+              {p.attention && (
+                <div className="upkeep attention" role="status"><b>Needs attention</b><span>{p.attention.reason}. It stays out of the pool until someone checks it.</span>
+                  <button className="btn primary" onClick={() => act(() => api.markReady(p.id))}>Mark ready</button></div>
+              )}
+              {p.maintenance && (
+                <div className="upkeep" role="status"><b>In maintenance</b><span>{p.maintenance.note || "No note"} · {p.maintenance.by}</span>
+                  <button className="btn" onClick={() => act(() => api.setMaintenance(p.id, false))}>Back in service</button></div>
+              )}
+              {!p.maintenance && (maint?.id === p.id ? (
+                <div className="upkeep-form">
+                  <input value={maint.note} maxLength={200} placeholder="Note for everyone (for example: new nozzle, back Friday)" aria-label="Maintenance note"
+                    onChange={(e) => setMaint({ id: p.id, note: e.target.value })} />
+                  <button className="btn primary" onClick={() => act(() => api.setMaintenance(p.id, true, maint.note))}>Start maintenance</button>
+                  <button className="btn" onClick={() => setMaint(null)}>Cancel</button>
+                </div>
+              ) : <button className="mini self-start" onClick={() => setMaint({ id: p.id, note: "" })}>Maintenance…</button>)}
+              {p.wait_s != null && p.wait_s > 0 && <span className="muted small">Free in about {Math.round(p.wait_s / 60)} min</span>}
               {open === p.id && <PlateCheck printerId={p.id} onDone={() => { setOpen(null); onChanged?.(); }} />}
             </div>
           ))}
+      {err && <p className="form-error" role="alert">{err}</p>}
     </Frame>
   );
 }

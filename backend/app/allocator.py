@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from . import assign, bedstate, forecast, jobstate, notify, pipeline, pipelinecfg, plates, store, taskqueue
+from . import assign, bedstate, forecast, jobstate, notify, pipeline, upkeep, pipelinecfg, plates, store, taskqueue
 from .bedstate import BUSY
 from .catalog import job_nozzle, job_position
 
@@ -31,7 +31,7 @@ def free_printers() -> list[dict[str, Any]]:
     out = []
     for p in store.printers.all():
         st = (p.get("status") or {}).get("state", "OFFLINE")
-        if not p.get("enabled", True) or p["id"] in held or bedstate.get(p)["state"] != "clear":
+        if not p.get("enabled", True) or p["id"] in held or bedstate.get(p)["state"] != "clear" or upkeep.unavailable(p):
             continue
         if st in BUSY or st == "ERROR" or (st == "OFFLINE" and not p.get("assume_available")):
             continue
@@ -65,6 +65,8 @@ def waiting_reason(job: dict[str, Any]) -> str:
         bed = bedstate.get(p)["state"]
         if not p.get("enabled", True):
             why.append(f"{p['name']} is disabled")
+        elif upkeep.unavailable(p):
+            why.append(f"{p['name']}: {upkeep.unavailable(p)}")
         elif p["id"] in held:
             h = next((j for j in store.jobs.all() if j.get("printer_id") == p["id"] and _holds(j)), {})
             why.append(f"{p['name']} is held by \"{h.get('name', 'another job')}\" ({h.get('phase')})")

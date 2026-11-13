@@ -98,6 +98,10 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     if state == "OFFLINE" and not printer.get("assume_available"):
         c.eligible = False
         c.blockers.append("Printer is offline")
+    from .upkeep import unavailable          # maintenance or "needs attention": out of the pool for now, not for ever
+    if (why_out := unavailable(printer)) and not printer.get("assume_available"):
+        c.eligible = False
+        c.blockers.append(why_out)
     if not c.eligible:
         return c
 

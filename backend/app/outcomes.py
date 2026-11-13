@@ -140,6 +140,8 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
     jobstate.transition(job["id"], "printed" if outcome == "finished" else "failed", None, force=True, state="done")
     if outcome == "failed":
         _tell_failed(job, result)
+        from . import upkeep         # owner decision (2.6): a failed print takes the printer out of the pool until someone checks it
+        upkeep.flag_attention(printer_id, f"the last print ({job['name']}) failed" + (f" at layer {result['layer']}" if result.get("layer") is not None else ""), job["id"])
 
     _audit("print_result", f"{job['name']} on {job.get('printer_name')}: {outcome}"
           + (f" at layer {result['layer']}/{result['total_layers']}" if outcome == "failed" and result["layer"] is not None else "")

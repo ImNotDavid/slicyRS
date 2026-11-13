@@ -160,3 +160,10 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - `live_progress(job)` in `routes/common.py`: only for a job in phase `printing` whose printer state is RUNNING, PAUSE, PREPARE or SLICING; returns percent, remaining minutes, ETA (status time plus remaining), layer and total, nozzle and bed temperature. Added as `live` to `GET /api/jobs` entries and to the job page.
 - `components/LiveProgress.tsx` draws it (bar plus a line of numbers; `full` adds temperatures and the finish time). Used on job cards (instead of the "what next" line), the job page (`.live-panel`, page polls every 5 s while printing) and Fleet cards (from the printer status directly).
 - Checked in the browser pane with a faked running printer; not yet seen with a real print.
+
+## Wait estimate (2.5), maintenance and needs attention (2.6)
+
+- `app/upkeep.py`: `unavailable(printer)` (the reason a printer is out of the pool, or None), `set_maintenance`, `flag_attention` (called from `outcomes` on a failed print and from `alerts` on a new error code mid-print), `mark_ready`, and `wait_s` (rest of the running print plus estimates of jobs sent to it).
+- Out-of-pool printers: `assign.evaluate` adds the reason as a blocker unless `assume_available` (so feasibility and submission still work), `allocator.free_printers` skips them, and `waiting_reason` names them.
+- API: `POST /api/printers/{id}/maintenance {on, note}` and `POST /api/printers/{id}/ready`, both `printer.maintain` (operators and admins). `GET /api/printers` adds `maintenance` (note visible to everyone), `attention`, `unavailable` and `wait_s`; `/api/assign` candidates add `wait_s`.
+- UI: the Workspace printer menu shows the wait or the first blocker; Fleet cards show a yellow Needs attention box with Mark ready, an In maintenance box with Back in service, and a Maintenance… button with a note field.

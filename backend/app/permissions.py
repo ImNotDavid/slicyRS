@@ -15,6 +15,7 @@ printers); everyone else is a member. An admin can do everything an operator can
     plate.clear             an operator or admin, or any owner of a part on the printer's latest plate
     plate.mark_occupied     an operator or admin
     printer.see_people      an operator or admin (who is using each printer)
+    printer.maintain        an operator or admin (maintenance on or off, mark a printer ready after it needed attention)
     printer.see_connection  admins (address, serial, gateway)
     preset.share            admins (publish a preset to everyone)
     preset.delete           the preset's owner, or an admin for a shared one
@@ -23,7 +24,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people",
+ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain",
            "printer.see_connection", "preset.share", "preset.delete"}
 
 
@@ -48,7 +49,7 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         return False
     if action in ("admin", "printer.see_connection", "preset.share"):
         return is_admin(user)
-    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people"):
+    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people", "printer.maintain"):
         return is_operator(user)
     if action == "job.view":
         return bool(target) and (_owns(user, target) or is_operator(user))

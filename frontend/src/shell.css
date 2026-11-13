@@ -384,3 +384,13 @@ p.small { font-size: 12px; margin: 0; }
 .live-panel { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--text-muted); border-left: 4px solid var(--brand-primary); }
 .live-panel .live-line { font-size: 14px; }
 .live-panel .live-bar { height: 14px; }
+
+/* maintenance and needs attention (2.6) */
+.upkeep { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--text-muted); border-left: 4px solid var(--text-muted); background: var(--surface-2); font-size: 13px; }
+.upkeep.attention { border-left-color: var(--brand-yellow); background: color-mix(in srgb, var(--brand-yellow) 14%, var(--surface)); }
+.upkeep b { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.upkeep .btn { align-self: flex-start; }
+.upkeep-form { display: flex; flex-direction: column; gap: 6px; }
+.upkeep-form input { border: 1px solid var(--text); border-radius: 0; background: var(--surface); color: var(--text); padding: 8px 10px; }
+.upkeep-form .btn { align-self: flex-start; }
+span.small { font-size: 12px; }

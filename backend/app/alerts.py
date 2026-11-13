@@ -52,3 +52,5 @@ def on_status(printer_id: str, prev_state: str | None, status: dict[str, Any]) -
         for j in jobs:
             store.jobs.update(j["id"], alerted_hms=sorted(seen))
         _alert("print_error", p, jobs, "the printer reported an error", " ".join(d["text"] for d in new))
+        from . import upkeep         # owner decision (2.6): an error mid-print takes the printer out of the pool until someone checks it
+        upkeep.flag_attention(printer_id, "error " + ", ".join(d["code"] for d in new) + " during a print", jobs[0]["id"])

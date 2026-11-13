@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .. import assign, meshcheck, meshio, multipart, orient, retention, slicer, store
+from .. import assign, meshcheck, meshio, multipart, orient, retention, slicer, store, upkeep
 from ..catalog import DEFAULT_NOZZLE, FILAMENTS, PRINTER_MODELS, PROCESS_PRESETS
 from ..config import MAX_UPLOAD_MB
 from ..storage import MODELS, files
@@ -134,8 +134,9 @@ def assign_printer(body: AssignIn, user: dict = User):
         ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, centre)
         _annotate_overflow(ranked, instances)
     best = ranked[0] if ranked and ranked[0].eligible else None
+    waits = {p["id"]: upkeep.wait_s(p) for p in store.printers.all()}      # 2.5: how long until each could start this
     return {"dims": size, "chosen": best.printer_id if best else None,
-            "candidates": [c.asdict() for c in ranked]}
+            "candidates": [{**c.asdict(), "wait_s": waits.get(c.printer_id)} for c in ranked]}
 
 
 class ArrangeIn(BaseModel):

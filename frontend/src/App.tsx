@@ -16,6 +16,8 @@ import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
 const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
+// 2.5: rough wait before a printer could start this, for the printer menu
+const waitText = (s?: number | null) => (s == null ? "" : s < 300 ? " · free now" : ` · about ${s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}` : Math.round(s / 60) + " min"} wait`);
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
 export default function App({ user, reuseRequest, onReused }: {
@@ -337,7 +339,7 @@ export default function App({ user, reuseRequest, onReused }: {
             <option value="">{!model ? "Auto: open a model first" : assignment?.chosen ? "Auto (recommended)" : "Auto: none eligible"}</option>
             {assignment?.candidates.map((c) => (
               <option key={c.printer_id} value={c.printer_id} disabled={!c.eligible}>
-                {c.name} ({c.model}){c.eligible ? "" : " — not eligible"}
+                {c.name} ({c.model}){c.eligible ? waitText(c.wait_s) : ` — ${c.blockers[0] ?? "not eligible"}`}
               </option>
             ))}
           </select>
