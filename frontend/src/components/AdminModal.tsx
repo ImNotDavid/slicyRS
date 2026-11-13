@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import Frame from "./Frame";
-import { api, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
+import { api, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose?: () => void; onPrintersChanged: () => void; inline?: boolean };
-type Tab = "printers" | "gateways" | "users" | "storage" | "pipeline" | "audit";
+type Tab = "printers" | "gateways" | "notifications" | "users" | "storage" | "pipeline" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -12,7 +12,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
   const [tab, setTab] = useState<Tab>("printers");
   const tabs = (
     <div className="tabs inline" role="tablist">
-      {(["printers", "gateways", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
+      {(["printers", "gateways", "notifications", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
         <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
       ))}
     </div>
@@ -21,11 +21,68 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
     <Frame title="Admin" inline={inline} onClose={onClose} wide header={tabs}>
       {tab === "printers" && <PrintersTab catalog={catalog} onChanged={onPrintersChanged} />}
       {tab === "gateways" && <GatewaysTab />}
+      {tab === "notifications" && <NotificationsTab />}
       {tab === "users" && <UsersTab me={me} />}
       {tab === "storage" && <StorageTab />}
       {tab === "pipeline" && <PipelineTab />}
       {tab === "audit" && <AuditTab />}
     </Frame>
+  );
+}
+
+// ------------------------------------------------------------------ notifications
+
+function NotificationsTab() {
+  const [data, setData] = useState<NotifyOverview | null>(null);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [events, setEvents] = useState<string[]>(["failed", "print_paused", "print_error", "printer_lost", "plate_waiting"]);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const load = useCallback(() => api.notifications().then(setData).catch((e) => setErr(e.message)), []);
+  useEffect(() => { load(); }, [load]);
+  const toggle = (list: string[], k: string) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
+  const label = (k: string) => data?.events.find((e) => e.kind === k)?.label ?? k;
+  const when = (t: number) => new Date(t * 1000).toLocaleString();
+  const act = async (fn: () => Promise<unknown>, ok = "") => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
+  return (
+    <>
+      <p className="muted">Everyone gets email about their own prints, and can switch each kind off from the account menu. Operators also get email for printer
+        problems. Here you can add shared Discord channels (for example an operators' channel) and choose which events post to them. Channel posts include
+        names and file names.</p>
+      {data?.channels.map((c) => (
+        <div className="fleet-row" key={c.id}>
+          <div className="fleet-main">
+            <strong>{c.name}</strong>
+            <span className="muted">Discord {c.url_hint} · {c.events.length ? c.events.map(label).join(", ") : "no events chosen"}</span>
+          </div>
+          <span className={"pill " + (c.enabled ? "idle" : "offline")}>{c.enabled ? "on" : "paused"}</span>
+          <button className="btn" onClick={() => act(() => api.testChannel(c.id), `Test message sent to ${c.name}`)}>Send test</button>
+          <button className="btn" onClick={() => act(() => api.updateChannel(c.id, { name: c.name, events: c.events, enabled: !c.enabled }))}>{c.enabled ? "Pause" : "Resume"}</button>
+          <button className="btn danger" onClick={() => confirm(`Remove channel ${c.name}?`) && act(() => api.deleteChannel(c.id))}><Trash2 size={14} /> Remove</button>
+        </div>
+      ))}
+      {data && !data.channels.length && <p className="muted">No shared channels yet.</p>}
+      <div className="manual">
+        <strong>Add a Discord channel</strong>
+        <input placeholder="Channel name (for example Operators)" value={name} onChange={(e) => setName(e.target.value)} aria-label="Channel name" />
+        <input placeholder="Webhook address (https://discord.com/api/webhooks/…)" value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Discord webhook address" autoComplete="off" />
+        <div className="notify-events" role="group" aria-label="Events for this channel">
+          {data?.events.map((e) => (
+            <label className="check-row" key={e.kind}><input type="checkbox" checked={events.includes(e.kind)} onChange={() => setEvents(toggle(events, e.kind))} /> {e.label}</label>
+          ))}
+        </div>
+        <button className="btn primary" disabled={!name.trim() || !url.trim()}
+          onClick={() => act(async () => { await api.addChannel({ name: name.trim(), url: url.trim(), events, enabled: true }); setName(""); setUrl(""); }, "Channel added")}>Add channel</button>
+      </div>
+      {msg && <p className="ok-note" role="status">{msg}</p>}
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <h4>Recent deliveries</h4>
+      {data?.recent.length ? (
+        <table className="audit"><thead><tr><th>When</th><th>Event</th><th>Channel</th><th>To</th><th>Result</th></tr></thead>
+          <tbody>{data.recent.slice(0, 30).map((r, i) => <tr key={i}><td>{when(r.at)}</td><td>{label(r.kind)}</td><td>{r.channel}</td><td>{r.to}</td><td>{r.ok ? "sent" : `failed: ${r.error}`}</td></tr>)}</tbody></table>
+      ) : <p className="muted">Nothing sent since the server started.</p>}
+    </>
   );
 }
 

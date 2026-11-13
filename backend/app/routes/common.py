@@ -41,8 +41,9 @@ def printer_people(printer: dict[str, Any]) -> dict[str, Any]:
     can have several), and whoever used it last. A finished job counts as in use until the plate is cleared."""
     jobs = [j for j in store.jobs.all() if j.get("printer_id") == printer["id"] and not j.get("draft")]
     bed = bedstate.get(printer) or {}
-    now_phases = ACTIVE_PHASES | ({"printed", "failed", "unknown"} if bed.get("state") == "occupied" else set())
-    current = [j for j in jobs if j.get("phase") in now_phases]
+    plate = {j["id"] for j in bedstate.last_plate(printer["id"])}      # only the latest plate: older finished jobs are long gone
+    current = [j for j in jobs if j.get("phase") in ACTIVE_PHASES
+               or (bed.get("state") == "occupied" and j["id"] in plate and j.get("phase") in {"printed", "failed", "unknown"})]
     finished = sorted((j for j in jobs if j.get("phase") in {"printed", "failed", "unknown"}), key=lambda j: j.get("phase_at") or j.get("created") or 0)
 
     def who(j: dict[str, Any]) -> dict[str, Any]:

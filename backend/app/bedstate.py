@@ -95,10 +95,10 @@ def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bo
     others = {j["owner_email"] for j in last_plate(printer_id) if j.get("owner_email")} - {user["email"]}
     set_state(printer_id, "clear", "manual", by=user["email"])
     audit(user, "bed_clear", f"{p.get('name')}: confirmed clear")
-    from . import mailer
+    from . import notify
     for email in others:                 # a shared plate: tell the other owners who cleared it, so they stop looking for their part
-        mailer.send_in_background(email, f"{p.get('name')} was cleared", f"{user['email']} confirmed the plate on {p.get('name')} is clear, "
-                                  "which included your part. You do not need to collect it from the printer.")
+        notify.emit("plate_cleared", f"{p.get('name')} was cleared", f"{user['email']} confirmed the plate on {p.get('name')} is clear, "
+                    "which included your part. You do not need to collect it from the printer.", owners=[email])
     return store.printers.get(printer_id)["bed"]
 
 
@@ -113,7 +113,7 @@ def mark_occupied(printer_id: str, user: dict[str, Any]) -> dict[str, Any]:
 
 def reminders(now: float | None = None) -> int:
     """Tell the owner when a print has ended, and the operators if the plate stays unconfirmed past the admin-set delay."""
-    from . import mailer
+    from . import notify
     now = now or time.time()
     cfg = pipelinecfg.get()
     sent = 0
@@ -125,16 +125,13 @@ def reminders(now: float | None = None) -> int:
             store.printers.update(p["id"], bed={**bed, "owner_notified": now})
             for j in last_plate(p["id"]):
                 if j.get("owner_email"):
-                    mailer.send_in_background(j["owner_email"], f"Your print on {p['name']} has finished",
-                                              f"{j['name']} has finished on {p['name']}. Please collect it and confirm the build plate is clear.")
-                    sent += 1
+                    sent += notify.emit("finished", f"Your print on {p['name']} has finished",
+                                        f"{j['name']} has finished on {p['name']}. Please collect it and confirm the build plate is clear.",
+                                        owners=[j["owner_email"]], link="/#/jobs", job=j)
             bed = {**bed, "owner_notified": now}
         elif not bed.get("operators_notified") and now - bed["owner_notified"] >= cfg["operator_delay_min"] * 60:
             store.printers.update(p["id"], bed={**bed, "operators_notified": now})
-            for u in store.users.all():
-                if u.get("operator") and u.get("active", True):
-                    mailer.send_in_background(u["email"], f"{p['name']} is waiting to be cleared",
-                                              f"{p['name']} finished a print and its plate has not been cleared for {cfg['operator_delay_min']} minutes. "
-                                              f"You can clear it at any time.")
-                    sent += 1
+            sent += notify.emit("plate_waiting", f"{p['name']} is waiting to be cleared",
+                                f"{p['name']} finished a print and its plate has not been cleared for {cfg['operator_delay_min']} minutes. "
+                                f"You can clear it at any time.", link="/#/fleet")
     return sent

@@ -32,6 +32,10 @@ export type Printer = {
   // admin only
   host?: string | null; port?: number; serial?: string | null; has_access_code?: boolean; demo?: boolean; gateway?: string | null;
 };
+export type NotifyPref = { kind: string; label: string; on: boolean };
+export type NotifyChannel = { id: string; kind: string; name: string; events: string[]; enabled: boolean; url_hint: string };
+export type NotifyOverview = { events: { kind: string; label: string; owners: boolean; operators: boolean }[]; channels: NotifyChannel[];
+  recent: { at: number; kind: string; channel: string; to: string; ok: boolean; error: string }[] };
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
@@ -101,6 +105,13 @@ const send = (method: string, url: string, body?: unknown) =>
   fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
+  myNotifications: () => fetch("/api/me/notifications").then(j<NotifyPref[]>),
+  setMyNotifications: (p: Record<string, boolean>) => send("PUT", "/api/me/notifications", p).then(j<NotifyPref[]>),
+  notifications: () => fetch("/api/admin/notifications").then(j<NotifyOverview>),
+  addChannel: (c: { name: string; url: string; events: string[]; enabled: boolean }) => send("POST", "/api/admin/notifications/channels", c).then(j<NotifyChannel>),
+  updateChannel: (id: string, c: { name: string; url?: string; events: string[]; enabled: boolean }) => send("PUT", `/api/admin/notifications/channels/${id}`, c).then(j<NotifyChannel>),
+  deleteChannel: (id: string) => send("DELETE", `/api/admin/notifications/channels/${id}`).then(j<{ ok: boolean }>),
+  testChannel: (id: string) => send("POST", `/api/admin/notifications/channels/${id}/test`).then(j<{ ok: boolean }>),
   authConfig: () => fetch("/auth/config").then(j<AuthConfig>),
   me: () => fetch("/api/me").then(j<User>),
   emailRequest: (email: string) => send("POST", "/auth/email/request", { email }).then(j<{ ok: boolean; ttl_minutes: number }>),

@@ -246,3 +246,13 @@ select, input[type="text"], input[type="number"], input[type="datetime-local"] {
 .workflow-bar { flex-direction: column; align-items: stretch; gap: 8px; }
 .workflow-bar .stepper { flex: none; }
 .view-toggle button { padding: 9px 6px; }
+
+/* Radix dialogs (notification settings) */
+.dlg-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); z-index: 40; }
+.dlg-content { position: fixed; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(480px, calc(100% - 24px)); max-height: 85vh; overflow: auto;
+  background: var(--surface); border: 1px solid var(--text); box-shadow: 10px 10px 0 var(--brand-primary-soft); padding: 0 20px 20px; }
+.dlg-content::before { content: ""; display: block; height: 10px; margin: 0 -20px 14px; background: var(--hatch-accent); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; }
+.dlg-head [id] { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; font-size: 16px; margin: 0; font-weight: 500; }
+.dlg-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.notify-events { display: flex; flex-direction: column; gap: 6px; }

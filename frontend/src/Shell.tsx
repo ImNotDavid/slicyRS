@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Box, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { Bell, Box, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
 import { api, type Catalog, type Job, type Printer, type User } from "./api";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
+import NotifyPrefs from "./components/NotifyPrefs";
 import ErrorBoundary from "./components/ErrorBoundary";
 import JobsModal from "./components/JobsModal";
 import AdminModal from "./components/AdminModal";
@@ -25,6 +26,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [page, setPage] = useState<Page>(() => readPage(isAdmin));
   const [wide, setWide] = useState(false);                   // the workspace menu is an icon strip unless expanded
   const [theme, setTheme] = useState<Theme>(storedTheme);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const [openRequest, setOpenRequest] = useState<Job | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -82,6 +84,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
             <Menu.Portal>
               <Menu.Content className="acct-menu" side="top" align="start" sideOffset={8}>
                 <div className="menu-head"><strong>{user.name || user.email}</strong><span className="muted">{user.email}</span></div>
+                <Menu.Item className="menu-item" onSelect={() => setPrefsOpen(true)}><Bell size={16} /> Notifications</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={onSignOut}><LogOut size={16} /> Sign out</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={async () => { await api.logoutAll().catch(() => {}); onSignOut(); }}><LogOut size={16} /> Sign out all devices</Menu.Item>
               </Menu.Content>
@@ -90,6 +93,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
         </div>
       </aside>
 
+      <NotifyPrefs open={prefsOpen} onOpenChange={setPrefsOpen} />
       <div className="page" hidden={page !== "workspace"}>
         <ErrorBoundary what="The workspace"><App user={user} openRequest={openRequest} onOpened={() => { setOpenRequest(null); go("workspace"); }} /></ErrorBoundary>
       </div>

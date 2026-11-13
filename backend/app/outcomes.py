@@ -138,6 +138,19 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
     result["summary"] = _summary(outcome, job, result)
     store.jobs.update(job["id"], result=result)
     jobstate.transition(job["id"], "printed" if outcome == "finished" else "failed", None, force=True, state="done")
+    if outcome == "failed":
+        _tell_failed(job, result)
+
     _audit("print_result", f"{job['name']} on {job.get('printer_name')}: {outcome}"
           + (f" at layer {result['layer']}/{result['total_layers']}" if outcome == "failed" and result["layer"] is not None else "")
           + (f" [{', '.join(h['code'] for h in hms)}]" if hms else ""))
+
+
+def _tell_failed(job: dict[str, Any], result: dict[str, Any]) -> None:
+    from . import notify
+    where = f" at layer {result['layer']} of {result['total_layers']}" if result.get("layer") is not None and result.get("total_layers") else ""
+    owners = [j["owner_email"] for j in [job, *(store.jobs.get(m) or {} for m in job.get("members") or [])] if j.get("owner_email")]
+    notify.emit("failed", f"Your print {job['name']} failed{where}", f"{job['name']} stopped on {job.get('printer_name')}{where}.\n\n{result['summary']}",
+                owners=owners, link="/#/jobs", job=job,
+                operator_body=f"{job.get('printer_name')}: {job['name']} ({job.get('owner_email')}) failed{where}.")
+

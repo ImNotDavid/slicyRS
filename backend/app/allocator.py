@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from . import assign, bedstate, forecast, jobstate, mailer, pipeline, pipelinecfg, plates, store, taskqueue
+from . import assign, bedstate, forecast, jobstate, notify, pipeline, pipelinecfg, plates, store, taskqueue
 from .bedstate import BUSY
 from .catalog import job_nozzle, job_position
 
@@ -145,19 +145,19 @@ def check_pickups(now: float) -> None:
         if late_by_forecast and not j.get("at_risk"):
             store.jobs.update(j["id"], at_risk=True)
             jobstate.event(j["id"], "at_risk", "allocator", pickup_by=by)
-            _tell(j, "may miss its pickup time", f"{j['name']} is now expected to finish after the pickup time you asked for.")
+            _tell("pickup_at_risk", j, "may miss its pickup time", f"{j['name']} is now expected to finish after the pickup time you asked for.")
         elif not late_by_forecast and j.get("at_risk"):
             store.jobs.update(j["id"], at_risk=False)
             jobstate.event(j["id"], "recovered", "allocator")
         if now > by and not j.get("late_notified"):
             store.jobs.update(j["id"], late_notified=now)
             jobstate.event(j["id"], "late", "allocator", pickup_by=by)
-            _tell(j, "is past its pickup time", f"{j['name']} has not finished by the pickup time you asked for.")
+            _tell("pickup_late", j, "is past its pickup time", f"{j['name']} has not finished by the pickup time you asked for.")
 
 
-def _tell(job: dict[str, Any], subject: str, body: str) -> None:
+def _tell(kind: str, job: dict[str, Any], subject: str, body: str) -> None:
     if job.get("owner_email"):
-        mailer.send_in_background(job["owner_email"], f"Your print {subject}", body)
+        notify.emit(kind, f"Your print {subject}", body, owners=[job["owner_email"]], link="/#/jobs", job=job)
 
 
 def tick(now: float | None = None) -> dict[str, int]:

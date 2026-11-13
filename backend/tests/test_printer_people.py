@@ -40,7 +40,7 @@ def test_idle_printer_names_the_last_user(client):
 
 def test_a_finished_job_still_counts_until_the_plate_is_cleared(client):
     pid = _printer(bed={"state": "occupied"})
-    _job(pid, "c@imperial.ac.uk", "printed")
+    store.jobs.update(_job(pid, "c@imperial.ac.uk", "printed"), started_at=1)
     assert [u["email"] for u in entry(client, pid)["users"]] == ["c@imperial.ac.uk"]
 
 
@@ -52,3 +52,12 @@ def test_ordinary_users_do_not_see_names_but_operators_do(client):
     op = make_user(client, "an.operator@imperial.ac.uk")
     store.users.put(*[(u["id"], {**u, "operator": True}) for u in store.users.all() if u["email"] == "an.operator@imperial.ac.uk"][0])
     assert [u["email"] for u in entry(op, pid)["users"]] == ["d@imperial.ac.uk"]
+
+
+def test_only_the_latest_plate_counts_when_the_plate_is_occupied(client):
+    pid = _printer(bed={"state": "occupied"})
+    old = _job(pid, "gone@imperial.ac.uk", "printed", at=1)
+    store.jobs.update(old, started_at=1)
+    new = _job(pid, "here@imperial.ac.uk", "printed", at=9)
+    store.jobs.update(new, started_at=9)
+    assert [u["email"] for u in entry(client, pid)["users"]] == ["here@imperial.ac.uk"]

@@ -17,6 +17,7 @@ os.environ["RETENTION_INTERVAL_HOURS"] = "0"   # no background clean-up thread i
 os.environ["MIN_FREE_MB"] = "1"
 os.environ["ALLOCATOR_INTERVAL_S"] = "0"   # tests call allocator.tick() themselves
 os.environ["EMAIL_CONSOLE"] = "1"   # login codes land in app.mailer.outbox instead of being sent
+os.environ["NOTIFY_SYNC"] = "1"          # notifications are delivered inline so tests can read them
 os.environ["ADMIN_EMAILS"] = "admin@imperial.ac.uk"
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["PUBLIC_URL"] = "http://testserver"

@@ -2,7 +2,7 @@
 import time
 from typing import Any
 
-from . import bedstate, outcomes, store
+from . import alerts, bedstate, outcomes, store
 
 
 def apply(printer_id: str, update: dict[str, Any]) -> None:
@@ -16,3 +16,4 @@ def apply(printer_id: str, update: dict[str, Any]) -> None:
     store.printers.update(printer_id, status=status)
     bedstate.on_status(printer_id, prev_state, status)  # a finished print leaves the plate occupied until someone confirms it is clear
     outcomes.on_status(printer_id, status)  # records the result of a print this app started, once the printer reports it
+    alerts.on_status(printer_id, prev_state, status)  # tells people about a pause, an error or a lost printer while their print is running

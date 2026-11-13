@@ -170,6 +170,7 @@ def test_unstarted_sliced_job_returns_to_the_pool_after_the_hold(client, fleet):
 def test_a_job_slipping_past_its_pickup_time_is_flagged_once_and_the_owner_told(client, fleet):
     from app import mailer
     me = client.get("/api/me").json()
+    store.users.update(me["id"], notify={"pickup_at_risk": True})       # off unless the person opts in (owner decision, Milestone 2)
     jid = pooled_job(me, "slipping", time.time(), pickup_by=time.time() + 30)
     mailer.outbox.clear()
     allocator.check_pickups(time.time())
@@ -179,6 +180,7 @@ def test_a_job_slipping_past_its_pickup_time_is_flagged_once_and_the_owner_told(
     assert sum("may miss its pickup time" in m["subject"] for m in mailer.outbox) == 1
     allocator.check_pickups(time.time() + 3600)                          # now past the pickup time
     assert any(e["kind"] == "late" for e in jobstate.events_for(jid))
+    store.users.update(me["id"], notify={})
 
 
 # ----------------------------------------------------------------------------- bed state

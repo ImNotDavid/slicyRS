@@ -15,3 +15,4 @@ sessions = db.collection("sessions")
 events = db.collection("job_events")
 gateways = db.collection("gateways")
 presets = db.collection("presets")
+channels = db.collection("notification_channels")   # shared channels (Discord webhooks) set by admins
