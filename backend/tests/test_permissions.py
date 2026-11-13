@@ -14,7 +14,7 @@ GONE = {"id": "a2", "role": "admin", "active": False}
 
 
 @pytest.mark.parametrize("action,expected", [
-    ("admin", {"a1"}), ("job.see_all", {"a1"}), ("printer.see_connection", {"a1"}), ("preset.share", {"a1"}),
+    ("admin", {"a1"}), ("job.see_all", {"a1", "o1"}), ("printer.see_connection", {"a1"}), ("preset.share", {"a1"}),
     ("plate.mark_occupied", {"a1", "o1"}), ("printer.see_people", {"a1", "o1"}),
 ])
 def test_role_only_actions(action, expected):
@@ -82,3 +82,14 @@ def test_a_finished_job_on_an_occupied_plate_offers_its_owner_the_plate_check(cl
     assert flag() is True
     assert c.post(f"/api/printers/{pid}/bed/clear", json={"bed_empty": True, "plate_matches": True, "filament_matches": True}).status_code == 200
     assert not flag()
+
+
+def test_my_jobs_and_all_jobs(client):
+    from conftest import make_user
+    c = make_user(client, "scope.member@imperial.ac.uk")
+    assert c.get("/api/jobs?scope=all").status_code == 403
+    assert c.get("/api/jobs").status_code == 200
+    mine = client.get("/api/jobs").json()
+    everyone = client.get("/api/jobs?scope=all").json()
+    me = client.get("/api/me").json()
+    assert all(j["owner_id"] == me["id"] for j in mine) and len(everyone) >= len(mine)

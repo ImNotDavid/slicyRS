@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowDownToLine, Sparkles, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
-import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type Printer, type Transform, type User } from "./api";
+import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type JobPage, type Printer, type Transform, type User } from "./api";
 import { IDENTITY, MAX_PARTS, newPart, payload, plateSpec, type Part } from "./plate";
 import PartsPanel from "./components/PartsPanel";
 import Viewport from "./components/Viewport";
@@ -18,7 +18,9 @@ type Value = number | string | boolean;
 const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
-export default function App({ user, openRequest, onOpened }: { user: User; openRequest: Job | null; onOpened: () => void }) {
+export default function App({ user, openRequest, onOpened, reuseRequest, onReused }: {
+  user: User; openRequest: Job | null; onOpened: () => void; reuseRequest: JobPage | null; onReused: () => void;
+}) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
@@ -109,7 +111,8 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
   };
   // a goal follows the material: switching filament re-applies it with that material's adjustments
-  useEffect(() => { if (goal && catalog) applyGoal(goal, filament); }, [filament]); // eslint-disable-line react-hooks/exhaustive-deps
+  const keepSettingsOnce = useRef(false);   // "same settings again" sets material and settings together: do not re-apply the goal over them
+  useEffect(() => { if (keepSettingsOnce.current) { keepSettingsOnce.current = false; return; } if (goal && catalog) applyGoal(goal, filament); }, [filament]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-run printer assignment whenever the part, material, transform or fleet changes.
   const fleetKey = JSON.stringify(printers.map((p) => [p.id, p.status.state, p.queue_depth, p.status.ams]));
@@ -190,13 +193,37 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
     setStep(3);
   };
 
-  useEffect(() => { if (openRequest) { openJob(openRequest).finally(onOpened); } }, [openRequest]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (openRequest) { openJob(openRequest).finally(onOpened); } }, [openRequest]);
+
+  // "Same settings again" from a job page: the same material, preset, goal and settings, and the same parts if their files still exist
+  useEffect(() => {
+    if (!reuseRequest || !catalog) return;
+    const r = reuseRequest;
+    (async () => {
+      if (r.filament !== filament) keepSettingsOnce.current = true;
+      criticalTouched.current = true;      // the job's own support choices win over the guided default
+      setFilament(r.filament); setPreset(r.preset); setGoal(r.goal?.id ?? null);
+      setSettings({ ...catalog.preset_defaults[r.preset], ...r.settings });
+      setJob(null); setGcode(null); setMode("prepare");
+      const usable = r.parts.filter((x) => x.available && x.model_id);
+      try {
+        const infos = await Promise.all(usable.map((x) => api.modelInfo(x.model_id!)));
+        const next = infos.map((m, i) => newPart(m, { rotation: usable[i].rotation ?? [0, 0, 0], scale: usable[i].scale ?? 1, position: usable[i].position ?? [0, 0] }));
+        setParts(next); setSelectedUid(next[0]?.uid ?? null);
+      } catch { setParts([]); }
+      const missing = r.parts.length - usable.length;
+      setStep(usable.length && !missing ? 2 : 1);
+      setMessage(missing ? { kind: "error", text: `${missing === r.parts.length ? "The file was" : `${missing} of the files were`} removed after not being used for a while. Upload ${missing === 1 ? "it" : "them"} again; the settings are kept.` }
+        : { kind: "ok", text: `${r.job.name}: same settings loaded` });
+      onReused();
+    })();
+  }, [reuseRequest, catalog]);   // eslint-disable-line react-hooks/exhaustive-deps   // eslint-disable-line react-hooks/exhaustive-deps
 
   const slice = async () => {
     if (!model) return;
     setBusy(true); setMessage(null);
     try {
-      let j = await api.slice({ ...plateSpec(parts), filament, preset, settings, printer_id: manualPrinter || undefined });
+      let j = await api.slice({ ...plateSpec(parts), filament, preset, settings, goal, printer_id: manualPrinter || undefined });
       setJob(j);
       while (j.state === "slicing") {
         await new Promise((r) => setTimeout(r, 800));
@@ -655,7 +682,7 @@ export default function App({ user, openRequest, onOpened }: { user: User; openR
         </div>
       </main>
 
-      {modal === "submit" && model && <SubmitModal spec={{ ...plateSpec(parts), filament, preset, settings }} onClose={() => setModal(null)}
+      {modal === "submit" && model && <SubmitModal spec={{ ...plateSpec(parts), filament, preset, settings, goal }} onClose={() => setModal(null)}
         onDone={(j) => {
           setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
     </div>

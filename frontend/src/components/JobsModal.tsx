@@ -10,23 +10,23 @@ export const fmtTime = (s?: number) => {
   return h ? `${h}h ${m}m` : `${m}m`;
 };
 
-export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onClose?: () => void; onOpen: (j: Job) => void; showOwner?: boolean; inline?: boolean }) {
+export default function JobsModal({ onClose, onOpen, onDetails, showOwner, inline, scope = "mine" }: { onClose?: () => void; onOpen: (j: Job) => void; onDetails?: (id: string) => void; showOwner?: boolean; inline?: boolean; scope?: "mine" | "all" }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clearing, setClearing] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; events: JobEvent[] } | null>(null);
-  const load = () => api.jobs().then(setJobs);
-  useEffect(() => { load(); }, []);
+  const load = () => api.jobs(scope).then(setJobs);
+  useEffect(() => { load(); }, [scope]);   // eslint-disable-line react-hooks/exhaustive-deps
   const WAITING: Record<string, string> = { submitted: "preparing", previewing: "previewing", previewed: "not submitted", pooled: "waiting for a printer", assigned: "printer chosen", slicing: "slicing", ready: "ready to print", printing: "printing", cancelled: "cancelled", rejected: "rejected" };
   const CANCELLABLE = ["submitted", "previewing", "previewed", "pooled", "assigned", "slicing", "ready"];
   const when = (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const label = (j: Job) => j.result ? "" : j.phase && j.phase !== "failed" && WAITING[j.phase] && !(j.phase === "printing" && j.printed) ? WAITING[j.phase] : "";
   return (
-    <Frame title="Jobs" inline={inline} onClose={onClose}>
+    <Frame title={scope === "all" ? "All jobs" : "My jobs"} inline={inline} onClose={onClose}>
           {!jobs.length && <div className="empty-state"><Harry height={48} /><p>No jobs yet. Start in the Workspace and your prints will show up here.</p></div>}
           {jobs.map((j) => (
             <div className="fleet-row" key={j.id}>
               <div className="fleet-main">
-                <strong>{j.name}</strong>
+                {onDetails ? <button className="job-link" onClick={() => onDetails(j.id)}>{j.name}</button> : <strong>{j.name}</strong>}
                 <span className="muted">{j.printer_name ?? "printer not chosen yet"} · {j.filament} · {j.preset}{showOwner && j.owner_email ? ` · ${j.owner_email}` : ""}{j.pickup_by ? ` · pickup by ${when(j.pickup_by)}` : ""}</span>
                 {(j.members?.length || j.batch_lead) && j.phase !== "pooled" ? <span className="muted">Shares a plate{j.members?.length ? ` with ${j.members.length} other part${j.members.length > 1 ? "s" : ""}` : " with another job"}</span> : null}
                 {j.phase === "pooled" && j.waiting_for && <span className="muted">{j.waiting_for}</span>}
@@ -41,7 +41,8 @@ export default function JobsModal({ onClose, onOpen, showOwner, inline }: { onCl
               {j.phase && CANCELLABLE.includes(j.phase) && <button className="btn" onClick={() => api.cancel(j.id).then(load)}>Cancel</button>}
               {j.plate_to_clear && j.printer_id && <button className="btn primary" onClick={() => setClearing(clearing === j.id ? null : j.id)}>Confirm plate is clear</button>}
               <button className="btn" onClick={async () => setHistory(history?.id === j.id ? null : { id: j.id, events: await api.events(j.id) })}>History</button>
-              {j.state === "done" && !j.files_deleted_at && <button className="btn" onClick={() => onOpen(j)}>Open</button>}
+              {onDetails && <button className="btn" onClick={() => onDetails(j.id)}>Details</button>}
+              {j.state === "done" && !j.files_deleted_at && (!showOwner || scope === "mine") && <button className="btn" onClick={() => onOpen(j)}>Open in workspace</button>}
               {j.files_deleted_at && <span className="muted" title="Files are removed after a retention period; slice the part again">files removed</span>}
               {history?.id === j.id && (
                 <ul className="result-note history">

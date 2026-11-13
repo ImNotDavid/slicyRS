@@ -4,7 +4,7 @@ import { api, type Forecast, type Job, type PlateSpec } from "../api";
 import { fmtTime } from "./JobsModal";
 
 type Props = {
-  spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown> };
+  spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null };
   onClose: () => void; onDone: (j: Job) => void;
 };
 

@@ -274,3 +274,31 @@ select, input[type="text"], input[type="number"], input[type="datetime-local"] {
   .staff-rule { display: none; }
   .nav.staff::after { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 3px; }
 }
+
+/* job page */
+.job-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.job-head h2 { margin: 0; font-size: 22px; overflow-wrap: anywhere; }
+.job-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.job-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start; }
+.job-card { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; position: relative; border: 1px solid var(--text-muted); background: var(--surface); }
+.job-card::before { content: ""; display: block; height: 6px; margin: 0 -16px 4px; background: var(--hatch); opacity: 0.8; }
+.job-card.wide { grid-column: 1 / -1; }
+.job-card h3 { margin: 4px 0 0; font-size: 14px; }
+.job-card h4 { margin: 6px 0 2px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.job-parts { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.job-preview { position: relative; height: 420px; background: var(--viewport-bg); border: 1px solid var(--border); }
+.job-layer { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; gap: 10px; align-items: center; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; background: var(--surface); border: 1px solid var(--text-muted); padding: 6px 10px; }
+.job-layer input { flex: 1; accent-color: var(--brand-primary); }
+.photo-slot { display: flex; gap: 12px; align-items: center; padding: 20px; color: var(--text-muted); background: var(--hatch); border: 1px dashed var(--text-muted); }
+.photo-slot span { background: var(--surface); padding: 6px 8px; font-size: 13px; }
+.job-photo { width: 100%; display: block; }
+.job-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.job-history li { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.settings-all { border-top: 1px solid var(--border); padding: 6px 0; }
+.settings-all summary { cursor: pointer; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.review-facts dd.changed { color: var(--brand-primary); font-weight: 600; }
+.job-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.job-link:hover { color: var(--brand-primary); }
+.job-link.small { font-weight: 400; font-size: 13px; color: var(--text-muted); margin-right: 8px; }
+@media (max-width: 900px) { .job-history li { grid-template-columns: 1fr; gap: 2px; } .job-preview { height: 320px; } }

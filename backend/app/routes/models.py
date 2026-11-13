@@ -39,7 +39,7 @@ async def upload_model(file: UploadFile = File(...), user: dict = User):
         raise HTTPException(400, f"Could not read model: {e}")
     meshio.export_stl(mesh, files.path(MODELS, model_id, "preview.stl"))
     files.publish(MODELS, model_id)
-    store.models.put(model_id, {"id": model_id, "owner_id": user["id"], "name": file.filename, "created": time.time()})
+    store.models.put(model_id, {"id": model_id, "owner_id": user["id"], "name": file.filename, "created": time.time(), "dims": meshio.dims(mesh)})
     return {"id": model_id, "name": file.filename, "dims": meshio.dims(mesh),
             "triangles": int(len(mesh.faces)), "checks": meshcheck.report(mesh)}
 
@@ -60,6 +60,15 @@ def orient_model(model_id: str, body: OrientIn, user: dict = User):
         except ValueError as e:
             raise HTTPException(422, str(e))
     return orient.suggest(mesh, body.mode)
+
+
+@router.get("/api/models/{model_id}")
+def model_info(model_id: str, user: dict = User):
+    """A model's name and size, for putting an earlier part back on the plate ("same settings again")."""
+    _checked_model(model_id, user)
+    rec = store.models.get(model_id) or {}
+    dims = rec.get("dims") or meshio.dims(meshio.load_mesh(files.path(MODELS, model_id, "preview.stl")))
+    return {"id": model_id, "name": rec.get("name") or files.read_text(MODELS, model_id, "name.txt"), "dims": dims}
 
 
 @router.get("/api/models/{model_id}/preview.stl")

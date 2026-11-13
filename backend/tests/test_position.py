@@ -79,7 +79,7 @@ def test_the_slice_puts_the_part_where_it_was_placed_and_zero_means_the_slicers_
     lo0, hi0 = mock_extent(client, centred["id"])
     lo1, hi1 = mock_extent(client, moved["id"])
     assert (lo1 + hi1) / 2 - (lo0 + hi0) / 2 == pytest.approx(30, abs=0.5)           # shifted by the offset along X
-    assert not any(j.get("spec") for j in [centred])                                  # direct slices keep no spec: position is per request
+    assert centred["spec"]["position"] == [0, 0] and moved["spec"]["position"] == [30, 0]   # kept for the job page and "same settings again" (2.9)
 
 
 def test_a_part_placed_by_hand_never_shares_a_plate(client, fleet):

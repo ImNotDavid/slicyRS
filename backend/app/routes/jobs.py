@@ -25,6 +25,7 @@ class SliceIn(TransformIn):
     filament: str
     preset: str = "0.20mm Standard"
     settings: dict[str, Any] = {}
+    goal: str | None = None        # the one-click goal the settings came from, kept for the job page
     printer_id: str | None = None  # manual override; otherwise auto-assigned
 
 
@@ -90,6 +91,8 @@ def start_slice(body: SliceIn, user: dict = User):
         "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
         "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(),
         "submitted_at": time.time(),
+        "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "position": list(body.position),
+                 "filament": body.filament, "preset": body.preset, "settings": body.settings, "goal": body.goal},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "slicing", "reason": "sliced directly for a chosen printer"})
     pool.submit(_do_slice, job_id, workdir, input_path, chosen.model, body, printer.get("bed_type") or DEFAULT_BED_TYPE)
@@ -113,10 +116,13 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
 
 
 @router.get("/api/jobs")
-def list_jobs(user: dict = User):
-    """Your jobs; admins see everyone's."""
-    see_all = permissions.can(user, "job.see_all")
-    jobs = [j for j in store.jobs.all() if not j.get("draft") and (see_all or j.get("owner_id") == user["id"])]
+def list_jobs(scope: str = "mine", user: dict = User):
+    """My jobs (everyone), or with `scope=all` every job (operators and admins: the All jobs page)."""
+    if scope not in ("mine", "all"):
+        raise HTTPException(400, "scope must be mine or all")
+    if scope == "all":
+        permissions.require(user, "job.see_all", message="Only operators and admins can see everyone's jobs")
+    jobs = [j for j in store.jobs.all() if not j.get("draft") and (scope == "all" or j.get("owner_id") == user["id"])]
     return sorted((_with_plate_flag(j) for j in jobs), key=lambda j: -j["created"])
 
 
@@ -137,13 +143,19 @@ def _owned_job(job_id: str, user: dict[str, Any]) -> dict[str, Any]:
     return job  # type: ignore[return-value]
 
 
+def _viewable_job(job_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    job = store.jobs.get(job_id)
+    permissions.require(user, "job.view", job, hide=True, message="Unknown job")
+    return job  # type: ignore[return-value]
+
+
 @router.get("/api/jobs/{job_id}")
 def get_job(job_id: str, user: dict = User):
     return _owned_job(job_id, user)
 
 
-def _job_file(job_id: str, key: str, user: dict[str, Any]) -> Path:
-    job = _owned_job(job_id, user)
+def _job_file(job_id: str, key: str, user: dict[str, Any], view: bool = False) -> Path:
+    job = (_viewable_job if view else _owned_job)(job_id, user)
     if job.get("batch_lead"):                       # a part on a shared plate: the plate's files belong to its lead job
         job = store.jobs.get(job["batch_lead"]) or job
         job_id = job["id"]
@@ -156,9 +168,9 @@ def _job_file(job_id: str, key: str, user: dict[str, Any]) -> Path:
 
 @router.get("/api/jobs/{job_id}/gcode")
 def job_gcode(job_id: str, user: dict = User):
-    job = _owned_job(job_id, user)
+    job = _viewable_job(job_id, user)          # operators may look at the toolpaths of a job on their printer
     stem = Path(job["name"]).stem
-    return FileResponse(_job_file(job_id, "gcode", user), media_type="text/plain", filename=f"{stem}.gcode")
+    return FileResponse(_job_file(job_id, "gcode", user, view=True), media_type="text/plain", filename=f"{stem}.gcode")
 
 
 @router.get("/api/jobs/{job_id}/bundle")
@@ -200,6 +212,7 @@ class DraftIn(TransformIn):
     filament: str
     preset: str = "0.20mm Standard"
     settings: dict[str, Any] = {}
+    goal: str | None = None
 
 
 @router.post("/api/jobs/preview")
@@ -240,7 +253,7 @@ def create_draft(body: DraftIn, user: dict = User):
         "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
         "input_file": input_file, "pickup_by": None, "submitted_at": None,
         "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "position": list(body.position), "filament": body.filament,
-                 "preset": body.preset, "settings": settings},
+                 "preset": body.preset, "settings": settings, "goal": body.goal},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})
     pipeline.request_preview(job_id)
@@ -281,7 +294,7 @@ def _draft_plate(body: DraftIn, plate, settings: dict[str, Any], user: dict[str,
         "created": time.time(), "owner_id": user["id"], "owner_email": user["email"], "printer_id": None, "printer_name": None, "printer_model": None,
         "filament": body.filament, "preset": body.preset, "dims": size, "queued": False, "printed": False, "pooled": False,
         "input_file": parts[0]["file"], "pickup_by": None, "submitted_at": None,
-        "spec": {"parts": parts, "position": list(centre), "filament": body.filament, "preset": body.preset, "settings": settings},
+        "spec": {"parts": parts, "position": list(centre), "filament": body.filament, "preset": body.preset, "settings": settings, "goal": body.goal},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "submitted"})
     pipeline.request_preview(job_id)
@@ -312,6 +325,7 @@ def _slice_plate(body: SliceIn, plate, user: dict[str, Any]):
         "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
         "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
         "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(), "submitted_at": time.time(),
+        "spec": {"parts": parts, "position": list(centre), "filament": body.filament, "preset": body.preset, "settings": body.settings, "goal": body.goal},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "slicing", "reason": "plate sliced directly for a chosen printer"})
     placements = [(files.path(JOBS, job_id, q["file"]), tuple(q["position"])) for q in parts]
@@ -384,5 +398,5 @@ def cancel_job(job_id: str, user: dict = User):
 
 @router.get("/api/jobs/{job_id}/events")
 def job_events(job_id: str, user: dict = User):
-    _owned_job(job_id, user)
+    _viewable_job(job_id, user)
     return jobstate.events_for(job_id)

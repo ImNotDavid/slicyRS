@@ -8,8 +8,9 @@ printers); everyone else is a member. An admin can do everything an operator can
 
     action                  who
     admin                   admins (users, printers, gateways, storage, pipeline, audit, notification channels, statistics)
-    job.see_all             admins see every job in the Jobs list; members see their own
-    job.manage              the job's owner, or an admin (open, download, queue, print, submit, cancel, discard, history)
+    job.see_all             operators and admins (the All jobs page); everyone has My jobs
+    job.view                the job's owner, an operator or an admin (the job page, its preview and history; read only)
+    job.manage              the job's owner, or an admin (download, queue, print, submit, cancel, discard)
     model.use               the model's uploader, or an admin
     plate.clear             an operator or admin, or any owner of a part on the printer's latest plate
     plate.mark_occupied     an operator or admin
@@ -22,7 +23,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-ACTIONS = {"admin", "job.see_all", "job.manage", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people",
+ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people",
            "printer.see_connection", "preset.share", "preset.delete"}
 
 
@@ -45,10 +46,12 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         raise ValueError(f"Unknown permission {action}")
     if not user or not user.get("active", True):
         return False
-    if action in ("admin", "job.see_all", "printer.see_connection", "preset.share"):
+    if action in ("admin", "printer.see_connection", "preset.share"):
         return is_admin(user)
-    if action in ("plate.mark_occupied", "printer.see_people"):
+    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people"):
         return is_operator(user)
+    if action == "job.view":
+        return bool(target) and (_owns(user, target) or is_operator(user))
     if action in ("job.manage", "model.use"):
         return bool(target) and (_owns(user, target) or is_admin(user))     # nothing to act on is never allowed, even for admins
     if action == "plate.clear":

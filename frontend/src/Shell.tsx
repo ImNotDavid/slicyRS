@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Bell, Box, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
-import { api, type Catalog, type Job, type Printer, type User } from "./api";
+import { Bell, Box, ClipboardList, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User } from "./api";
+import JobPage from "./components/JobPage";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -10,15 +11,19 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import JobsModal from "./components/JobsModal";
 import AdminModal from "./components/AdminModal";
 
-type Page = "workspace" | "jobs" | "fleet" | "admin";
+type Page = "workspace" | "jobs" | "alljobs" | "job" | "fleet" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "Jobs", fleet: "Fleet", admin: "Admin" };
+const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "My jobs", alljobs: "All jobs", job: "Job", fleet: "Fleet", admin: "Admin" };
+const HASH: Record<Page, string> = { workspace: "workspace", jobs: "jobs", alljobs: "all-jobs", job: "jobs", fleet: "fleet", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
-const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" ? operator : true);
-const readPage = (admin: boolean, operator: boolean): Page => {
-  const p = window.location.hash.replace(/^#\/?/, "") as Page;
-  return p in TITLES && allowed(p, admin, operator) ? p : "workspace";
+const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" || p === "alljobs" ? operator : true);
+// routes: #/workspace, #/jobs, #/jobs/<id>, #/all-jobs, #/fleet, #/admin
+const readRoute = (admin: boolean, operator: boolean): { page: Page; jobId: string | null } => {
+  const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
+  if (head === "jobs" && id) return { page: "job", jobId: id };
+  const p = (Object.keys(HASH) as Page[]).find((k) => HASH[k] === head && k !== "job");
+  return { page: p && allowed(p, admin, operator) ? p : "workspace", jobId: null };
 };
 const storedTheme = (): Theme => { try { return (localStorage.getItem("theme") as Theme) || "auto"; } catch { return "auto"; } };
 
@@ -26,7 +31,9 @@ const storedTheme = (): Theme => { try { return (localStorage.getItem("theme") a
 export default function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const isAdmin = user.role === "admin";
   const isOperator = isAdmin || !!user.operator;
-  const [page, setPage] = useState<Page>(() => readPage(isAdmin, isOperator));
+  const [route, setRoute] = useState(() => readRoute(isAdmin, isOperator));
+  const page = route.page;
+  const [reuseRequest, setReuseRequest] = useState<JobPageData | null>(null);
   const [wide, setWide] = useState(false);                   // the workspace menu is an icon strip unless expanded
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -35,7 +42,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [printers, setPrinters] = useState<Printer[]>([]);
 
   useEffect(() => {
-    const onHash = () => setPage(readPage(isAdmin, isOperator));
+    const onHash = () => setRoute(readRoute(isAdmin, isOperator));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [isAdmin, isOperator]);
@@ -47,17 +54,19 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
 
   const refreshPrinters = useCallback(() => api.printers().then(setPrinters).catch(() => {}), []);
   useEffect(() => {
+    if ((page === "admin" || page === "job") && !catalog) api.catalog().then(setCatalog).catch(() => {});
     if (page !== "fleet" && page !== "admin") return;
     refreshPrinters();
-    if (page === "admin" && !catalog) api.catalog().then(setCatalog).catch(() => {});
     const t = setInterval(refreshPrinters, 5000);
     return () => clearInterval(t);
   }, [page, catalog, refreshPrinters]);
 
-  const go = (p: Page) => { window.location.hash = "/" + p; };
+  const go = (p: Page) => { window.location.hash = "/" + HASH[p]; };
+  const openJobPage = (id: string) => { window.location.hash = "/jobs/" + id; };
   // staff pages carry the yellow staff marker so nobody mistakes them for something every member has
   const items: { id: Page; icon: typeof Box; staff?: string }[] = [
     { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks },
+    ...(isOperator ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
     ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck, staff: "Admins only" }] : []),
   ];
@@ -75,7 +84,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
           {items.map(({ id, icon: Icon, staff }, i) => (
             <div key={id} className="nav-wrap">
               {staff && !items[i - 1]?.staff && <div className="staff-rule" aria-hidden="true"><span>Staff</span></div>}
-              <button className={"nav" + (page === id ? " on" : "") + (staff ? " staff" : "")} aria-current={page === id ? "page" : undefined}
+              <button className={"nav" + (page === id || (page === "job" && id === "jobs") ? " on" : "") + (staff ? " staff" : "")} aria-current={page === id ? "page" : undefined}
                 title={staff ? `${TITLES[id]} (${staff.toLowerCase()})` : TITLES[id]} onClick={() => go(id)}>
                 <Icon size={18} strokeWidth={2} /><span>{TITLES[id]}</span>
               </button>
@@ -105,13 +114,16 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
 
       <NotifyPrefs open={prefsOpen} onOpenChange={setPrefsOpen} />
       <div className="page" hidden={page !== "workspace"}>
-        <ErrorBoundary what="The workspace"><App user={user} openRequest={openRequest} onOpened={() => { setOpenRequest(null); go("workspace"); }} /></ErrorBoundary>
+        <ErrorBoundary what="The workspace"><App user={user} openRequest={openRequest} onOpened={() => { setOpenRequest(null); go("workspace"); }}
+          reuseRequest={reuseRequest} onReused={() => { setReuseRequest(null); go("workspace"); }} /></ErrorBoundary>
       </div>
       {page !== "workspace" && (
         <main className="page">
           <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>
-          {page === "jobs" && <JobsModal inline showOwner={isAdmin || !!user.operator} onOpen={setOpenRequest} />}
-          {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} />}
+          {page === "jobs" && <JobsModal inline scope="mine" onOpen={setOpenRequest} onDetails={openJobPage} />}
+          {page === "alljobs" && isOperator && <JobsModal inline scope="all" showOwner onOpen={setOpenRequest} onDetails={openJobPage} />}
+          {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
+          {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}
           {page === "admin" && isAdmin && (catalog ? <AdminModal inline catalog={catalog} me={user} onPrintersChanged={refreshPrinters} /> : <p className="muted">Loading…</p>)}
         </main>
       )}

@@ -73,9 +73,9 @@ def waiting_reason(job: dict[str, Any]) -> str:
         elif st == "ERROR" or (st == "OFFLINE" and not p.get("assume_available")):
             why.append(f"{p['name']} is {'in error' if st == 'ERROR' else 'offline'}")
         elif bed == "occupied":
-            why.append(f"{p['name']}: finished print still on the plate — confirm it is clear on the Fleet page")
+            why.append(f"{p['name']}: finished print still on the plate; its owner or an operator needs to confirm it is clear")
         elif bed != "clear":
-            why.append(f"{p['name']}: plate state unknown — confirm it is clear on the Fleet page")
+            why.append(f"{p['name']}: plate state unknown; an operator needs to confirm it is clear")
     return "; ".join(why) or plates.hold_reason(job, time.time()) or "Starting soon"
 
 

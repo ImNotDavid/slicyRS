@@ -36,6 +36,15 @@ export type NotifyPref = { kind: string; label: string; on: boolean };
 export type NotifyChannel = { id: string; kind: string; name: string; events: string[]; enabled: boolean; url_hint: string };
 export type NotifyOverview = { events: { kind: string; label: string; owners: boolean; operators: boolean }[]; channels: NotifyChannel[];
   recent: { at: number; kind: string; channel: string; to: string; ok: boolean; error: string }[] };
+export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
+export type JobPage = {
+  job: Job; mine: boolean; can_manage: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
+  changed_settings: { key: string; label: string; value: number | string | boolean; default: number | string | boolean | null; unit?: string }[];
+  settings: Record<string, number | string | boolean>; parts: JobPart[]; shared_with: { name: string; owner?: string }[];
+  printer: { id: string; name: string; model: string; bed_type: string } | null; estimate_s: number | null; actual_s: number | null;
+  filament_g: number | null; layers: number | null; result: Job["result"]; gcode: boolean; files_deleted: boolean; plate_to_clear: boolean;
+  photo: string | null; events: JobEvent[];
+};
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
@@ -148,9 +157,9 @@ export const api = {
     post("/api/assign", { ...plate, filament, nozzle_mm }).then(j<AssignResult>),
   arrange: (parts: PartPayload[], printer_model: string, filament: string, preset: string) =>
     post("/api/plate/arrange", { parts, printer_model, filament, preset }).then(j<{ parts: { position: [number, number]; rotation_z: number }[] }>),
-  slice: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string }) =>
+  slice: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; printer_id?: string; goal?: string | null }) =>
     post("/api/slice", body).then(j<Job>),
-  draft: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown> }) =>
+  draft: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null }) =>
     post("/api/jobs/preview", body).then(j<Job>),
   forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
   submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean }) => {
@@ -167,7 +176,9 @@ export const api = {
   savePipeline: (s: Partial<PipelineSettings>) => send("PUT", "/api/admin/pipeline", s).then(j<PipelineSettings>),
   stats: () => fetch("/api/admin/stats").then(j<Stats>),
   job: (id: string) => fetch(`/api/jobs/${id}`).then(j<Job>),
-  jobs: () => fetch("/api/jobs").then(j<Job[]>),
+  jobs: (scope: "mine" | "all" = "mine") => fetch(`/api/jobs${scope === "all" ? "?scope=all" : ""}`).then(j<Job[]>),
+  jobPage: (id: string) => fetch(`/api/jobs/${id}/page`).then(j<JobPage>),
+  modelInfo: (id: string) => fetch(`/api/models/${id}`).then(j<{ id: string; name: string; dims: [number, number, number] }>),
   queue: (id: string) => post(`/api/jobs/${id}/queue`).then(j<Job>),
   print: (id: string) => post(`/api/jobs/${id}/print`).then(j<{ ok: boolean; started: boolean; file: string }>),
   printers: () => fetch("/api/printers").then(j<Printer[]>),
