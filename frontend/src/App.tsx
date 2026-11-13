@@ -18,8 +18,8 @@ type Value = number | string | boolean;
 const PLAY_SECONDS = 12;                       // a full run through the visible layers in the G-code playback
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
-export default function App({ user, openRequest, onOpened, reuseRequest, onReused }: {
-  user: User; openRequest: Job | null; onOpened: () => void; reuseRequest: JobPage | null; onReused: () => void;
+export default function App({ user, reuseRequest, onReused }: {
+  user: User; reuseRequest: JobPage | null; onReused: () => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -185,15 +185,7 @@ export default function App({ user, openRequest, onOpened, reuseRequest, onReuse
     if (selectedUid === uid) setSelectedUid(rest[0]?.uid ?? null);
   };
 
-  const openJob = async (j: Job) => {
-    setJob(j);
-    setGcode(await fetch(gcodeUrl(j.id)).then((r) => r.text()));
-    setMode("preview");
-    setModal(null);
-    setStep(3);
-  };
 
-  useEffect(() => { if (openRequest) { openJob(openRequest).finally(onOpened); } }, [openRequest]);
 
   // "Same settings again" from a job page: the same material, preset, goal and settings, and the same parts if their files still exist
   useEffect(() => {

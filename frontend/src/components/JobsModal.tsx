@@ -10,7 +10,7 @@ export const fmtTime = (s?: number) => {
   return h ? `${h}h ${m}m` : `${m}m`;
 };
 
-export default function JobsModal({ onClose, onOpen, onDetails, showOwner, inline, scope = "mine" }: { onClose?: () => void; onOpen: (j: Job) => void; onDetails?: (id: string) => void; showOwner?: boolean; inline?: boolean; scope?: "mine" | "all" }) {
+export default function JobsModal({ onClose, onDetails, showOwner, inline, scope = "mine" }: { onClose?: () => void; onDetails?: (id: string) => void; showOwner?: boolean; inline?: boolean; scope?: "mine" | "all" }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clearing, setClearing] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; events: JobEvent[] } | null>(null);
@@ -42,7 +42,6 @@ export default function JobsModal({ onClose, onOpen, onDetails, showOwner, inlin
               {j.plate_to_clear && j.printer_id && <button className="btn primary" onClick={() => setClearing(clearing === j.id ? null : j.id)}>Confirm plate is clear</button>}
               <button className="btn" onClick={async () => setHistory(history?.id === j.id ? null : { id: j.id, events: await api.events(j.id) })}>History</button>
               {onDetails && <button className="btn" onClick={() => onDetails(j.id)}>Details</button>}
-              {j.state === "done" && !j.files_deleted_at && (!showOwner || scope === "mine") && <button className="btn" onClick={() => onOpen(j)}>Open in workspace</button>}
               {j.files_deleted_at && <span className="muted" title="Files are removed after a retention period; slice the part again">files removed</span>}
               {history?.id === j.id && (
                 <ul className="result-note history">

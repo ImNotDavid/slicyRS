@@ -37,7 +37,6 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [wide, setWide] = useState(false);                   // the workspace menu is an icon strip unless expanded
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const [prefsOpen, setPrefsOpen] = useState(false);
-  const [openRequest, setOpenRequest] = useState<Job | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
 
@@ -114,14 +113,14 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
 
       <NotifyPrefs open={prefsOpen} onOpenChange={setPrefsOpen} />
       <div className="page" hidden={page !== "workspace"}>
-        <ErrorBoundary what="The workspace"><App user={user} openRequest={openRequest} onOpened={() => { setOpenRequest(null); go("workspace"); }}
+        <ErrorBoundary what="The workspace"><App user={user}
           reuseRequest={reuseRequest} onReused={() => { setReuseRequest(null); go("workspace"); }} /></ErrorBoundary>
       </div>
       {page !== "workspace" && (
         <main className="page">
           <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>
-          {page === "jobs" && <JobsModal inline scope="mine" onOpen={setOpenRequest} onDetails={openJobPage} />}
-          {page === "alljobs" && isOperator && <JobsModal inline scope="all" showOwner onOpen={setOpenRequest} onDetails={openJobPage} />}
+          {page === "jobs" && <JobsModal inline scope="mine" onDetails={openJobPage} />}
+          {page === "alljobs" && isOperator && <JobsModal inline scope="all" showOwner onDetails={openJobPage} />}
           {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
           {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}
           {page === "admin" && isAdmin && (catalog ? <AdminModal inline catalog={catalog} me={user} onPrintersChanged={refreshPrinters} /> : <p className="muted">Loading…</p>)}
