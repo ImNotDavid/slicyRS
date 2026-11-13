@@ -243,7 +243,6 @@ export default function App({ user, reuseRequest, onReused }: {
     setBusy(false);
   };
 
-  const queue = async () => { if (job) { setJob(await api.queue(job.id)); setMessage({ kind: "ok", text: `Queued on ${job.printer_name}` }); refreshPrinters(); } };
   const print = async () => {
     if (!job) return;
     setBusy(true);
@@ -669,7 +668,6 @@ export default function App({ user, reuseRequest, onReused }: {
             <button className="btn primary" disabled={!model || busy || overlapPairs.length > 0 || !assignment?.chosen && !manualPrinter} onClick={slice}>
               <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
             </button>
-            <button className="btn dark" disabled={!ready || job?.queued} onClick={queue}>QUEUE</button>
             <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
             <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
           </>}

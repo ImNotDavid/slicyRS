@@ -185,12 +185,6 @@ def job_bundle(job_id: str, user: dict = User):
     return FileResponse(_job_file(job_id, "bundle", user), filename=f"{stem}.gcode.3mf")
 
 
-@router.post("/api/jobs/{job_id}/queue")
-def queue_job(job_id: str, user: dict = User):
-    _owned_job(job_id, user)
-    return store.jobs.update(job_id, queued=True, draft=False)       # queued on a printer: it is a job now
-
-
 def _remote_name(job: dict[str, Any]) -> str:
     return printing.remote_name(job)
 

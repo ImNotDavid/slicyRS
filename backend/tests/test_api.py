@@ -149,19 +149,6 @@ def test_offline_and_busy_printers(client, fleet):
     assert chosen_name(client, assign(client, m["id"])) in ("h2d", "x1c")
 
 
-def test_queue_pushes_work_to_other_printer(client, fleet):
-    m = upload(client, VALID / "cube_binary.stl").json()
-    _, job = slice_model(client, m["id"])
-    assert job["printer_id"] == fleet["mini"]
-    for _ in range(3):  # force three queued jobs onto the mini
-        _, j = slice_model(client, m["id"], printer_id=fleet["mini"])
-        assert client.post(f"/api/jobs/{j['id']}/queue").status_code == 200
-    again = assign(client, m["id"])
-    assert again["chosen"] != fleet["mini"], "queue depth should divert new work"
-    printers = {p["id"]: p for p in client.get("/api/printers").json()}
-    assert printers[fleet["mini"]]["queue_depth"] == 3
-
-
 def test_manual_printer_override(client, fleet):
     m = upload(client, VALID / "cube_binary.stl").json()
     r, job = slice_model(client, m["id"], printer_id=fleet["x1c"])
@@ -279,8 +266,7 @@ def test_job_lifecycle_and_downloads(client, fleet):
     assert client.get(f"/api/jobs/{job['id']}/gcode").headers["content-disposition"].endswith('cube_binary.gcode"')
     assert client.get(f"/api/jobs/{job['id']}/bundle").status_code == 409      # mock has no .gcode.3mf
     assert client.post(f"/api/jobs/{job['id']}/print").status_code == 409      # no live link
-    assert client.post(f"/api/jobs/{job['id']}/queue").json()["queued"] is True
-    assert any(j["id"] == job["id"] for j in client.get("/api/jobs").json())
+    assert client.post(f"/api/jobs/{job['id']}/queue").status_code == 404     # the old per-printer Queue button is gone (2.2)
     assert client.get("/api/jobs/nope").status_code == 404
     assert client.get("/api/jobs/nope/gcode").status_code == 404
 

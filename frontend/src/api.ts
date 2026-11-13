@@ -193,7 +193,6 @@ export const api = {
   jobs: (scope: "mine" | "all" = "mine") => fetch(`/api/jobs${scope === "all" ? "?scope=all" : ""}`).then(j<Job[]>),
   jobPage: (id: string) => fetch(`/api/jobs/${id}/page`).then(j<JobPage>),
   modelInfo: (id: string) => fetch(`/api/models/${id}`).then(j<{ id: string; name: string; dims: [number, number, number] }>),
-  queue: (id: string) => post(`/api/jobs/${id}/queue`).then(j<Job>),
   print: (id: string) => post(`/api/jobs/${id}/print`).then(j<{ ok: boolean; started: boolean; file: string }>),
   printers: () => fetch("/api/printers").then(j<Printer[]>),
   gateways: () => fetch("/api/admin/gateways").then(j<Gateway[]>),

@@ -151,13 +151,9 @@ def test_users_cannot_see_each_others_models_and_jobs(client, fleet, alice, bob)
     for path in (f"/api/jobs/{job['id']}", f"/api/jobs/{job['id']}/gcode", f"/api/jobs/{job['id']}/bundle"):
         assert alice.get(path).status_code in (200, 409)
         assert bob.get(path).status_code == 404, path
-    assert bob.post(f"/api/jobs/{job['id']}/queue").status_code == 404
     assert bob.post(f"/api/jobs/{job['id']}/print").status_code == 404
     assert alice.get("/api/jobs").json() == []                                       # a slice is only a draft until it is sent somewhere
-    assert alice.post(f"/api/jobs/{job['id']}/queue").status_code == 200              # queueing it on a printer makes it a job
-    assert [j["id"] for j in alice.get("/api/jobs").json()] == [job["id"]]
     assert bob.get("/api/jobs").json() == []
-    assert job["id"] in [j["id"] for j in client.get("/api/jobs?scope=all").json()]   # admins (and operators) see all on All jobs
     assert client.get(f"/api/jobs/{job['id']}/gcode").status_code == 200
     assert client.get(f"/api/models/{m['id']}/preview.stl").status_code == 200
 
