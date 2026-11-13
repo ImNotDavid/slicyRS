@@ -97,13 +97,15 @@ def current_user(request: Request) -> dict[str, Any]:
 
 
 def require_admin(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    if user.get("role") != "admin":
+    from . import permissions
+    if not permissions.can(user, "admin"):
         raise HTTPException(403, "Admin only")
     return user
 
 
 def is_admin(user: dict[str, Any]) -> bool:
-    return user.get("role") == "admin"
+    from . import permissions
+    return permissions.is_admin(user)
 
 
 # ------------------------------------------------------------------- routes

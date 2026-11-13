@@ -33,11 +33,11 @@ def visible_to(user: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(mine_or_shared, key=lambda p: (p["scope"] != "shared", p["name"].lower()))
 
 
-def create(user: dict[str, Any], name: str, preset: str, filament: str, settings: dict[str, Any], shared: bool, is_admin: bool) -> dict[str, Any]:
+def create(user: dict[str, Any], name: str, preset: str, filament: str, settings: dict[str, Any], shared: bool, may_share: bool) -> dict[str, Any]:
     name = name.strip()
     if not name:
         raise PresetError("Give the preset a name")
-    if shared and not is_admin:
+    if shared and not may_share:
         raise PresetError("Only an admin can share a preset with everyone")
     scope = "shared" if shared else "user"
     taken = [p for p in store.presets.all() if p["name"].lower() == name.lower()
@@ -49,5 +49,4 @@ def create(user: dict[str, Any], name: str, preset: str, filament: str, settings
                                    "preset": preset, "filament": filament, "settings": _clean(preset, filament, settings), "created": time.time()})
 
 
-def can_delete(user: dict[str, Any], p: dict[str, Any], is_admin: bool) -> bool:
-    return p["owner_id"] == user["id"] or (is_admin and p["scope"] == "shared")
+

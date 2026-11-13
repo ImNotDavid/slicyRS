@@ -6,8 +6,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .. import assign, bedstate, meshio, multipart, retention, store
-from ..auth import find_user_by_email, is_admin
+from .. import assign, bedstate, meshio, multipart, permissions, retention, store
+from ..auth import find_user_by_email
 from ..catalog import DEFAULT_BED_TYPE
 from ..storage import MODELS, files
 from fastapi import Depends
@@ -72,9 +72,9 @@ def _fleet() -> list[dict[str, Any]]:
 def _checked_model(model_id: str, user: dict[str, Any]) -> str:
     """Models belong to their uploader; other users get the same 404 as a missing model."""
     rec = store.models.get(model_id)
-    if rec and rec.get("files_deleted_at") and (rec["owner_id"] == user["id"] or is_admin(user)):
+    if rec and rec.get("files_deleted_at") and permissions.can(user, "model.use", rec):
         raise HTTPException(410, "This model was removed after not being used for a while. Please upload it again.")
-    if not rec or not files.exists(MODELS, model_id) or (rec["owner_id"] != user["id"] and not is_admin(user)):
+    if not rec or not files.exists(MODELS, model_id) or not permissions.can(user, "model.use", rec):
         raise HTTPException(404, "Unknown model")
     retention.touch_model(model_id)
     return model_id

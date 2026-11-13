@@ -53,10 +53,6 @@ def auto_start(lead: dict[str, Any]) -> bool:
     return all(j.get("auto_start") for j in jobs_on_plate(lead))
 
 
-def is_owner(user: dict[str, Any], job: dict[str, Any]) -> bool:
-    return any(j.get("owner_id") == user["id"] for j in jobs_on_plate(job))
-
-
 # ------------------------------------------------------------------ compatibility
 
 # Settings that must be identical for jobs to share a plate: they apply to the whole plate (or change what the part is).

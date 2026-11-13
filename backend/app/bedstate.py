@@ -78,9 +78,8 @@ def last_plate(printer_id: str) -> list[dict[str, Any]]:
 
 
 def can_set(user: dict[str, Any], printer_id: str) -> bool:
-    if user.get("role") == "admin" or user.get("operator"):
-        return True
-    return any(j.get("owner_id") == user["id"] for j in last_plate(printer_id))   # any one owner may clear a shared plate
+    from . import permissions
+    return permissions.can(user, "plate.clear", printer_id)
 
 
 def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bool]) -> dict[str, Any]:
@@ -103,7 +102,8 @@ def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bo
 
 
 def mark_occupied(printer_id: str, user: dict[str, Any]) -> dict[str, Any]:
-    if not (user.get("role") == "admin" or user.get("operator")):
+    from . import permissions
+    if not permissions.can(user, "plate.mark_occupied"):
         raise PermissionError("Only an operator or an admin can mark a plate as occupied")
     p = store.printers.get(printer_id) or {}
     set_state(printer_id, "occupied", "manual", by=user["email"])

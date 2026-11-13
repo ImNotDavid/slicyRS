@@ -128,3 +128,10 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - API (`routes/notifications.py`): `GET/PUT /api/me/notifications` (per person on/off), admin `GET /api/admin/notifications` and channel add, update, delete and test. UI: Admin has a Notifications tab; the account menu has a Notifications dialog (`components/NotifyPrefs.tsx`).
 - Fixed: Fleet showed "N people share this plate" for one user because every older finished job on an occupied printer counted; only the latest plate counts now (`routes/common.printer_people`).
 - Not verified with real hardware: a real pause or error on a printer, and a real Discord webhook (tests use a stand-in).
+
+## Central permission check (2.15)
+
+- `app/permissions.py` holds every "may this person do this" rule, documented as a table at the top. `can()` returns a bool; `require()` raises 404 (`hide=True`, for other people's jobs and models) or 403. `auth.require_admin` and `auth.is_admin` go through it.
+- Moved onto it: Jobs list and every job action (`routes/jobs._owned_job`), model access (`routes/common._checked_model`), plate clear and mark occupied (`bedstate`), who sees printer users and connection details (`routes/printers`), sharing and deleting presets (`routes/catalog`), and which notification events a person sees in their settings (`notify.preferences`). Removed the unused `plates.is_owner` and `presets.can_delete`.
+- One small behaviour change: a disabled account is refused every action even if its session were still alive (sessions are already revoked on disable). Emitting to operators still uses the operator flag only, as before.
+- Tests: `tests/test_permissions.py`. New actions for 2.2 and 2.4 (queue, pause, resume) belong in `ACTIONS` with a row in the table.

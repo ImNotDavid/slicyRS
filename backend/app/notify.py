@@ -50,7 +50,8 @@ def wants(user: dict[str, Any], kind: str, as_operator: bool) -> bool:
 
 def preferences(user: dict[str, Any]) -> list[dict[str, Any]]:
     """What the person sees on their notification settings: each event they could get, and whether it is on."""
-    operator = bool(user.get("operator") or user.get("role") == "admin")
+    from . import permissions
+    operator = permissions.is_operator(user)
     out = []
     for kind, e in EVENTS.items():
         for_owner, for_op = e["owner_default"] is not None, e["operator_default"] is not None

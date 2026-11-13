@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import allocator, bedstate, crypto, gateways, store
+from .. import allocator, bedstate, crypto, gateways, permissions, store
 from ..adapter import AdapterError
 from ..auth import audit, is_admin, require_admin
 from ..bambu import check_host, links, probe
@@ -18,8 +18,8 @@ router = APIRouter()
 @router.get("/api/printers")
 def list_printers(user: dict = User):
     """Fleet status for every signed-in user (connection details are admin-only)."""
-    operator = is_admin(user) or bool(user.get("operator"))    # only operators and admins see who is using a printer
-    return [_public_printer(p, is_admin(user), operator) for p in store.printers.all()]
+    people, connection = permissions.can(user, "printer.see_people"), permissions.can(user, "printer.see_connection")
+    return [_public_printer(p, connection, people) for p in store.printers.all()]
 
 
 class PrinterIn(BaseModel):

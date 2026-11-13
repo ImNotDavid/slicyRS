@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .. import allocator, assign, forecast, jobstate, meshio, multipart, pipeline, printing, slicer, store, thumbnail
-from ..auth import audit, is_admin
+from .. import permissions
+from ..auth import audit
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
 from ..storage import JOBS, MODELS, files
@@ -114,15 +115,15 @@ def _do_slice(job_id: str, workdir: Path, input_path: Path, printer_model: str, 
 @router.get("/api/jobs")
 def list_jobs(user: dict = User):
     """Your jobs; admins see everyone's."""
-    jobs = [j for j in store.jobs.all() if not j.get("draft") and (is_admin(user) or j.get("owner_id") == user["id"])]
+    see_all = permissions.can(user, "job.see_all")
+    jobs = [j for j in store.jobs.all() if not j.get("draft") and (see_all or j.get("owner_id") == user["id"])]
     return sorted(jobs, key=lambda j: -j["created"])
 
 
 def _owned_job(job_id: str, user: dict[str, Any]) -> dict[str, Any]:
     job = store.jobs.get(job_id)
-    if not job or (job.get("owner_id") != user["id"] and not is_admin(user)):
-        raise HTTPException(404, "Unknown job")
-    return job
+    permissions.require(user, "job.manage", job, hide=True, message="Unknown job")
+    return job  # type: ignore[return-value]
 
 
 @router.get("/api/jobs/{job_id}")

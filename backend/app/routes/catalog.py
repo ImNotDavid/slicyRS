@@ -5,8 +5,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import goals, presets, store
-from ..auth import audit, is_admin
+from .. import goals, permissions, presets, store
+from ..auth import audit
 from ..defaults import ui_defaults
 from ..catalog import BED_TYPES, DEFAULT_BED_TYPE, FILAMENTS, NOZZLES, PRINTER_MODELS, PROCESS_PRESETS, SETTINGS_SCHEMA
 from ..config import ORCA_BIN, SLICER_MODE
@@ -55,7 +55,7 @@ def list_presets(user: dict = User):
 @router.post("/api/presets")
 def save_preset(body: PresetIn, user: dict = User):
     try:
-        out = presets.create(user, body.name, body.preset, body.filament, body.settings, body.shared, is_admin(user))
+        out = presets.create(user, body.name, body.preset, body.filament, body.settings, body.shared, permissions.can(user, "preset.share"))
     except presets.PresetError as e:
         raise HTTPException(400, str(e))
     audit(user, "preset_save", f"{out['name']}" + (" (shared)" if out["scope"] == "shared" else ""))
@@ -67,7 +67,7 @@ def delete_preset(preset_id: str, user: dict = User):
     p = store.presets.get(preset_id)
     if not p or not (p["scope"] == "shared" or p["owner_id"] == user["id"]):
         raise HTTPException(404, "Unknown preset")
-    if not presets.can_delete(user, p, is_admin(user)):
+    if not permissions.can(user, "preset.delete", p):
         raise HTTPException(403, "Only an admin can remove a shared preset")
     store.presets.delete(preset_id)
     audit(user, "preset_delete", p["name"])
