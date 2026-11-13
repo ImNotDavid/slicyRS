@@ -49,3 +49,21 @@ def test_model_info_for_reuse(client):
 
 def test_unknown_job_page_is_404(client):
     assert page(client, "nope").status_code == 404
+
+
+def test_a_job_card_gets_a_picture_drawn_once_and_others_cannot_fetch_it(client, fleet):
+    m = upload(client, VALID / "cube_binary.stl").json()
+    _, job = slice_model(client, m["id"])
+    r = client.get(f"/api/jobs/{job['id']}/thumbnail.png")
+    assert r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert client.get(f"/api/jobs/{job['id']}/thumbnail.png").content == r.content     # kept, not redrawn
+    assert make_user(client, "jp.peek@imperial.ac.uk").get(f"/api/jobs/{job['id']}/thumbnail.png").status_code == 404
+
+
+def test_a_plate_job_picture_shows_all_its_parts(client, fleet):
+    m = upload(client, VALID / "cube_binary.stl").json()
+    r = client.post("/api/slice", json={"filament": "PLA", "parts": [{"model_id": m["id"], "position": [-30, 0]}, {"model_id": m["id"], "position": [30, 0]}]})
+    assert r.status_code == 200, r.text
+    from conftest import wait_job
+    job = wait_job(client, r.json()["id"])
+    assert client.get(f"/api/jobs/{job['id']}/thumbnail.png").status_code == 200

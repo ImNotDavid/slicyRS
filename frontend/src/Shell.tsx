@@ -8,7 +8,7 @@ import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
 import NotifyPrefs from "./components/NotifyPrefs";
 import ErrorBoundary from "./components/ErrorBoundary";
-import JobsModal from "./components/JobsModal";
+import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
 type Page = "workspace" | "jobs" | "alljobs" | "job" | "fleet" | "admin";
@@ -53,7 +53,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
 
   const refreshPrinters = useCallback(() => api.printers().then(setPrinters).catch(() => {}), []);
   useEffect(() => {
-    if ((page === "admin" || page === "job") && !catalog) api.catalog().then(setCatalog).catch(() => {});
+    if ((page === "admin" || page === "job" || page === "jobs" || page === "alljobs") && !catalog) api.catalog().then(setCatalog).catch(() => {});
     if (page !== "fleet" && page !== "admin") return;
     refreshPrinters();
     const t = setInterval(refreshPrinters, 5000);
@@ -118,9 +118,9 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
       </div>
       {page !== "workspace" && (
         <main className="page">
-          <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>
-          {page === "jobs" && <JobsModal inline scope="mine" onDetails={openJobPage} />}
-          {page === "alljobs" && isOperator && <JobsModal inline scope="all" showOwner onDetails={openJobPage} />}
+          {page !== "job" && <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>}
+          {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
+          {page === "alljobs" && isOperator && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}
           {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
           {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}
           {page === "admin" && isAdmin && (catalog ? <AdminModal inline catalog={catalog} me={user} onPrintersChanged={refreshPrinters} /> : <p className="muted">Loading…</p>)}

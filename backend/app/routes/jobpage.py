@@ -1,12 +1,16 @@
 """The job page (2.9): everything about one job in one answer, shaped for reading rather than for the pipeline."""
 from typing import Any
 
-from fastapi import APIRouter
+import threading
 
-from .. import bedstate, goals, jobstate, permissions, plates, store
+import trimesh
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+
+from .. import bedstate, goals, jobstate, meshio, permissions, plates, store, thumbnail
 from ..catalog import FIELDS, job_nozzle
 from ..defaults import ui_defaults
-from ..storage import MODELS, files
+from ..storage import JOBS, MODELS, files
 from .common import User
 from .jobs import _viewable_job
 
@@ -87,3 +91,51 @@ def job_page(job_id: str, user: dict = User):
         "photo": None,                      # a camera picture of the finished plate (2.7) lands here
         "events": jobstate.events_for(job["id"]),
     }
+
+
+THUMB = "thumb.png"
+THUMB_COLOUR = (0, 30, 255)              # the brand's dark blue; the job does not record the spool colour
+_thumb_lock = threading.Lock()
+
+
+def _plate_mesh(job: dict[str, Any]) -> trimesh.Trimesh | None:
+    """The job's parts as they sit on the plate, from the files kept with the job (or the model, for a single part)."""
+    spec = job.get("spec") or {}
+    if spec.get("parts"):
+        meshes = []
+        for p in spec["parts"]:
+            if not p.get("file") or not files.path(JOBS, job["id"], p["file"]).exists():
+                return None
+            m = meshio.load_mesh(files.path(JOBS, job["id"], p["file"]))
+            x, y = p.get("position") or (0, 0)
+            m.apply_translation([x - m.bounds.mean(axis=0)[0], y - m.bounds.mean(axis=0)[1], 0])
+            meshes.append(m)
+        return trimesh.util.concatenate(meshes) if meshes else None
+    for name in (job.get("input_file"), "input.stl", "input.3mf"):
+        if name and files.path(JOBS, job["id"], name).exists():
+            return meshio.load_mesh(files.path(JOBS, job["id"], name))
+    mid = spec.get("model_id") or job.get("model_id")
+    if mid and files.exists(MODELS, mid) and files.path(MODELS, mid, "preview.stl").exists():
+        return meshio.load_mesh(files.path(MODELS, mid, "preview.stl"))
+    return None
+
+
+@router.get("/api/jobs/{job_id}/thumbnail.png")
+def job_thumbnail(job_id: str, user: dict = User):
+    """A small picture of the job's part(s) for the job cards, drawn once on the server and kept with the job's files."""
+    job = _viewable_job(job_id, user)
+    if job.get("batch_lead"):
+        job = store.jobs.get(job["batch_lead"]) or job      # a part on a shared plate shows the whole plate
+    if job.get("files_deleted_at") or not files.exists(JOBS, job["id"]):
+        raise HTTPException(404, "No picture: the job's files were removed")
+    path = files.path(JOBS, job["id"], THUMB)
+    with _thumb_lock:
+        if not path.exists():
+            try:
+                mesh = _plate_mesh(job)
+            except Exception:
+                mesh = None
+            if mesh is None or not len(mesh.faces):
+                raise HTTPException(404, "No picture for this job")
+            files.write_bytes(JOBS, job["id"], THUMB, thumbnail.render(mesh, size=256, colour=THUMB_COLOUR))
+    return Response(path.read_bytes(), media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})

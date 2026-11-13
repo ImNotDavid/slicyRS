@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api, type Forecast, type Job, type PlateSpec } from "../api";
-import { fmtTime } from "./JobsModal";
+import { fmtTime } from "../format";
 
 type Props = {
   spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null };

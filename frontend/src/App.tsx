@@ -11,7 +11,7 @@ import { TRAVEL, type FeatureInfo } from "./gcode";
 import SettingsPanel from "./components/SettingsPanel";
 import SavedPresets from "./components/SavedPresets";
 import SupportControl, { SUPPORT_KEYS } from "./components/SupportControl";
-import { fmtTime } from "./components/JobsModal";
+import { fmtTime } from "./format";
 import SubmitModal from "./components/SubmitModal";
 
 type Value = number | string | boolean;
