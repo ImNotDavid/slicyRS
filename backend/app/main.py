@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import allocator, auth, bedstate, gateways, outcomes, retention, sessions, slicer, store, worker  # noqa: F401  (slicer: tests patch it here)
 from .bambu import links  # noqa: F401  (tests reach the live links here)
 from .config import COOKIE_SECURE, MAX_WORKERS, SECRET_KEY, SESSION_HOURS
-from .routes import admin, catalog, home, jobpage, parts, jobs, models, notifications, printers, queue as queue_routes
+from .routes import admin, catalog, filament as filament_routes, home, jobpage, parts, jobs, models, notifications, printers, queue as queue_routes
 
 app = FastAPI(title="slicyRS")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, https_only=COOKIE_SECURE, same_site="lax",
@@ -72,7 +72,7 @@ def _startup() -> None:
     retention.start_background()
 
 
-for _router in (auth.router, gateways.router, catalog.router, models.router, printers.router, admin.router, notifications.router, home.router, parts.router, jobpage.router, queue_routes.router, jobs.router):
+for _router in (auth.router, gateways.router, catalog.router, models.router, printers.router, admin.router, notifications.router, home.router, parts.router, filament_routes.router, jobpage.router, queue_routes.router, jobs.router):
     app.include_router(_router)
 
 # ------------------------------------------------------------------- static

@@ -139,6 +139,8 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
     from . import camera, timelapse   # a picture of how the plate ended up (2.7) and the video, if one was asked for (2.8)
     camera.photograph_plate(job["id"], printer_id)
     timelapse.after_print(store.jobs.get(job["id"]) or job, printer_id)
+    from . import filament            # the grams used come off the spool loaded on that printer (2.10)
+    filament.after_print(job, printer_id, result)
     from .printcontrol import recent_control
     stopped = recent_control(job, "stop") if outcome == "failed" else None
     if stopped:

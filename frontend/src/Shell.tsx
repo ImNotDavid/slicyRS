@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Bell, Box, ClipboardList, Columns3, Home, ListChecks, LogOut, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { BarChart3, Bell, Box, CircleDot, ClipboardList, Columns3, Home, ListChecks, LogOut, MoreHorizontal, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
 import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User } from "./api";
 import JobPage from "./components/JobPage";
 import QueuePage from "./components/QueuePage";
 import HomePage from "./components/HomePage";
 import PartsPage from "./components/PartsPage";
+import FilamentPage from "./components/FilamentPage";
+import DashboardPage from "./components/DashboardPage";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -14,13 +16,14 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
-type Page = "home" | "workspace" | "jobs" | "parts" | "alljobs" | "queue" | "job" | "fleet" | "admin";
+const PHONE_TABS = 4;      // owner decision: on a phone, four tabs plus More
+type Page = "home" | "workspace" | "jobs" | "parts" | "alljobs" | "queue" | "job" | "fleet" | "filament" | "dashboard" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", admin: "Admin" };
-const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", admin: "admin" };
+const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", filament: "Filament", dashboard: "Dashboard", admin: "Admin" };
+const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", filament: "filament", dashboard: "dashboard", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
-const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" || p === "alljobs" || p === "queue" ? operator : true);
+const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" || p === "dashboard" ? admin : p === "fleet" || p === "alljobs" || p === "queue" || p === "filament" ? operator : true);
 // routes: #/workspace, #/jobs, #/jobs/<id>, #/all-jobs, #/fleet, #/admin
 const readRoute = (admin: boolean, operator: boolean): { page: Page; jobId: string | null } => {
   const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -58,7 +61,8 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const refreshPrinters = useCallback(() => api.printers().then(setPrinters).catch(() => {}), []);
   useEffect(() => {
     if ((page === "admin" || page === "job" || page === "jobs" || page === "alljobs") && !catalog) api.catalog().then(setCatalog).catch(() => {});
-    if (page !== "fleet" && page !== "admin") return;
+    if ((page === "filament") && !catalog) api.catalog().then(setCatalog).catch(() => {});
+    if (page !== "fleet" && page !== "admin" && page !== "filament") return;
     refreshPrinters();
     const t = setInterval(refreshPrinters, 5000);
     return () => clearInterval(t);
@@ -72,6 +76,8 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
     ...(isOperator ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
+    ...(isOperator ? [{ id: "filament" as Page, icon: CircleDot, staff: "Operators and admins only" }] : []),
+    ...(isAdmin ? [{ id: "dashboard" as Page, icon: BarChart3, staff: "Admins only" }] : []),
     ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck, staff: "Admins only" }] : []),
   ];
   const staffNote = items.find((i) => i.id === page)?.staff;
@@ -86,7 +92,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
         <div className="brand"><Harry height={28} className="brand-harry" /><div className="brand-text"><span className="mark">slicy<b>RS</b></span><Lettermark height={14} className="brand-letters" /></div></div>
         <nav aria-label="Main">
           {items.map(({ id, icon: Icon, staff }, i) => (
-            <div key={id} className="nav-wrap">
+            <div key={id} className={"nav-wrap" + (i >= PHONE_TABS ? " overflow" : "")}>
               {staff && !items[i - 1]?.staff && <div className="staff-rule" aria-hidden="true"><span>Staff</span></div>}
               <button className={"nav" + (page === id || (page === "job" && id === "jobs") ? " on" : "") + (staff ? " staff" : "")} aria-current={page === id ? "page" : undefined}
                 title={staff ? `${TITLES[id]} (${staff.toLowerCase()})` : TITLES[id]} onClick={() => go(id)}>
@@ -94,6 +100,20 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
               </button>
             </div>
           ))}
+          {items.length > PHONE_TABS && (            /* phones: the first four pages are tabs, the rest live under More */
+            <Menu.Root>
+              <Menu.Trigger className={"nav more" + (items.slice(PHONE_TABS).some((it) => it.id === page) ? " on" : "")} aria-label="More pages">
+                <MoreHorizontal size={18} /><span>More</span>
+              </Menu.Trigger>
+              <Menu.Portal>
+                <Menu.Content className="acct-menu" side="top" align="end" sideOffset={8}>
+                  {items.slice(PHONE_TABS).map(({ id, icon: Icon, staff }) => (
+                    <Menu.Item key={id} className={"menu-item" + (staff ? " staff-item" : "")} onSelect={() => go(id)}><Icon size={16} /> {TITLES[id]}</Menu.Item>
+                  ))}
+                </Menu.Content>
+              </Menu.Portal>
+            </Menu.Root>
+          )}
         </nav>
         <div className="side-foot">
           <div className="hatch-strip" aria-hidden="true" />
@@ -127,6 +147,8 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
           {page !== "job" && <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>}
           {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
           {page === "queue" && isOperator && <QueuePage onOpenJob={openJobPage} />}
+          {page === "filament" && isOperator && <FilamentPage catalog={catalog} printers={printers} />}
+          {page === "dashboard" && isAdmin && <DashboardPage />}
           {page === "home" && <HomePage user={user} go={(p) => go(p)} onOpenJob={openJobPage} />}
           {page === "parts" && <PartsPage onUse={(id, add) => setPartRequest({ id, add })} onOpenJob={openJobPage} />}
           {page === "alljobs" && isOperator && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}

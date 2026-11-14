@@ -485,3 +485,49 @@ span.small { font-size: 12px; }
 .part-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .part-tools select { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); font-size: 12px; padding: 4px 6px; }
 @media (max-width: 900px) { .parts-layout { grid-template-columns: 1fr; } .folders { position: static; flex-direction: row; flex-wrap: wrap; } .folder { width: auto; } }
+
+/* phones: four tabs plus More (owner decision) */
+.nav.more { display: none; }
+.staff-item { border-left: 3px solid var(--brand-yellow); }
+@media (max-width: 900px) {
+  .nav-wrap.overflow { display: none; }
+  .sidebar .nav.more { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 4px; height: 56px; border: 0; border-top: 3px solid transparent;
+    font-size: 10px; padding: 0 4px; background: none; color: var(--text-muted); }
+  .sidebar .nav.more.on { border-top-color: var(--brand-primary); color: var(--brand-primary); }
+}
+
+/* charts (dashboard) */
+:root { --series-1: #001eff; --series-2: #b91c1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --series-1: #0084ff; --series-2: #ef4444; } }
+:root[data-theme="dark"] { --series-1: #0084ff; --series-2: #ef4444; }
+.dash-range { align-self: flex-start; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; align-items: start; }
+.dot { font-family: var(--font-display) !important; letter-spacing: 0.04em; }
+.bars { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: minmax(80px, 34%) 1fr auto; gap: 10px; align-items: center; font-size: 13px; padding: 2px 0; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.bar-track { height: 12px; background: var(--surface-2); }
+.bar-fill { display: block; height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
+.bar-value { font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 52px; text-align: right; }
+.daily { position: relative; }
+.daily svg .axis { stroke: var(--border); stroke-width: 1; }
+.daily svg .tick { font-size: 9px; fill: var(--text-muted); font-family: var(--font-mono); }
+.daily svg .s1, .legend-row .sw.s1 { fill: var(--series-1); background: var(--series-1); }
+.daily svg .s2, .legend-row .sw.s2 { fill: var(--series-2); background: var(--series-2); }
+.legend-row .sw { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; }
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--surface);
+  border: 1px solid var(--text); box-shadow: 4px 4px 0 var(--brand-primary-soft); font-size: 12px; white-space: nowrap; }
+.chart-table summary { cursor: pointer; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* filament (2.10) */
+.spool-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 14px; padding: 14px; background: var(--surface); border: 1px solid var(--text-muted); }
+.spool-form label { display: flex; flex-direction: column; gap: 4px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.spool-form .wide { grid-column: 1 / -1; }
+.spool-form input, .spool-form select { border: 1px solid var(--text); border-radius: 0; background: var(--surface); color: var(--text); padding: 7px 9px; font-family: var(--font); font-size: 14px; text-transform: none; letter-spacing: 0; }
+.spool-form .row { display: flex; gap: 6px; }
+.spool-form input[type="color"] { width: 44px; padding: 2px; }
+.jc.spool { cursor: default; }
+.jc.spool:hover { box-shadow: none; }
+.jc.spool.empty { opacity: 0.6; }
+.spool-top { display: flex; gap: 12px; align-items: center; padding: 14px 14px 0; }
+.swatch { width: 36px; height: 36px; border: 1px solid var(--text-muted); flex: none; }

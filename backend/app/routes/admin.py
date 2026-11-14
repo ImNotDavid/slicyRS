@@ -133,6 +133,15 @@ def audit_log(limit: int = 100, admin: dict = Depends(require_admin)):
 
 
 
+@router.get("/api/admin/dashboard")
+def fleet_dashboard(days: int = 7, admin: dict = Depends(require_admin)):
+    """Fleet dashboard (2.11): utilisation, failures, queue and filament over the last 7 or 30 days."""
+    from .. import dashboard
+    if days not in (7, 30):
+        raise HTTPException(400, "days must be 7 or 30")
+    return dashboard.summary(days)
+
+
 @router.get("/api/admin/pipeline")
 def pipeline_settings(admin: dict = Depends(require_admin)):
     return pipelinecfg.get()

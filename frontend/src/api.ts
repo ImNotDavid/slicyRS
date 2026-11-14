@@ -55,6 +55,17 @@ export type HomeData = {
 export type SavedPart = { id: string; name: string; created: number | null; last_used: number | null; dims: [number, number, number] | null; folder_id: string | null;
   available: boolean; size: number; jobs: number; printed: number; last_job: { id: string; name: string; phase: string; filament: string } | null };
 export type PartFolder = { id: string; name: string; count: number };
+export type Spool = { id: string; material: string; colour_name: string | null; colour_hex: string | null; brand: string | null; start_g: number; remaining_g: number;
+  price: number | null; notes: string | null; printer_id: string | null; printer_name: string | null; percent: number | null; cost_per_kg: number | null; empty: boolean };
+export type Dashboard = {
+  days: number; prints: { finished: number; failed: number }; daily: { day: string; finished: number; failed: number }[];
+  utilisation: { id: string; name: string; busy_s: number; percent: number }[];
+  failures_by_printer: { name: string; finished: number; failed: number; rate: number | null }[];
+  failures_by_material: { material: string; finished: number; failed: number; rate: number | null }[];
+  failure_reasons: { reason: string; count: number }[];
+  queue: { samples: number; median_s: number | null; p90_s: number | null; max_s: number | null; waiting_now: number; at_risk_now: number; pickups: number; late_pickups: number };
+  filament: { total_g: number; by_material: { material: string; grams: number }[]; by_person: { person: string; grams: number }[] };
+};
 export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
 export type JobPage = {
   job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
@@ -203,6 +214,11 @@ export const api = {
   deleteFolder: (id: string) => send("DELETE", `/api/parts/folders/${id}`).then(j<{ ok: boolean }>),
   updatePart: (id: string, p: { name?: string; folder_id?: string; clear_folder?: boolean }) => send("PATCH", `/api/parts/${id}`, p).then(j<SavedPart>),
   deletePart: (id: string) => send("DELETE", `/api/parts/${id}`).then(j<{ ok: boolean }>),
+  spools: () => fetch("/api/filament").then(j<{ spools: Spool[]; totals: Record<string, { spools: number; remaining_g: number; value: number }> }>),
+  addSpool: (s: Record<string, unknown>) => post("/api/filament/spools", s).then(j<Spool>),
+  updateSpool: (id: string, s: Record<string, unknown>) => send("PUT", `/api/filament/spools/${id}`, s).then(j<Spool>),
+  deleteSpool: (id: string) => send("DELETE", `/api/filament/spools/${id}`).then(j<{ ok: boolean }>),
+  dashboard: (days: 7 | 30) => fetch(`/api/admin/dashboard?days=${days}`).then(j<Dashboard>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

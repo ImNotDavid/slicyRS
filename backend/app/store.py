@@ -18,3 +18,4 @@ presets = db.collection("presets")
 channels = db.collection("notification_channels")   # shared channels (Discord webhooks) set by admins
 notices = db.collection("notices")   # short messages admins post on the Home page (2.18)
 folders = db.collection("part_folders")   # My Parts folders (2.17)
+spools = db.collection("spools")   # filament inventory (2.10)

@@ -205,3 +205,9 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - The app now lands on `#/home` (Shell default route). Menu: Home, Workspace, My jobs, My parts, then the staff pages.
 - My Parts: `GET /api/parts?q=&folder=` (own models only, with jobs made from each), folders `POST/PATCH/DELETE /api/parts/folders`, `PATCH /api/parts/{id}` (rename, folder), `DELETE /api/parts/{id}` (removes the files; jobs keep their copies), `GET /api/parts/{id}/thumbnail.png`. `store.folders`; models carry `folder_id`. Retention: `model_files_days` now defaults to 0 (keep). An install where an admin already saved retention settings keeps its saved value; check Admin, Storage.
 - "Open" and "Add to plate" go through Shell to App (`partRequest`).
+
+## Phone menu, filament inventory (2.10), fleet dashboard (2.11)
+
+- Phone: the bottom bar shows the first four pages (Home, Workspace, My jobs, My parts) and a More menu with the rest (`PHONE_TABS` in `Shell.tsx`; owner decision).
+- Filament: `store.spools`; `filament.public`, `add`, `take`, `after_print` (called from `outcomes._record_final`), `totals`. API: `GET /api/filament`, `POST /api/filament/spools`, `PUT/DELETE /api/filament/spools/{id}` (permission `filament.manage`). Page `#/filament` for operators and admins.
+- Dashboard: `dashboard.summary(days)` from jobs and events (utilisation from print start to end clipped to the window; shared-plate members count once; queue waits from the first `pooled` to `assigned` event). Page `#/dashboard` for admins; `components/Charts.tsx` holds `Bars` and `DailyColumns` (colours `--series-1/2`: light #001EFF/#B91C1C, dark #0084FF/#EF4444, both validated with the dataviz palette script).
