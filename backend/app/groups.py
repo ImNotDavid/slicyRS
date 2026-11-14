@@ -156,6 +156,6 @@ def describe(user: dict[str, Any]) -> list[dict[str, Any]]:
     for m in memberships(user):
         g = store.groups.get(m["group_id"])
         r = role(m["role_id"]) or {}
-        out.append({"id": g["id"], "name": g["name"], "default": bool(g.get("default")), "main": g["id"] == main,
+        out.append({"id": g["id"], "name": g["name"], "default": bool(g.get("default")), "main": g["id"] == main, "max_print_h": g.get("max_print_h"),
                     "role_id": r.get("id"), "role": r.get("name") or "Member", "rights": sorted(rights_in(user, g["id"]))})
     return out

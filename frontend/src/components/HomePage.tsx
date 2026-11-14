@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Megaphone, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Megaphone, Trash2 } from "lucide-react";
 import { api, type HomeData, type User } from "../api";
 import LiveProgress from "./LiveProgress";
 import { Harry } from "./Brand";
@@ -27,18 +27,16 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           {isAdmin && <button className="icon" aria-label="Remove notice" onClick={() => api.deleteNotice(n.id).then(load)}><Trash2 size={14} /></button>}
         </div>
       ))}
-      {isAdmin && (
-        <form className="notice-form" onSubmit={(e) => { e.preventDefault(); if (note.trim()) api.addNotice(note.trim(), level).then(() => { setNote(""); load(); }); }}>
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Post a notice for everyone (for example: closed on Friday)" aria-label="New notice" />
-          <select value={level} onChange={(e) => setLevel(e.target.value as "info" | "warning")} aria-label="Notice type"><option value="info">Info</option><option value="warning">Warning</option></select>
-          <button className="btn" disabled={!note.trim()}>Post</button>
-        </form>
-      )}
+
+      <button className="start-print" onClick={() => go("workspace")}>
+        <span className="sp-text"><b>Start a print</b><span>Open a model, pick a goal and send it to the pool</span></span>
+        <ArrowRight size={34} aria-hidden="true" />
+      </button>
 
       <section className="stats-strip" aria-label="The print pool">
         <div className="stat"><span className="lbl">Printers free now</span><b>{h.pool.printers_free} of {h.pool.printers}</b><span>{h.pool.printers_out ? `${h.pool.printers_out} out of service` : "all in service"}</span></div>
         <div className="stat"><span className="lbl">Jobs waiting</span><b>{h.pool.jobs_waiting}</b><span>in the pool</span></div>
-        <div className="stat"><span className="lbl">Wait for a 1 h print</span><b className="small">{minutes(h.pool.typical_wait_s)}</b><span>before it starts, roughly</span></div>
+        <div className="stat"><span className="lbl">Wait for a 1 h print</span><b className="small">{h.pool.typical_wait_s === 0 ? "none" : minutes(h.pool.typical_wait_s)}</b><span>{h.pool.typical_wait_s === 0 ? "a printer is free now" : "before it starts, roughly"}</span></div>
       </section>
 
       <div className="home-grid">
@@ -73,6 +71,13 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           </section>
         )}
       </div>
+      {isAdmin && (
+        <form className="notice-form" onSubmit={(e) => { e.preventDefault(); if (note.trim()) api.addNotice(note.trim(), level).then(() => { setNote(""); load(); }); }}>
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Admins: post a notice for everyone (for example: closed on Friday)" aria-label="New notice" />
+          <select value={level} onChange={(e) => setLevel(e.target.value as "info" | "warning")} aria-label="Notice type"><option value="info">Info</option><option value="warning">Warning</option></select>
+          <button className="btn" disabled={!note.trim()}>Post</button>
+        </form>
+      )}
     </div>
   );
 }

@@ -85,7 +85,7 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     best = min(printers, key=lambda p: free_at[p["id"]])
     padded = estimate_s(job) * (1 + cfg["estimate_buffer_pct"] / 100)
     finish = free_at[best["id"]] + padded + margin
-    return {"feasible": True, "earliest_finish": finish, "jobs_ahead": counted, "printer_id": best["id"],
+    return {"feasible": True, "earliest_finish": finish, "earliest_start": free_at[best["id"]], "jobs_ahead": counted, "printer_id": best["id"],
             "printer_name": best["name"], "estimate_s": estimate_s(job)}
 
 

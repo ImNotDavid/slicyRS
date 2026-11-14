@@ -87,12 +87,12 @@ export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
   hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; nozzle_mm?: number; gateway?: string | null; status?: Printer["status"]; groups?: string[];
 };
-export type MyGroup = { id: string; name: string; default: boolean; main: boolean; role_id: string | null; role: string; rights: string[] };
+export type MyGroup = { id: string; name: string; default: boolean; main: boolean; max_print_h?: number | null; role_id: string | null; role: string; rights: string[] };
 export type UserCan = { all_jobs: boolean; queue: boolean; filament: boolean; fleet: boolean; manage_groups: string[]; admin: boolean };
 export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null;
   groups?: MyGroup[]; main_group?: string; can?: UserCan };
 export type RoleDef = { id: string; name: string; desc: string; rights: string[]; builtin: boolean; locked: boolean; people: number };
-export type GroupDef = { id: string; name: string; desc: string; default_role: string; default: boolean; members: number; operators: string[]; only_printers: { id: string; name: string }[] };
+export type GroupDef = { id: string; name: string; desc: string; default_role: string; max_print_h?: number | null; default: boolean; members: number; operators: string[]; only_printers: { id: string; name: string }[] };
 export type GroupMember = { id: string; email: string; name: string; role_id: string | null; role: string; admin: boolean; active: boolean; invited: boolean; jobs: number; last_login: number | null };
 export type ManagedGroup = { id: string; name: string; default: boolean; members: GroupMember[]; only_printers: string[]; roles: { id: string; name: string }[]; waiting: number };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
@@ -239,8 +239,8 @@ export const api = {
   updateRole: (id: string, r: { name: string; desc: string; rights: string[] }) => send("PUT", `/api/admin/roles/${id}`, r).then(j<RoleDef>),
   deleteRole: (id: string) => send("DELETE", `/api/admin/roles/${id}`).then(j<{ ok: boolean }>),
   adminGroups: () => fetch("/api/admin/groups").then(j<GroupDef[]>),
-  addGroup: (g: { name: string; desc: string; default_role: string }) => post("/api/admin/groups", g).then(j<GroupDef>),
-  updateGroup: (id: string, g: { name: string; desc: string; default_role: string }) => send("PUT", `/api/admin/groups/${id}`, g).then(j<GroupDef>),
+  addGroup: (g: { name: string; desc: string; default_role: string; max_print_h?: number | null }) => post("/api/admin/groups", g).then(j<GroupDef>),
+  updateGroup: (id: string, g: { name: string; desc: string; default_role: string; max_print_h?: number | null }) => send("PUT", `/api/admin/groups/${id}`, g).then(j<GroupDef>),
   makeDefaultGroup: (id: string) => post(`/api/admin/groups/${id}/default`).then(j<GroupDef>),
   deleteGroup: (id: string) => send("DELETE", `/api/admin/groups/${id}`).then(j<{ ok: boolean }>),
   managedGroups: () => fetch("/api/groups/managed").then(j<ManagedGroup[]>),

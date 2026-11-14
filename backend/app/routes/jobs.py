@@ -384,6 +384,12 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
         if (why := queue_mod.fits({**job, "group_id": gid}, printer)):
             raise HTTPException(409, f"{printer['name']} cannot print this: {why}")
         pinned = printer["id"]
+    limit_h = (store.groups.get(gid) or {}).get("max_print_h")
+    est = (job.get("preview") or {}).get("time_s") or (job.get("stats") or {}).get("time_s")
+    if limit_h and est and est > limit_h * 3600:          # owner request: each group has a longest print the pool accepts
+        name = (store.groups.get(gid) or {}).get("name")
+        raise HTTPException(409, f"This print is estimated at {est / 3600:.1f} h; {name} allows at most {limit_h:g} h per print. "
+                                 "Split the plate, use a faster goal, or ask an admin.")
     store.jobs.update(job_id, group_id=gid, pinned_printer=pinned)
     job = store.jobs.get(job_id)
     now = time.time()

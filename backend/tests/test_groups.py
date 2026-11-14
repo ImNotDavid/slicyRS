@@ -130,3 +130,28 @@ def test_a_group_operator_queues_only_their_groups_jobs(client, fleet):
     assert op.post("/api/queue/move", json={"job_id": theirs, "lane": "pool", "index": 0}).status_code == 403
     for pid in fleet.values():
         store.printers.update(pid, enabled=True)
+
+
+def test_a_group_can_cap_how_long_a_pool_print_may_be(client, fleet):
+    dflt = G.default_group()
+    assert client.put(f"/api/admin/groups/{dflt['id']}", json={"name": dflt["name"], "default_role": "member", "max_print_h": 2}).json()["max_print_h"] == 2
+    me = client.get("/api/me").json()
+    long_job = pooled_job(me, "long", time.time())
+    store.jobs.update(long_job, phase="previewed", state="previewed", draft=True, pooled=False, preview={"time_s": 3 * 3600})
+    r = client.post(f"/api/jobs/{long_job}/submit", json={})
+    assert r.status_code == 409 and "at most 2 h" in r.json()["detail"]
+    short = pooled_job(me, "short", time.time())
+    store.jobs.update(short, phase="previewed", state="previewed", draft=True, pooled=False, preview={"time_s": 3600})
+    assert client.post(f"/api/jobs/{short}/submit", json={}).status_code == 200
+    client.put(f"/api/admin/groups/{dflt['id']}", json={"name": dflt["name"], "default_role": "member", "max_print_h": None})
+
+
+def test_home_says_no_wait_when_a_printer_is_free_and_nothing_waits(client, fleet):
+    for pid in fleet.values():
+        store.printers.update(pid, bed={"state": "clear", "source": "manual", "at": time.time()}, status={"state": "IDLE", "ams": []},
+                              maintenance=None, attention=None, groups=[])
+    for j in store.jobs.all():
+        if j.get("phase") == "pooled":
+            store.jobs.update(j["id"], phase="cancelled")
+    pool = client.get("/api/home").json()["pool"]
+    assert pool["printers_free"] >= 1 and pool["typical_wait_s"] == 0

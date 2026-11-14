@@ -217,11 +217,12 @@ class GroupDef(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     default_role: str = "member"
     desc: str = Field("", max_length=200)
+    max_print_h: float | None = Field(None, gt=0, le=500)   # longest print the pool accepts for this group (owner request); none = no limit
 
 
 def _group_public(g: dict[str, Any]) -> dict[str, Any]:
     members = _members(g["id"])
-    return {**{k: g.get(k) for k in ("id", "name", "desc", "default_role")}, "default": bool(g.get("default")), "members": len(members),
+    return {**{k: g.get(k) for k in ("id", "name", "desc", "default_role", "max_print_h")}, "default": bool(g.get("default")), "members": len(members),
             "operators": [m["name"] for m in members if m["role"] == "Operator"],
             "only_printers": [{"id": p["id"], "name": p["name"]} for p in store.printers.all() if g["id"] in (p.get("groups") or [])]}
 
@@ -239,7 +240,8 @@ def add_group(body: GroupDef, admin: dict = Depends(require_admin)):
     if any(g["name"].lower() == body.name.strip().lower() for g in store.groups.all()):
         raise HTTPException(409, "A group with that name exists")
     gid = uuid.uuid4().hex[:8]
-    g = store.groups.put(gid, {"id": gid, "name": body.name.strip(), "desc": body.desc, "default_role": body.default_role, "default": False, "created": time.time()})
+    g = store.groups.put(gid, {"id": gid, "name": body.name.strip(), "desc": body.desc, "default_role": body.default_role, "default": False,
+                               "max_print_h": body.max_print_h, "created": time.time()})
     audit(admin, "group_add", g["name"])
     return _group_public(g)
 
@@ -250,7 +252,7 @@ def update_group(gid: str, body: GroupDef, admin: dict = Depends(require_admin))
         raise HTTPException(404, "Unknown group")
     if not G.role(body.default_role) or body.default_role == "admin":
         raise HTTPException(400, "Unknown role")
-    g = store.groups.update(gid, name=body.name.strip(), desc=body.desc, default_role=body.default_role)
+    g = store.groups.update(gid, name=body.name.strip(), desc=body.desc, default_role=body.default_role, max_print_h=body.max_print_h)
     audit(admin, "group_update", g["name"])
     return _group_public(g)
 

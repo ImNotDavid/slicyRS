@@ -87,14 +87,14 @@ function GroupsTab() {
   const [groups, setGroups] = useState<GroupDef[]>([]);
   const [roles, setRoles] = useState<RoleDef[]>([]);
   const [sel, setSel] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ name: string; desc: string; default_role: string } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; desc: string; default_role: string; max_print_h: number | null } | null>(null);
   const [appoint, setAppoint] = useState("");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const load = useCallback(() => Promise.all([api.adminGroups().then(setGroups), api.roles().then((r) => setRoles(r.roles))]).catch((e) => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   const cur = groups.find((g) => g.id === sel) ?? groups[0];
-  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", default_role: cur.default_role }); }, [cur?.id, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", default_role: cur.default_role, max_print_h: cur.max_print_h ?? null }); }, [cur?.id, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
   const act = async (fn: () => Promise<unknown>, ok: string) => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
   if (!cur || !draft) return <p className="muted">Loading…</p>;
   return (
@@ -111,6 +111,10 @@ function GroupsTab() {
         <label className="plate-field">Description<input value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} /></label>
         <label className="plate-field">Role for new members<select value={draft.default_role} onChange={(e) => setDraft({ ...draft, default_role: e.target.value })}>
           {roles.filter((r) => r.id !== "admin").map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+        <label className="plate-field">Longest print the pool accepts (hours)
+          <input type="number" min={0.5} step={0.5} value={draft.max_print_h ?? ""} placeholder="No limit"
+            onChange={(e) => setDraft({ ...draft, max_print_h: e.target.value === "" ? null : Number(e.target.value) })} />
+          <span className="muted small-text">Longer prints for this group are refused at Submit. Leave empty for no limit.</span></label>
         <div className="row-actions"><button className="btn primary" onClick={() => act(() => api.updateGroup(cur.id, draft), "Saved")}>Save</button>
           {!cur.default && <button className="btn" onClick={() => act(() => api.makeDefaultGroup(cur.id), "Now the default group")}>Make default</button>}
           {!cur.default && <button className="btn danger" onClick={() => confirm(`Delete ${cur.name}? Its jobs stay and count against the default group.`) && act(async () => { await api.deleteGroup(cur.id); setSel(null); }, "Deleted")}>Delete</button>}</div>

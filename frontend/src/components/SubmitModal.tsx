@@ -20,6 +20,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
   const [printers, setPrinters] = useState<Printer[]>([]);
   useEffect(() => { api.printers().then(setPrinters).catch(() => {}); }, []);
   const canPick = !!myGroups.find((g) => g.id === groupId)?.rights.includes("pick_printer");
+  const limitH = myGroups.find((g) => g.id === groupId)?.max_print_h ?? null;          // the group's longest pool print
   const pickable = printers.filter((p) => p.enabled && (!p.groups?.length || p.groups.includes(groupId)));
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
@@ -85,6 +86,10 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
                   <select value={groupId} onChange={(e) => { setGroupId(e.target.value); setPrinterId(""); }}>
                     {myGroups.map((g) => <option key={g.id} value={g.id}>{g.name}{g.main ? " (main group)" : ""}</option>)}</select></label>
               )}
+              {limitH && job?.preview?.time_s && job.preview.time_s > limitH * 3600 && (
+                <p className="form-error">This print is estimated at {(job.preview.time_s / 3600).toFixed(1)} h; this group allows at most {limitH} h per print.
+                  Split the plate, use a faster goal, or ask an admin.</p>
+              )}
               {canPick && (
                 <label className="field-row">Where should it print?
                   <select value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
@@ -104,7 +109,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
           {error && <p className="form-error" role="alert">{error}</p>}
           {earliest && <button className="btn" onClick={() => { setBy(local(Math.ceil(earliest / 60) * 60 + 300)); setError(""); setEarliest(null); }}>Use the earliest likely time ({fmt(earliest)})</button>}
           <div className="row-actions">
-            <button className="btn primary" disabled={!ready || busy} onClick={submit}>Submit</button>
+            <button className="btn primary" disabled={!ready || busy || !!(limitH && job?.preview?.time_s && job.preview.time_s > limitH * 3600)} onClick={submit}>Submit</button>
             <button className="btn" onClick={close}>Cancel</button>
           </div>
         </div>

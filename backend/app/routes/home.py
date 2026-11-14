@@ -33,11 +33,12 @@ def _mine(user: dict[str, Any]) -> dict[str, Any]:
 
 def _pool() -> dict[str, Any]:
     printers = [p for p in store.printers.all() if p.get("enabled", True)]
-    waits = [w for w in (upkeep.wait_s(p) for p in printers) if w is not None]
-    free = sum(1 for w in waits if w < 300)
+    from .. import allocator
+    free = len([p for p in allocator.free_printers() if p.get("enabled", True)])   # idle, plate confirmed clear, in service
     waiting = sum(1 for j in store.jobs.all() if j.get("phase") == "pooled")
     f = forecast.predict(TYPICAL)
-    typical_wait = max(0.0, (f["earliest_finish"] or time.time()) - time.time() - 3600) if f.get("feasible") else None
+    # the wait is until a printer could start it: the estimate's safety buffer and cooling margin belong to the print, not the wait
+    typical_wait = 0.0 if free and not waiting else (max(0.0, f["earliest_start"] - time.time()) if f.get("feasible") else None)
     return {"jobs_waiting": waiting, "printers": len(printers), "printers_free": free, "typical_wait_s": typical_wait,
             "printers_out": sum(1 for p in printers if upkeep.unavailable(p))}
 
