@@ -3,7 +3,7 @@
 Every job has a `phase`. Changes go through `transition()`, which checks the move is allowed, updates the job and appends
 an immutable event, so the history of a job (and later all statistics) comes from one place.
 
-  submitted -> previewing -> previewed -> pooled -> assigned -> slicing -> ready -> printing -> printed | failed | unknown
+  submitted -> previewing -> previewed -> [awaiting_approval ->] pooled -> assigned -> slicing -> ready -> printing -> printed | failed | unknown
   any phase before `printing` can also go to `cancelled`; a preview or slice problem goes to `failed` (or `rejected`).
   `assigned`, `slicing` and `ready` can fall back to `pooled` (printer lost, or the hold on a sliced job expired).
 
@@ -16,13 +16,14 @@ from typing import Any
 from . import store
 from .storage import JOBS, files
 
-PHASES = {"submitted", "previewing", "previewed", "pooled", "assigned", "slicing", "ready", "printing",
+PHASES = {"submitted", "previewing", "previewed", "awaiting_approval", "pooled", "assigned", "slicing", "ready", "printing",
           "printed", "failed", "unknown", "cancelled", "rejected"}
 TERMINAL = {"printed", "failed", "unknown", "cancelled", "rejected"}
 ALLOWED: dict[str, set[str]] = {
     "submitted": {"previewing", "failed", "rejected", "cancelled"},
     "previewing": {"previewed", "failed", "cancelled"},
-    "previewed": {"pooled", "cancelled", "rejected"},
+    "previewed": {"pooled", "awaiting_approval", "cancelled", "rejected"},
+    "awaiting_approval": {"pooled", "rejected", "cancelled"},          # 3.3: a group operator approves or rejects
     "pooled": {"assigned", "cancelled"},
     "assigned": {"slicing", "pooled", "cancelled"},
     "slicing": {"ready", "failed", "pooled", "cancelled"},

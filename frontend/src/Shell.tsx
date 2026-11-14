@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { BarChart3, Bell, Box, Users, CircleDot, ClipboardList, Columns3, Home, ListChecks, LogOut, MoreHorizontal, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { BarChart3, Bell, Box, Users, BadgeCheck, CircleDot, ClipboardList, Columns3, Home, ListChecks, LogOut, MoreHorizontal, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
 import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User, type UserCan } from "./api";
 import JobPage from "./components/JobPage";
 import QueuePage from "./components/QueuePage";
@@ -10,6 +10,7 @@ import FilamentPage from "./components/FilamentPage";
 import DashboardPage from "./components/DashboardPage";
 import MyGroupsPage from "./components/MyGroupsPage";
 import AccountGroups from "./components/AccountGroups";
+import ApprovalsPage from "./components/ApprovalsPage";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -19,15 +20,15 @@ import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
 const PHONE_TABS = 4;      // owner decision: on a phone, four tabs plus More
-type Page = "home" | "workspace" | "jobs" | "parts" | "groups" | "alljobs" | "queue" | "job" | "fleet" | "filament" | "dashboard" | "admin";
+type Page = "home" | "workspace" | "jobs" | "parts" | "groups" | "approvals" | "alljobs" | "queue" | "job" | "fleet" | "filament" | "dashboard" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", groups: "My groups", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", filament: "Filament", dashboard: "Dashboard", admin: "Admin" };
-const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", groups: "groups", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", filament: "filament", dashboard: "dashboard", admin: "admin" };
+const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", groups: "My groups", approvals: "Approvals", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", filament: "Filament", dashboard: "Dashboard", admin: "Admin" };
+const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", groups: "groups", approvals: "approvals", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", filament: "filament", dashboard: "dashboard", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
 // pages only some people have (3.0: from the person's rights in their groups)
 const allowed = (p: Page, can: UserCan) => (p === "admin" || p === "dashboard" ? can.admin : p === "alljobs" ? can.all_jobs : p === "queue" ? can.queue
-  : p === "filament" ? can.filament : p === "fleet" ? can.fleet : p === "groups" ? can.manage_groups.length > 0 : true);
+  : p === "filament" ? can.filament : p === "fleet" ? can.fleet : p === "groups" ? can.manage_groups.length > 0 : p === "approvals" ? !!can.approve : true);
 // routes: #/workspace, #/jobs, #/jobs/<id>, #/all-jobs, #/fleet, #/admin
 const readRoute = (can: UserCan): { page: Page; jobId: string | null } => {
   const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -81,6 +82,7 @@ export default function Shell({ user, onSignOut, onUserChanged }: { user: User; 
   const items: { id: Page; icon: typeof Box; staff?: string }[] = [
     { id: "home", icon: Home }, { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks }, { id: "parts", icon: Package },
     ...(can.manage_groups.length ? [{ id: "groups" as Page, icon: Users, staff: "Group operators" }] : []),
+    ...(can.approve ? [{ id: "approvals" as Page, icon: BadgeCheck, staff: "Group operators" }] : []),
     ...(can.all_jobs ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
     ...(can.queue ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
     ...(can.fleet ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
@@ -158,8 +160,9 @@ export default function Shell({ user, onSignOut, onUserChanged }: { user: User; 
           {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
           {page === "queue" && can.queue && <QueuePage onOpenJob={openJobPage} />}
           {page === "groups" && can.manage_groups.length > 0 && <MyGroupsPage />}
+          {page === "approvals" && can.approve && <ApprovalsPage onOpenJob={openJobPage} />}
           {page === "filament" && can.filament && <FilamentPage catalog={catalog} printers={printers} />}
-          {page === "dashboard" && isAdmin && <DashboardPage />}
+          {page === "dashboard" && isAdmin && <DashboardPage catalog={catalog} />}
           {page === "home" && <HomePage user={user} go={(p) => go(p)} onOpenJob={openJobPage} />}
           {page === "parts" && <PartsPage onUse={(id, add) => setPartRequest({ id, add })} onOpenJob={openJobPage} />}
           {page === "alljobs" && can.all_jobs && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}

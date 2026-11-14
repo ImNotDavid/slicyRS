@@ -18,7 +18,7 @@ def test_migration_keeps_todays_rights(client):
     me = c.get("/api/me").json()
     assert me["groups"][0]["role"] == "Operator" and me["can"]["queue"] and me["operator"]
     admin = client.get("/api/me").json()
-    assert set(admin["groups"][0]["rights"]) == set(G.RIGHTS) and admin["can"]["admin"]
+    assert set(admin["groups"][0]["rights"]) == set(G.RIGHTS) - G.RESTRICTIONS and admin["can"]["admin"]
 
 
 def test_admins_manage_roles_and_admin_is_fixed(client):

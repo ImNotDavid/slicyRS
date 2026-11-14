@@ -19,12 +19,14 @@ export default function Root() {
   useEffect(() => {
     api.me().then(setUser).catch(() => setUser(null)).finally(() => setReady(true));
     const expired = () => setUser(null);
+    const changed = () => { api.me().then(setUser).catch(() => {}); };
     window.addEventListener("auth-expired", expired);
-    return () => window.removeEventListener("auth-expired", expired);
+    window.addEventListener("user-changed", changed);
+    return () => { window.removeEventListener("auth-expired", expired); window.removeEventListener("user-changed", changed); };
   }, []);
 
   if (!ready) return <div className="loading">Loading…</div>;
-  if (!user) return <Login onSignedIn={setUser} />;
+  if (!user) return <Login onSignedIn={(u) => { setUser(u); api.me().then(setUser).catch(() => {}); }} />;
   return <Shell user={user} onUserChanged={() => api.me().then(setUser).catch(() => {})} onSignOut={async () => { await api.logout(); setUser(null); }} />;
 }
 

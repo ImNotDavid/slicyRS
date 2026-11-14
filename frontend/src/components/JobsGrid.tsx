@@ -22,6 +22,7 @@ export function statusOf(j: Job): Status {
     case "slicing": return { key: "slice", label: "Slicing", pill: "slicing", rank: 2 };
     case "assigned": return { key: "wait", label: "Printer chosen", pill: "assigned", rank: 3 };
     case "pooled": return { key: "wait", label: "Waiting", pill: "pooled", rank: 3 };
+    case "awaiting_approval": return { key: "wait", label: "Needs approval", pill: "submitted", rank: 3 };
     case "submitted": case "previewing": case "previewed": return { key: "wait", label: "Preparing", pill: "submitted", rank: 3 };
     case "printed": return { key: "done", label: "Printed", pill: "done", rank: 4 };
     case "failed": return { key: "fail", label: "Failed", pill: "failed", rank: 5 };
@@ -37,6 +38,7 @@ export function statusOf(j: Job): Status {
 function nextLine(j: Job, s: Status): string {
   if (j.plate_to_clear) return "Collect it and confirm the plate is clear";
   if (j.result?.outcome === "failed") return j.result.layer != null && j.result.total_layers ? `Stopped at layer ${j.result.layer} of ${j.result.total_layers}` : "Stopped before the end";
+  if (j.phase === "awaiting_approval") return "Waiting for a group operator to approve it";
   if (s.key === "wait") return j.waiting_for ?? (j.phase === "assigned" ? `Going to ${j.printer_name}` : "Waiting for a free printer");
   if (s.key === "ready") return j.pooled ? `Starting on ${j.printer_name ?? "its printer"}` : j.printer_name ? `Sliced for ${j.printer_name}: press Print` : "Sliced";
   if (s.key === "print") return j.printer_name ? `On ${j.printer_name}` : "Printing";

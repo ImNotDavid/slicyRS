@@ -88,12 +88,24 @@ export type PrinterInput = {
   hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; nozzle_mm?: number; gateway?: string | null; status?: Printer["status"]; groups?: string[];
 };
 export type MyGroup = { id: string; name: string; default: boolean; main: boolean; max_print_h?: number | null; role_id: string | null; role: string; rights: string[] };
-export type UserCan = { all_jobs: boolean; queue: boolean; filament: boolean; fleet: boolean; manage_groups: string[]; admin: boolean };
+export type UserCan = { all_jobs: boolean; queue: boolean; filament: boolean; fleet: boolean; approve?: boolean; manage_groups: string[]; admin: boolean };
 export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null;
-  groups?: MyGroup[]; main_group?: string; can?: UserCan };
+  groups?: MyGroup[]; main_group?: string; can?: UserCan; terms_needed?: boolean };
+export type QuotaPart = { allowance: number; used: number; left: number; share: number; warn: boolean } | null;
+export type Period = { id?: string; name: string; start: number; end: number };
+export type QuotaStatus = { group_id: string; group: string; period: Period | null; used: { hours: number; grams: number }; extra: { hours: number; grams: number }; hours: QuotaPart; grams: QuotaPart };
+export type CostRow = { key: string; name: string; prints: number; grams: number; cost: number; unpriced_g: number };
+export type CostReport = { start: number; end: number; prints: number; grams: number; cost: number; unpriced_g: number; by_person: CostRow[]; by_group: CostRow[];
+  prices: Record<string, number>; periods: Period[] };
+export type TermsDoc = { version: number; text: string; updated: number; by: string };
 export type RoleDef = { id: string; name: string; desc: string; rights: string[]; builtin: boolean; locked: boolean; people: number };
-export type GroupDef = { id: string; name: string; desc: string; default_role: string; max_print_h?: number | null; default: boolean; members: number; operators: string[]; only_printers: { id: string; name: string }[] };
-export type GroupMember = { id: string; email: string; name: string; role_id: string | null; role: string; admin: boolean; active: boolean; invited: boolean; jobs: number; last_login: number | null };
+export type GroupDef = { id: string; name: string; desc: string; default_role: string; max_print_h?: number | null; quota_hours?: number | null; quota_g?: number | null; approve_over_h?: number | null; approve_over_g?: number | null; approve_materials?: string[]; default: boolean; members: number; operators: string[]; only_printers: { id: string; name: string }[] };
+export type GroupMember = { id: string; email: string; name: string; role_id: string | null; role: string; admin: boolean; active: boolean; invited: boolean; jobs: number; last_login: number | null;
+  quota?: { hours: QuotaPart; grams: QuotaPart; period: string | null } | null };
+export type GroupInput = { name: string; desc: string; default_role: string; max_print_h?: number | null; quota_hours?: number | null; quota_g?: number | null;
+  approve_over_h?: number | null; approve_over_g?: number | null; approve_materials?: string[] };
+export type ApprovalCard = { id: string; name: string; owner: string; owner_email: string; group: string; group_id: string; filament: string; nozzle_mm: number;
+  time_s: number | null; filament_g: number | null; submitted_at: number | null; pickup_by: number | null; reasons: string[] };
 export type ManagedGroup = { id: string; name: string; default: boolean; members: GroupMember[]; only_printers: string[]; roles: { id: string; name: string }[]; waiting: number };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
 export type StorageInfo = {
@@ -111,7 +123,7 @@ export type Candidate = {
   reasons: string[]; blockers: string[]; loaded_slot: number | null; wait_s?: number | null;
 };
 export type AssignResult = { dims: [number, number, number]; chosen: string | null; candidates: Candidate[] };
-export type Phase = "submitted" | "previewing" | "previewed" | "pooled" | "assigned" | "slicing" | "ready" | "printing" | "printed" | "failed" | "unknown" | "cancelled" | "rejected";
+export type Phase = "submitted" | "previewing" | "previewed" | "awaiting_approval" | "pooled" | "assigned" | "slicing" | "ready" | "printing" | "printed" | "failed" | "unknown" | "cancelled" | "rejected";
 export type Job = {
   id: string; name: string; state: string; phase?: Phase; error?: string;
   pickup_by?: number | null; at_risk?: boolean; waiting_for?: string; submitted_at?: number | null; auto_start?: boolean;
@@ -122,6 +134,7 @@ export type Job = {
   result?: { outcome: "finished" | "failed" | "unknown"; summary: string; layer: number | null; total_layers: number | null;
              hms: { code: string; text: string }[]; duration_s: number | null } | null;
   stats?: { time_s?: number; filament_g?: number; layers?: number; mock?: boolean };
+  approval?: { reasons: string[]; requested: number; decision?: "approved" | "rejected"; by_name?: string; at?: number; note?: string } | null;
 };
 export type Forecast = { feasible: boolean; earliest_finish: number | null; jobs_ahead: number; printer_name: string | null; likely?: boolean };
 export type JobEvent = { id: string; kind: string; at: number; actor: string | null; data: Record<string, unknown> };
@@ -239,8 +252,8 @@ export const api = {
   updateRole: (id: string, r: { name: string; desc: string; rights: string[] }) => send("PUT", `/api/admin/roles/${id}`, r).then(j<RoleDef>),
   deleteRole: (id: string) => send("DELETE", `/api/admin/roles/${id}`).then(j<{ ok: boolean }>),
   adminGroups: () => fetch("/api/admin/groups").then(j<GroupDef[]>),
-  addGroup: (g: { name: string; desc: string; default_role: string; max_print_h?: number | null }) => post("/api/admin/groups", g).then(j<GroupDef>),
-  updateGroup: (id: string, g: { name: string; desc: string; default_role: string; max_print_h?: number | null }) => send("PUT", `/api/admin/groups/${id}`, g).then(j<GroupDef>),
+  addGroup: (g: GroupInput) => post("/api/admin/groups", g).then(j<GroupDef>),
+  updateGroup: (id: string, g: GroupInput) => send("PUT", `/api/admin/groups/${id}`, g).then(j<GroupDef>),
   makeDefaultGroup: (id: string) => post(`/api/admin/groups/${id}/default`).then(j<GroupDef>),
   deleteGroup: (id: string) => send("DELETE", `/api/admin/groups/${id}`).then(j<{ ok: boolean }>),
   managedGroups: () => fetch("/api/groups/managed").then(j<ManagedGroup[]>),
@@ -248,6 +261,18 @@ export const api = {
   setMemberRole: (gid: string, uid: string, role_id: string) => send("PUT", `/api/groups/${gid}/members/${uid}`, { role_id }).then(j<GroupMember>),
   removeMember: (gid: string, uid: string) => send("DELETE", `/api/groups/${gid}/members/${uid}`).then(j<{ ok: boolean }>),
   setMainGroup: (group_id: string) => send("PUT", "/api/me/main_group", { group_id }).then(j<{ groups: MyGroup[]; main_group: string }>),
+  terms: () => fetch("/api/terms").then(j<{ terms: TermsDoc | null; accepted: { version: number; at: number } | null; needed: boolean }>),
+  acceptTerms: () => post("/api/terms/accept").then(j<{ version: number; at: number }>),
+  publishTerms: (text: string) => send("PUT", "/api/admin/terms", { text }).then(j<TermsDoc>),
+  myQuota: () => fetch("/api/me/quota").then(j<QuotaStatus[]>),
+  periods: () => fetch("/api/admin/periods").then(j<Period[]>),
+  setPeriods: (p: Period[]) => send("PUT", "/api/admin/periods", p).then(j<Period[]>),
+  topUp: (gid: string, uid: string, hours: number, grams: number, note = "") => post(`/api/groups/${gid}/members/${uid}/topup`, { hours, grams, note }).then(j<GroupMember>),
+  approvals: () => fetch("/api/approvals").then(j<ApprovalCard[]>),
+  approve: (id: string, note = "") => post(`/api/jobs/${id}/approve`, { note }).then(j<Job>),
+  reject: (id: string, note: string) => post(`/api/jobs/${id}/reject`, { note }).then(j<Job>),
+  costs: (q: { period?: string; start?: number; end?: number }) => fetch(`/api/admin/costs?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`).then(j<CostReport>),
+  setPrices: (per_kg: Record<string, number | null>) => send("PUT", "/api/admin/costs/prices", { per_kg }).then(j<Record<string, number>>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean; cause?: string | null; cause_note?: string }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

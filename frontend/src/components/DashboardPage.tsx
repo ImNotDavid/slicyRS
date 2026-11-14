@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, type Dashboard } from "../api";
+import { api, type Catalog, type Dashboard } from "../api";
 import { Bars, DailyColumns } from "./Charts";
+import FilamentCost from "./FilamentCost";
 
 const dur = (s: number | null) => (s == null ? "—" : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 const kg = (g: number) => (g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${Math.round(g)} g`);
 
 /** Fleet dashboard for admins (2.11): utilisation, failures, queue and filament over 7 or 30 days. */
-export default function DashboardPage() {
+export default function DashboardPage({ catalog }: { catalog?: Catalog | null }) {
   const [days, setDays] = useState<7 | 30>(7);
   const [d, setD] = useState<Dashboard | null>(null);
   const [err, setErr] = useState("");
@@ -59,6 +60,7 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+      <FilamentCost catalog={catalog ?? null} />
     </div>
   );
 }

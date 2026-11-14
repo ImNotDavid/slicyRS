@@ -2,6 +2,7 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import auth, pipelinecfg, retention, sessions, stats, store, taskqueue
@@ -144,6 +145,68 @@ def storage_cleanup(dry_run: bool = False, admin: dict = Depends(require_admin))
 @router.get("/api/admin/audit")
 def audit_log(limit: int = 100, admin: dict = Depends(require_admin)):
     return sorted(store.audit.all(), key=lambda a: -a["at"])[: max(1, min(limit, 500))]
+
+
+def _csv(text: str, name: str) -> Response:
+    return Response(text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+def _range(start: float | None, end: float | None, period: str | None) -> tuple[float, float]:
+    from .. import quotas
+    if period:
+        p = next((p for p in quotas.periods() if p["id"] == period), None)
+        if not p:
+            raise HTTPException(404, "Unknown term")
+        return p["start"], p["end"]
+    end = end or time.time() + 1
+    start = start if start is not None else end - 30 * 86400
+    if end <= start:
+        raise HTTPException(400, "The end must be after the start")
+    return start, end
+
+
+@router.get("/api/admin/audit.csv")
+def audit_csv(start: float | None = None, end: float | None = None, admin: dict = Depends(require_admin)):
+    """The audit log as CSV (3.5), oldest first, for a date range (default: everything)."""
+    from .. import costs
+    lo, hi = start or 0, end or time.time() + 1
+    rows = sorted((a for a in store.audit.all() if lo <= a["at"] < hi), key=lambda a: a["at"])
+    audit(admin, "audit_export", f"{len(rows)} entries")
+    return _csv(costs.to_csv(rows, [("at", "When"), ("actor", "Who"), ("action", "Action"), ("detail", "Detail")]),
+                f"slicyrs-audit-{time.strftime('%Y%m%d')}.csv")
+
+
+# ------------------------------------------------------------------ filament cost (3.4)
+
+class PricesIn(BaseModel):
+    per_kg: dict[str, float | None]
+
+
+@router.get("/api/admin/costs")
+def cost_report(start: float | None = None, end: float | None = None, period: str | None = None, admin: dict = Depends(require_admin)):
+    from .. import costs, quotas
+    lo, hi = _range(start, end, period)
+    return {**costs.report(lo, hi), "prices": costs.prices(), "periods": quotas.periods()}
+
+
+@router.get("/api/admin/costs.csv")
+def cost_csv(start: float | None = None, end: float | None = None, period: str | None = None, admin: dict = Depends(require_admin)):
+    from .. import costs
+    lo, hi = _range(start, end, period)
+    return _csv(costs.to_csv(costs.lines(lo, hi), costs.CSV_COLUMNS), f"slicyrs-filament-cost-{time.strftime('%Y%m%d', time.localtime(lo))}.csv")
+
+
+@router.put("/api/admin/costs/prices")
+def set_prices(body: PricesIn, admin: dict = Depends(require_admin)):
+    from .. import costs
+    from ..catalog import FILAMENTS
+    if (bad := set(body.per_kg) - set(FILAMENTS)):
+        raise HTTPException(400, f"Unknown material: {', '.join(sorted(bad))}")
+    if any(v is not None and not 0 <= v <= 1000 for v in body.per_kg.values()):
+        raise HTTPException(400, "A price per kg must be between 0 and 1000")
+    out = costs.set_prices(body.per_kg)
+    audit(admin, "filament_prices", ", ".join(f"{m} {v:g}/kg" for m, v in out.items()) or "cleared")
+    return out
 
 
 

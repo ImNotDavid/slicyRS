@@ -6,7 +6,7 @@ everything. A job belongs to a group; a printer is shared (governed by the defau
     action                  allowed when                                                      target
     admin                   site admin                                                        -
     job.see_all             "see_all" in any group (the All jobs page shows those groups)     -
-    job.view                the job's owner, or "see_all" in the job's group                  job
+    job.view                the job's owner, or "see_all" or "approve" in the job's group     job
     job.manage              the job's owner, or "manage_jobs" in the job's group              job
     print.pause             an owner on the plate, or "pause" in the job's group              job
     print.stop              as print.pause, but an owner only if the plate is not shared      job
@@ -22,6 +22,7 @@ everything. A job belongs to a group; a printer is shared (governed by the defau
     failures.view           "failures" in any group (owner decision: members see no advice)  -
     failures.explain        an owner on the plate, or "failures" in the job's group           job
     group.members           "members" in that group                                           group id
+    job.approve             "approve" in the job's group (3.3)                                job
     preset.share            "share_presets" in any group                                      -
     preset.delete           the preset's owner, or an admin for a shared one                  preset
 """
@@ -33,7 +34,7 @@ from . import groups as G
 
 ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear",
            "plate.mark_occupied", "printer.see_people", "printer.see_connection", "printer.maintain", "printer.pick",
-           "queue.manage", "filament.manage", "failures.view", "failures.explain", "group.members", "preset.share", "preset.delete"}
+           "queue.manage", "filament.manage", "failures.view", "failures.explain", "group.members", "preset.share", "preset.delete", "job.approve"}
 
 
 def is_admin(user: dict[str, Any]) -> bool:
@@ -70,7 +71,7 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         return G.any_right(user, {"queue.manage": "queue", "filament.manage": "filament", "failures.view": "failures",
                                   "preset.share": "share_presets"}[action])
     if action == "job.view":
-        return bool(target) and (_owns(user, target) or "see_all" in G.rights_in(user, G.job_group(target)))
+        return bool(target) and (_owns(user, target) or bool({"see_all", "approve"} & G.rights_in(user, G.job_group(target))))
     if action == "job.manage":
         return bool(target) and (_owns(user, target) or "manage_jobs" in G.rights_in(user, G.job_group(target)))
     if action == "model.use":
@@ -100,6 +101,8 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         return _printer_right(user, "maintain", target)
     if action == "printer.pick":
         return bool(target) and "pick_printer" in G.rights_in(user, target)
+    if action == "job.approve":
+        return bool(target) and "approve" in G.rights_in(user, G.job_group(target))
     if action == "group.members":
         return bool(target) and "members" in G.rights_in(user, target)
     if action == "preset.delete":

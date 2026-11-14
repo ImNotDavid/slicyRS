@@ -26,9 +26,13 @@ RIGHTS: dict[str, str] = {
     "filament": "Manage filament",
     "failures": "See failure patterns and record why prints failed",
     "share_presets": "Share presets with everyone",
+    "approve": "Approve or reject prints that need approval",                      # 3.3
+    "needs_approval": "Their prints need approval before reaching a printer",     # 3.3: a restriction, not a power
 }
+RESTRICTIONS = {"needs_approval"}      # rights that limit a person; admins never have them
 STAFF_RIGHTS = {"see_all", "pause", "plates", "maintain", "queue", "people", "filament", "failures"}   # "is an operator somewhere"
-OPERATOR_DEFAULT = ["see_all", "pause", "plates", "maintain", "queue", "people", "filament", "failures", "members"]   # today's operator + managing the group
+OPERATOR_DEFAULT = ["see_all", "pause", "plates", "maintain", "queue", "people", "filament", "failures", "members", "approve"]   # today's operator + managing the group
+ADDED_TO_OPERATOR = ["approve"]        # rights introduced later that an existing Operator role gets once (3.3)
 BUILTIN = {
     "admin": {"name": "Admin", "locked": True, "desc": "Every right everywhere. Cannot be edited; at least one active admin must exist."},
     "operator": {"name": "Operator", "locked": False, "desc": "Runs printers and manages their group."},
@@ -43,6 +47,12 @@ def ensure() -> None:
         if not store.roles.get(rid):
             rights = list(RIGHTS) if rid == "admin" else OPERATOR_DEFAULT if rid == "operator" else []
             store.roles.put(rid, {"id": rid, "builtin": True, "rights": rights, "created": time.time(), **b})
+    op = store.roles.get("operator")
+    if op:
+        seen = set(op.get("rights_added") or [])
+        new = [r for r in ADDED_TO_OPERATOR if r not in seen]
+        if new:
+            store.roles.update("operator", rights=list(dict.fromkeys([*(op.get("rights") or []), *new])), rights_added=sorted(seen | set(new)))
     if not any(g.get("default") for g in store.groups.all()):
         gid = uuid.uuid4().hex[:8]
         store.groups.put(gid, {"id": gid, "name": DEFAULT_GROUP_NAME, "default": True, "default_role": "member", "created": time.time()})
@@ -84,7 +94,7 @@ def rights_in(user: dict[str, Any], group_id: str | None) -> set[str]:
     if not user or not user.get("active", True):
         return set()
     if is_admin(user):
-        return set(RIGHTS)
+        return set(RIGHTS) - RESTRICTIONS
     m = next((m for m in memberships(user) if m["group_id"] == group_id), None)
     r = role(m["role_id"]) if m else None
     return set(r.get("rights") or []) if r else set()

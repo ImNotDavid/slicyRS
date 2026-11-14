@@ -12,7 +12,7 @@ import { TRAVEL, type FeatureInfo } from "../gcode";
 const when = (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const show = (v: unknown, unit?: string) => (typeof v === "boolean" ? (v ? "on" : "off") : `${v}${unit ? ` ${unit}` : ""}`);
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
-const CANCELLABLE = ["submitted", "previewing", "previewed", "pooled", "assigned", "slicing", "ready"];
+const CANCELLABLE = ["submitted", "previewing", "previewed", "awaiting_approval", "pooled", "assigned", "slicing", "ready"];
 type Tab = "settings" | "history" | "files";
 
 /** One sentence on where the job is and what happens next. */
@@ -21,6 +21,7 @@ function statusLine(p: Page): string {
   if (p.plate_to_clear) return `Finished on ${p.printer?.name}. Collect it, then confirm the plate is clear so the next job can start.`;
   if (j.result) return j.result.summary;
   switch (j.phase) {
+    case "awaiting_approval": return `Waiting for a group operator to approve it, because ${j.approval?.reasons.join(" and ") ?? "the group asks for approval"}.`;
     case "pooled": return j.waiting_for ?? "Waiting in the pool for a printer that fits.";
     case "assigned": return `Going to ${p.printer?.name ?? "a printer"}; it will be sliced for it next.`;
     case "slicing": return `Being sliced for ${p.printer?.name ?? "its printer"}.`;

@@ -34,6 +34,13 @@ class SliceIn(TransformIn):
 SERVER_MANAGED_SETTINGS = {"curr_bed_type"}
 
 
+def _require_terms(user: dict[str, Any]) -> None:
+    """3.6: no print until the current terms are accepted."""
+    from .. import terms
+    if terms.needed(user):
+        raise HTTPException(428, "Please read and accept the terms and safety rules before printing")
+
+
 def _direct_group(user: dict[str, Any], printer: dict[str, Any]) -> str:
     """A job sliced straight for a printer counts against the person's main group, or, for a printer limited to some groups,
     the first of those the person is in."""
@@ -205,6 +212,14 @@ def _remote_name(job: dict[str, Any]) -> str:
 @router.post("/api/jobs/{job_id}/print")
 def print_job(job_id: str, timelapse: bool = False, user: dict = User):
     job = _owned_job(job_id, user)
+    _require_terms(user)
+    from .. import quotas
+    if not job.get("printed") and (why := quotas.check(user, groups_mod.job_group(job), float((job.get("stats") or {}).get("time_s") or 0) / 3600,
+                                                     float((job.get("stats") or {}).get("filament_g") or 0))):
+        raise HTTPException(409, why)
+    from .. import approvals                        # 3.3: a print that needs approval cannot skip it by printing directly
+    if not job.get("printed") and not job.get("pooled") and (need := approvals.reasons(user, job, groups_mod.job_group(job))):
+        raise HTTPException(409, f"This print needs approval because {' and '.join(need)}. Submit it to the pool instead; a group operator approves it there.")
     if timelapse:                                   # 2.8: the owner asked for a timelapse of this print
         job = store.jobs.update(job_id, timelapse=True) or job
     bundle = _job_file(job_id, "bundle", user)
@@ -371,6 +386,7 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
     if job.get("phase") != "previewed":
         raise HTTPException(409, "The preview is not ready yet" if job.get("phase") in ("submitted", "previewing") else
                             f"This job cannot be submitted (it is {job.get('phase')})")
+    _require_terms(user)
     gid = body.group_id or groups_mod.main_group(user)
     if not groups_mod.in_group(user, gid):
         raise HTTPException(403, "You are not in that group")
@@ -390,6 +406,10 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
         name = (store.groups.get(gid) or {}).get("name")
         raise HTTPException(409, f"This print is estimated at {est / 3600:.1f} h; {name} allows at most {limit_h:g} h per print. "
                                  "Split the plate, use a faster goal, or ask an admin.")
+    from .. import quotas                                 # 3.2: refuse a print that would go over the person's quota
+    est_g = (job.get("preview") or {}).get("filament_g") or (job.get("stats") or {}).get("filament_g") or 0
+    if (why := quotas.check(user, gid, (est or 0) / 3600, float(est_g))):
+        raise HTTPException(409, why)
     store.jobs.update(job_id, group_id=gid, pinned_printer=pinned)
     job = store.jobs.get(job_id)
     now = time.time()
@@ -403,9 +423,14 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
         return JSONResponse({"detail": "That pickup time is unlikely: the earliest the part is expected to be ready is shown. "
                                        "Choose a later time or submit without one.",
                              "earliest_pickup": check["earliest_finish"]}, status_code=409)
-    jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, draft=False, submitted_at=now, pickup_by=body.pickup_by,
+    from .. import approvals                              # 3.3: some prints wait for a group operator first
+    why = approvals.reasons(user, job, gid)
+    jobstate.transition(job_id, "awaiting_approval" if why else "pooled", user["email"], state="awaiting_approval" if why else "pooled",
+                        pooled=not why, draft=False, submitted_at=now, pickup_by=body.pickup_by,
                         colour=body.colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False,
                         timelapse=body.timelapse)
+    if why:
+        approvals.request(store.jobs.get(job_id), why, user)
     _discard_slice_drafts(user, (job.get("spec") or {}).get("model_id"), keep=job_id)
     audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
     allocator.tick()

@@ -34,6 +34,9 @@ EVENTS: dict[str, dict[str, Any]] = {
     "plate_cleared": {"label": "Someone cleared the plate that held my part", "owner_default": True, "operator_default": None},
     "pickup_at_risk": {"label": "My print may miss its pickup time", "owner_default": False, "operator_default": None},
     "pickup_late": {"label": "My print is past its pickup time", "owner_default": False, "operator_default": None},
+    "approval_needed": {"label": "A print in my group is waiting for my approval", "owner_default": None, "operator_default": True},
+    "approved": {"label": "My print was approved", "owner_default": True, "operator_default": None},
+    "rejected": {"label": "My print was rejected", "owner_default": True, "operator_default": None},
 }
 
 deliveries: deque[dict[str, Any]] = deque(maxlen=100)   # recent deliveries, newest last, for admins (and tests)
@@ -97,10 +100,11 @@ def _run(jobs: list[tuple]) -> None:
 
 
 def emit(kind: str, subject: str, body: str, *, owners: list[str] | None = None, operator_body: str | None = None,
-         link: str | None = None, job: dict[str, Any] | None = None, skip: str | None = None) -> int:
+         link: str | None = None, job: dict[str, Any] | None = None, skip: str | None = None, staff: list[str] | None = None) -> int:
     """Send an event. `owners` are email addresses of the people it is about; operators are told too when the event is one they
     follow (with `operator_body` if given, a shorter text). `skip` is the email of the person who caused the event (for example
-    by pausing from the web): they are not told about their own action. Returns how many deliveries were queued."""
+    by pausing from the web): they are not told about their own action. `staff` limits the operators told to those user ids
+    (for example a group's approvers). Returns how many deliveries were queued."""
     if kind not in EVENTS:
         raise ValueError(f"Unknown notification event {kind}")
     url = f"{config.PUBLIC_URL}{link}" if link else None
@@ -117,7 +121,9 @@ def emit(kind: str, subject: str, body: str, *, owners: list[str] | None = None,
             told.add(u["id"])
     if EVENTS[kind]["operator_default"] is not None:
         for u in store.users.all():
-            if u.get("active", True) and permissions.is_operator(u) and u["id"] not in told and wants(u, kind, True):
+            if staff is not None and u["id"] not in staff:
+                continue
+            if u.get("active", True) and (staff is not None or permissions.is_operator(u)) and u["id"] not in told and wants(u, kind, True):
                 queued.append((_email, (kind, u["email"], subject, (operator_body or body) + tail)))
     for ch in store.channels.all():
         if ch.get("enabled", True) and kind in (ch.get("events") or []):

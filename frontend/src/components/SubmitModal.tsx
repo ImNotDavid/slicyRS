@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { api, type Forecast, type Job, type PlateSpec, type Printer, type User } from "../api";
+import { api, type Forecast, type Job, type PlateSpec, type Printer, type QuotaStatus, type User } from "../api";
 import { fmtTime } from "../format";
+import TermsDialog from "./TermsDialog";
 
 type Props = {
   spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null };
@@ -30,6 +31,9 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [earliest, setEarliest] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [termsOk, setTermsOk] = useState(!user?.terms_needed);      // 3.6: accept the rules before the first print
+  const [quotas, setQuotas] = useState<QuotaStatus[]>([]);           // 3.2: what is left this term, per group
+  useEffect(() => { api.myQuota().then(setQuotas).catch(() => {}); }, []);
 
   useEffect(() => {
     let live = true;
@@ -61,8 +65,13 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
     catch (e) { setError((e as Error).message); setEarliest((e as { earliest?: number }).earliest ?? null); }
     setBusy(false);
   };
+  const q = quotas.find((x) => x.group_id === groupId);
+  const needH = (job?.preview?.time_s ?? 0) / 3600, needG = job?.preview?.filament_g ?? 0;
+  const overQuota = user?.role !== "admin" && !!q && !!((q.hours && needH > q.hours.left + 1e-6) || (q.grams && needG > q.grams.left + 1e-6));
+  const tooLong = !!(limitH && job?.preview?.time_s && job.preview.time_s > limitH * 3600);
   const close = () => { if (job && job.phase === "previewed") api.discard(job.id).catch(() => undefined); onClose(); };
 
+  if (!termsOk) return <TermsDialog onAccepted={() => setTermsOk(true)} onClose={close} />;
   return (
     <div className="modal-back" onClick={close}>
       <div className="modal" role="dialog" aria-label="Submit to the print pool" onClick={(e) => e.stopPropagation()}>
@@ -90,6 +99,12 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
                 <p className="form-error">This print is estimated at {(job.preview.time_s / 3600).toFixed(1)} h; this group allows at most {limitH} h per print.
                   Split the plate, use a faster goal, or ask an admin.</p>
               )}
+              {q && (q.hours || q.grams) && (
+                <p className={overQuota ? "form-error" : q.hours?.warn || q.grams?.warn ? "warn-note" : "muted"}>
+                  {overQuota ? "This print is more than you have left" : "Left for you"} in {q.group} this term ({q.period?.name}):{" "}
+                  {[q.hours && `${Math.max(0, q.hours.left).toFixed(1)} of ${q.hours.allowance.toFixed(1)} h`, q.grams && `${Math.max(0, Math.round(q.grams.left))} of ${Math.round(q.grams.allowance)} g`].filter(Boolean).join(", ")}.
+                  {overQuota && " Ask one of the group's operators for more, or make the print smaller."}</p>
+              )}
               {canPick && (
                 <label className="field-row">Where should it print?
                   <select value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
@@ -109,7 +124,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
           {error && <p className="form-error" role="alert">{error}</p>}
           {earliest && <button className="btn" onClick={() => { setBy(local(Math.ceil(earliest / 60) * 60 + 300)); setError(""); setEarliest(null); }}>Use the earliest likely time ({fmt(earliest)})</button>}
           <div className="row-actions">
-            <button className="btn primary" disabled={!ready || busy || !!(limitH && job?.preview?.time_s && job.preview.time_s > limitH * 3600)} onClick={submit}>Submit</button>
+            <button className="btn primary" disabled={!ready || busy || tooLong || overQuota} onClick={submit}>Submit</button>
             <button className="btn" onClick={close}>Cancel</button>
           </div>
         </div>

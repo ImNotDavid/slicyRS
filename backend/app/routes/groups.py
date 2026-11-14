@@ -16,9 +16,10 @@ router = APIRouter()
 
 def me_extra(user: dict[str, Any]) -> dict[str, Any]:
     """What the web app needs to know about the person's groups and staff rights (menus, Submit dialog)."""
-    return {"groups": G.describe(user), "main_group": G.main_group(user),
+    from .. import terms
+    return {"groups": G.describe(user), "main_group": G.main_group(user), "terms_needed": terms.needed(user),
             "can": {"all_jobs": G.any_right(user, "see_all"), "queue": G.any_right(user, "queue"), "filament": G.any_right(user, "filament"),
-                    "fleet": G.is_staff(user), "manage_groups": sorted(G.groups_with(user, "members")), "admin": G.is_admin(user)}}
+                    "fleet": G.is_staff(user), "approve": G.any_right(user, "approve"), "manage_groups": sorted(G.groups_with(user, "members")), "admin": G.is_admin(user)}}
 
 
 @router.get("/api/me/groups")
@@ -40,13 +41,19 @@ def set_main(body: MainIn, user: dict = User):
 
 # ------------------------------------------------------------------ group operators
 
+def _quota_view(uid: str, gid: str) -> dict[str, Any] | None:
+    from .. import quotas
+    s = quotas.status(uid, gid)
+    return None if not s["hours"] and not s["grams"] else {"hours": s["hours"], "grams": s["grams"], "period": (s["period"] or {}).get("name")}
+
+
 def _member_view(u: dict[str, Any], gid: str) -> dict[str, Any]:
     m = next((m for m in G.memberships(u) if m["group_id"] == gid), None)
     r = G.role(m["role_id"]) if m else None
     jobs = sum(1 for j in store.jobs.all() if j.get("owner_id") == u["id"] and G.job_group(j) == gid and not j.get("draft"))
     return {"id": u["id"], "email": u["email"], "name": u.get("name") or u["email"], "role_id": r["id"] if r else None,
             "role": "Admin" if G.is_admin(u) else (r or {}).get("name"), "admin": G.is_admin(u), "active": u.get("active", True),
-            "invited": not u.get("last_login"), "jobs": jobs, "last_login": u.get("last_login")}
+            "invited": not u.get("last_login"), "jobs": jobs, "last_login": u.get("last_login"), "quota": _quota_view(u["id"], gid)}
 
 
 def _members(gid: str) -> list[dict[str, Any]]:
@@ -218,11 +225,16 @@ class GroupDef(BaseModel):
     default_role: str = "member"
     desc: str = Field("", max_length=200)
     max_print_h: float | None = Field(None, gt=0, le=500)   # longest print the pool accepts for this group (owner request); none = no limit
+    quota_hours: float | None = Field(None, ge=0, le=10000)  # 3.2: print hours per member per term; none = no quota
+    quota_g: float | None = Field(None, ge=0, le=1000000)    # 3.2: filament grams per member per term; none = no quota
+    approve_over_h: float | None = Field(None, gt=0, le=1000)     # 3.3: longer prints wait for approval
+    approve_over_g: float | None = Field(None, gt=0, le=100000)   # 3.3: heavier prints wait for approval
+    approve_materials: list[str] = Field(default_factory=list, max_length=50)   # 3.3: prints in these materials wait for approval
 
 
 def _group_public(g: dict[str, Any]) -> dict[str, Any]:
     members = _members(g["id"])
-    return {**{k: g.get(k) for k in ("id", "name", "desc", "default_role", "max_print_h")}, "default": bool(g.get("default")), "members": len(members),
+    return {**{k: g.get(k) for k in ("id", "name", "desc", "default_role", "max_print_h", "quota_hours", "quota_g", "approve_over_h", "approve_over_g")}, "approve_materials": g.get("approve_materials") or [], "default": bool(g.get("default")), "members": len(members),
             "operators": [m["name"] for m in members if m["role"] == "Operator"],
             "only_printers": [{"id": p["id"], "name": p["name"]} for p in store.printers.all() if g["id"] in (p.get("groups") or [])]}
 
@@ -241,7 +253,8 @@ def add_group(body: GroupDef, admin: dict = Depends(require_admin)):
         raise HTTPException(409, "A group with that name exists")
     gid = uuid.uuid4().hex[:8]
     g = store.groups.put(gid, {"id": gid, "name": body.name.strip(), "desc": body.desc, "default_role": body.default_role, "default": False,
-                               "max_print_h": body.max_print_h, "created": time.time()})
+                               "max_print_h": body.max_print_h, "quota_hours": body.quota_hours, "quota_g": body.quota_g, "approve_over_h": body.approve_over_h,
+                               "approve_over_g": body.approve_over_g, "approve_materials": body.approve_materials, "created": time.time()})
     audit(admin, "group_add", g["name"])
     return _group_public(g)
 
@@ -252,7 +265,9 @@ def update_group(gid: str, body: GroupDef, admin: dict = Depends(require_admin))
         raise HTTPException(404, "Unknown group")
     if not G.role(body.default_role) or body.default_role == "admin":
         raise HTTPException(400, "Unknown role")
-    g = store.groups.update(gid, name=body.name.strip(), desc=body.desc, default_role=body.default_role, max_print_h=body.max_print_h)
+    g = store.groups.update(gid, name=body.name.strip(), desc=body.desc, default_role=body.default_role, max_print_h=body.max_print_h,
+                             quota_hours=body.quota_hours, quota_g=body.quota_g, approve_over_h=body.approve_over_h,
+                             approve_over_g=body.approve_over_g, approve_materials=body.approve_materials)
     audit(admin, "group_update", g["name"])
     return _group_public(g)
 
@@ -292,3 +307,88 @@ def delete_group(gid: str, admin: dict = Depends(require_admin)):
 def admin_add_member(gid: str, body: MemberIn, admin: dict = Depends(require_admin)):
     """Admins appoint a group's first operators (or add anyone) the same way operators add members."""
     return add_member(gid, body, admin)
+
+
+# ------------------------------------------------------------------ terms and safety acknowledgement (3.6)
+
+@router.get("/api/terms")
+def get_terms(user: dict = User):
+    from .. import terms
+    t = terms.current()
+    return {"terms": t, "accepted": user.get("terms_accepted"), "needed": terms.needed(user)}
+
+
+@router.post("/api/terms/accept")
+def accept_terms(user: dict = User):
+    from .. import terms
+    try:
+        return terms.accept(user)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class TermsIn(BaseModel):
+    text: str = Field("", max_length=20000)
+
+
+@router.put("/api/admin/terms")
+def set_terms(body: TermsIn, admin: dict = Depends(require_admin)):
+    """Publish new terms (everyone accepts again before their next print). Empty text switches the requirement off."""
+    from .. import terms
+    t = terms.publish(body.text, admin)
+    audit(admin, "terms_publish", f"version {t['version']}" if t["text"] else "terms removed")
+    return t
+
+
+# ------------------------------------------------------------------ quotas (3.2)
+
+@router.get("/api/me/quota")
+def my_quota(user: dict = User):
+    from .. import quotas
+    return [quotas.status(user["id"], m["group_id"]) for m in G.memberships(user)]
+
+
+class PeriodIn(BaseModel):
+    id: str | None = None
+    name: str
+    start: float
+    end: float
+
+
+@router.get("/api/admin/periods")
+def get_periods(admin: dict = Depends(require_admin)):
+    from .. import quotas
+    return quotas.periods()
+
+
+@router.put("/api/admin/periods")
+def put_periods(body: list[PeriodIn], admin: dict = Depends(require_admin)):
+    from .. import quotas
+    try:
+        out = quotas.set_periods([p.model_dump() for p in body])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    audit(admin, "periods_set", ", ".join(p["name"] for p in out))
+    return out
+
+
+class TopUpIn(BaseModel):
+    hours: float = Field(0, ge=0, le=1000)
+    grams: float = Field(0, ge=0, le=100000)
+    note: str = Field("", max_length=200)
+
+
+@router.post("/api/groups/{gid}/members/{uid}/topup")
+def top_up(gid: str, uid: str, body: TopUpIn, user: dict = User):
+    """Give a member extra hours or filament for this term (group operators)."""
+    from .. import quotas
+    permissions.require(user, "group.members", gid, message="Only the group's operators can add to a quota")
+    target = store.users.get(uid)
+    if not target or not any(m["group_id"] == gid for m in G.memberships(target)):
+        raise HTTPException(404, "Not a member of this group")
+    try:
+        quotas.top_up(uid, gid, body.hours, body.grams, user, body.note)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    audit(user, "quota_topup", f"{target['email']} in {store.groups.get(gid)['name']}: +{body.hours:g} h, +{body.grams:g} g")
+    return _member_view(store.users.get(uid), gid)

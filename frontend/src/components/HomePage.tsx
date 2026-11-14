@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, Megaphone, Trash2 } from "lucide-react";
-import { api, type HomeData, type User } from "../api";
+import { AlertTriangle, ArrowRight, Megaphone, ShieldCheck, Trash2 } from "lucide-react";
+import { api, type HomeData, type QuotaPart, type QuotaStatus, type User } from "../api";
+import TermsDialog from "./TermsDialog";
 import LiveProgress from "./LiveProgress";
 import { Harry } from "./Brand";
 
@@ -12,7 +13,9 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [level, setLevel] = useState<"info" | "warning">("info");
-  const load = () => api.home().then(setH).catch((e) => setErr(e.message));
+  const [quotas, setQuotas] = useState<QuotaStatus[]>([]);
+  const [showTerms, setShowTerms] = useState(false);
+  const load = () => { api.home().then(setH).catch((e) => setErr(e.message)); api.myQuota().then(setQuotas).catch(() => {}); };
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, []);
   if (err) return <p className="form-error">{err}</p>;
   if (!h) return <p className="muted">Loading…</p>;
@@ -27,6 +30,12 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           {isAdmin && <button className="icon" aria-label="Remove notice" onClick={() => api.deleteNotice(n.id).then(load)}><Trash2 size={14} /></button>}
         </div>
       ))}
+
+      {user.terms_needed && (
+        <div className="notice warning" role="status"><ShieldCheck size={18} /><span>Read and accept the terms and safety rules before your next print.</span>
+          <button className="btn" onClick={() => setShowTerms(true)}>Read them</button></div>
+      )}
+      {showTerms && <TermsDialog onAccepted={() => setShowTerms(false)} onClose={() => setShowTerms(false)} />}
 
       <button className="start-print" onClick={() => go("workspace")}>
         <span className="sp-text"><b>Start a print</b><span>Open a model, pick a goal and send it to the pool</span></span>
@@ -58,6 +67,20 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           ))}</>}
         </section>
 
+        {quotas.some((q) => q.hours || q.grams) && (
+          <section className="job-card" aria-label="My allowance">
+            <div className="card-head"><h3>My allowance</h3></div>
+            {quotas.filter((q) => q.hours || q.grams).map((q) => (
+              <div key={q.group_id} className="allowance">
+                <b>{q.group}</b> <span className="muted small-text">{q.period?.name}, until {new Date((q.period?.end ?? 0) * 1000).toLocaleDateString([], { day: "numeric", month: "short" })}</span>
+                {q.hours && <Allowance part={q.hours} label="Print time" fmt={(v) => `${v.toFixed(1)} h`} />}
+                {q.grams && <Allowance part={q.grams} label="Filament" fmt={(v) => `${Math.round(v)} g`} />}
+              </div>
+            ))}
+            <p className="muted small-text">Prints count against the group they are for. A print that would go over is refused; a group operator can add more.</p>
+          </section>
+        )}
+
         {h.fleet && (
           <section className="job-card staff-card" aria-label="Fleet">
             <div className="card-head"><h3>Fleet <span className="staff-tag">Staff</span></h3><button className="chip" onClick={() => go("queue")}>Queue</button></div>
@@ -78,6 +101,16 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           <button className="btn" disabled={!note.trim()}>Post</button>
         </form>
       )}
+    </div>
+  );
+}
+
+function Allowance({ part, label, fmt }: { part: NonNullable<QuotaPart>; label: string; fmt: (v: number) => string }) {
+  const pct = Math.min(100, Math.round(part.share * 100));
+  return (
+    <div className="allow-row">
+      <div className="allow-head"><span>{label}</span><span className={part.warn ? "warn-note" : "muted small-text"}>{fmt(part.used)} of {fmt(part.allowance)} used{part.warn ? ` (${pct}%)` : ""}</span></div>
+      <div className="meter" role="img" aria-label={`${label}: ${pct} percent used`}><div style={{ width: `${pct}%` }} className={part.share >= 1 ? "bad" : part.warn ? "warn" : ""} /></div>
     </div>
   );
 }

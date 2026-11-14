@@ -13,7 +13,7 @@ from .common import User, live_progress
 from .jobs import _with_plate_flag
 
 router = APIRouter()
-ACTIVE = ("submitted", "previewing", "previewed", "pooled", "assigned", "slicing", "ready", "printing")
+ACTIVE = ("submitted", "previewing", "previewed", "awaiting_approval", "pooled", "assigned", "slicing", "ready", "printing")
 TYPICAL = {"id": "_typical", "dims": [60, 60, 30], "filament": "PLA", "preset": "0.20mm Standard", "stats": {"time_s": 3600},
            "spec": {"preset": "0.20mm Standard"}}     # "a typical part": one hour of PLA on a 0.4 mm nozzle
 

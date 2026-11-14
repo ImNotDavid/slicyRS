@@ -697,7 +697,7 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
 
       {modal === "submit" && model && <SubmitModal user={user} spec={{ ...plateSpec(parts), filament, preset, settings, goal }} onClose={() => setModal(null)}
         onDone={(j) => {
-          setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
+          setModal(null); setMessage({ kind: "ok", text: j.phase === "awaiting_approval" ? `${j.name} needs approval because ${j.approval?.reasons.join(" and ")}. A group operator has been told; it joins the pool once approved. Follow it under Jobs.` : `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
     </div>
   );
 }

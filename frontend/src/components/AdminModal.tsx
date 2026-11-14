@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { Download, Trash2, X } from "lucide-react";
 import Frame from "./Frame";
-import { api, type GroupDef, type RoleDef, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
+import { api, type Period, type GroupDef, type RoleDef, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose?: () => void; onPrintersChanged: () => void; inline?: boolean };
-type Tab = "printers" | "gateways" | "notifications" | "users" | "roles" | "groups" | "storage" | "pipeline" | "audit";
+type Tab = "printers" | "gateways" | "notifications" | "users" | "roles" | "groups" | "rules" | "periods" | "storage" | "pipeline" | "audit";
+const TAB_LABEL: Partial<Record<Tab, string>> = { audit: "Audit log", rules: "Terms and safety", periods: "Term dates" };
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -12,8 +13,8 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
   const [tab, setTab] = useState<Tab>("printers");
   const tabs = (
     <div className="tabs inline" role="tablist">
-      {(["printers", "gateways", "notifications", "users", "roles", "groups", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
-        <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
+      {(["printers", "gateways", "notifications", "users", "roles", "groups", "rules", "periods", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
+        <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>
       ))}
     </div>
   );
@@ -24,7 +25,9 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
       {tab === "notifications" && <NotificationsTab />}
       {tab === "users" && <UsersTab me={me} />}
       {tab === "roles" && <RolesTab />}
-      {tab === "groups" && <GroupsTab />}
+      {tab === "groups" && <GroupsTab catalog={catalog} />}
+      {tab === "rules" && <RulesTab />}
+      {tab === "periods" && <PeriodsTab />}
       {tab === "storage" && <StorageTab />}
       {tab === "pipeline" && <PipelineTab />}
       {tab === "audit" && <AuditTab />}
@@ -83,18 +86,20 @@ function RolesTab() {
 
 // ------------------------------------------------------------------ groups (3.0)
 
-function GroupsTab() {
+function GroupsTab({ catalog }: { catalog: Catalog }) {
   const [groups, setGroups] = useState<GroupDef[]>([]);
   const [roles, setRoles] = useState<RoleDef[]>([]);
   const [sel, setSel] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ name: string; desc: string; default_role: string; max_print_h: number | null } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; desc: string; default_role: string; max_print_h: number | null; quota_hours: number | null; quota_g: number | null;
+    approve_over_h: number | null; approve_over_g: number | null; approve_materials: string[] } | null>(null);
   const [appoint, setAppoint] = useState("");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const load = useCallback(() => Promise.all([api.adminGroups().then(setGroups), api.roles().then((r) => setRoles(r.roles))]).catch((e) => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   const cur = groups.find((g) => g.id === sel) ?? groups[0];
-  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", default_role: cur.default_role, max_print_h: cur.max_print_h ?? null }); }, [cur?.id, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", default_role: cur.default_role, max_print_h: cur.max_print_h ?? null, quota_hours: cur.quota_hours ?? null, quota_g: cur.quota_g ?? null,
+    approve_over_h: cur.approve_over_h ?? null, approve_over_g: cur.approve_over_g ?? null, approve_materials: cur.approve_materials ?? [] }); }, [cur?.id, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
   const act = async (fn: () => Promise<unknown>, ok: string) => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
   if (!cur || !draft) return <p className="muted">Loading…</p>;
   return (
@@ -115,6 +120,30 @@ function GroupsTab() {
           <input type="number" min={0.5} step={0.5} value={draft.max_print_h ?? ""} placeholder="No limit"
             onChange={(e) => setDraft({ ...draft, max_print_h: e.target.value === "" ? null : Number(e.target.value) })} />
           <span className="muted small-text">Longer prints for this group are refused at Submit. Leave empty for no limit.</span></label>
+        <div className="form-grid">
+          <label className="plate-field">Print hours per member per term
+            <input type="number" min={0} step={1} value={draft.quota_hours ?? ""} placeholder="No quota"
+              onChange={(e) => setDraft({ ...draft, quota_hours: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <label className="plate-field">Filament per member per term (g)
+            <input type="number" min={0} step={50} value={draft.quota_g ?? ""} placeholder="No quota"
+              onChange={(e) => setDraft({ ...draft, quota_g: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+        </div>
+        <p className="muted small-text">Allowances start again at each term in the Term dates tab. Members are warned at 80%; a print that would go over is refused. The group's operators can top a person up.</p>
+        <h4>Prints that need approval</h4>
+        <div className="form-grid">
+          <label className="plate-field">Longer than (hours)
+            <input type="number" min={0.5} step={0.5} value={draft.approve_over_h ?? ""} placeholder="Never"
+              onChange={(e) => setDraft({ ...draft, approve_over_h: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <label className="plate-field">More filament than (g)
+            <input type="number" min={1} step={10} value={draft.approve_over_g ?? ""} placeholder="Never"
+              onChange={(e) => setDraft({ ...draft, approve_over_g: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+        </div>
+        <fieldset className="mat-pick"><legend>In these materials</legend>
+          {Object.keys(catalog.filaments).map((m) => (
+            <label key={m} className="check"><input type="checkbox" checked={draft.approve_materials.includes(m)}
+              onChange={(e) => setDraft({ ...draft, approve_materials: e.target.checked ? [...draft.approve_materials, m] : draft.approve_materials.filter((x) => x !== m) })} /> {m}</label>
+          ))}</fieldset>
+        <p className="muted small-text">These prints wait for one of the group's operators (anyone whose role has "Approve or reject prints"). A role can also require approval for every print (Roles tab). Admins and approvers never wait for their own prints.</p>
         <div className="row-actions"><button className="btn primary" onClick={() => act(() => api.updateGroup(cur.id, draft), "Saved")}>Save</button>
           {!cur.default && <button className="btn" onClick={() => act(() => api.makeDefaultGroup(cur.id), "Now the default group")}>Make default</button>}
           {!cur.default && <button className="btn danger" onClick={() => confirm(`Delete ${cur.name}? Its jobs stay and count against the default group.`) && act(async () => { await api.deleteGroup(cur.id); setSel(null); }, "Deleted")}>Delete</button>}</div>
@@ -129,6 +158,80 @@ function GroupsTab() {
         {msg && <p className="ok-note" role="status">{msg}</p>}{err && <p className="form-error" role="alert">{err}</p>}
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------ terms and safety (3.6)
+
+function RulesTab() {
+  const [text, setText] = useState("");
+  const [cur, setCur] = useState<{ version: number; updated: number; by: string } | null>(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => { api.terms().then((t) => { setText(t.terms?.text ?? ""); setCur(t.terms); }).catch((e) => setErr(e.message)); }, []);
+  const publish = async (body: string) => {
+    setErr(""); setMsg("");
+    try { const t = await api.publishTerms(body); setCur(t.text ? t : null); setText(t.text); setMsg(t.text ? `Published version ${t.version}. Everyone accepts it before their next print.` : "Switched off: nobody is asked to accept terms."); window.dispatchEvent(new Event("user-changed")); }
+    catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <>
+      <p className="muted">People read and accept these before their first print. Publishing a change asks everyone to accept again before their next print. Each acceptance is in the audit log.</p>
+      <p className="muted small-text">{cur ? `Version ${cur.version}, published ${when(cur.updated)} by ${cur.by}.` : "No terms are set, so nobody is asked."}</p>
+      <textarea className="terms-edit" rows={14} value={text} maxLength={20000} onChange={(e) => setText(e.target.value)} aria-label="Terms and safety rules"
+        placeholder={"For example:\n1. Stay within the printing rules of the society.\n2. Never print weapons or parts of them.\n3. Collect your print within 48 hours."} />
+      {msg && <p className="ok-note" role="status">{msg}</p>}{err && <p className="form-error" role="alert">{err}</p>}
+      <div className="row-actions">
+        <button className="btn primary" disabled={!text.trim()} onClick={() => confirm("Publish these terms? Everyone will be asked to accept them before their next print.") && publish(text)}>Publish</button>
+        {cur && <button className="btn danger" onClick={() => confirm("Switch the terms off? Nobody will be asked to accept anything.") && publish("")}>Switch off</button>}
+      </div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ term dates (3.2)
+
+const day = (t: number) => { const d = new Date(t * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const fromDay = (s: string, end = false) => new Date(`${s}T00:00:00`).getTime() / 1000 + (end ? 86400 : 0);
+
+function PeriodsTab() {
+  const [rows, setRows] = useState<{ id?: string; name: string; start: string; end: string }[] | null>(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const show = (ps: Period[]) => setRows(ps.map((p) => ({ id: p.id, name: p.name, start: day(p.start), end: day(p.end - 86400) })));
+  useEffect(() => { api.periods().then(show).catch((e) => setErr(e.message)); }, []);
+  if (!rows) return <p className="muted">Loading…</p>;
+  const set = (i: number, k: "name" | "start" | "end", v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const save = async () => {
+    setErr(""); setMsg("");
+    try {
+      if (rows.some((r) => !r.name.trim() || !r.start || !r.end)) throw new Error("Every term needs a name, a first day and a last day");
+      show(await api.setPeriods(rows.map((r) => ({ id: r.id, name: r.name.trim(), start: fromDay(r.start), end: fromDay(r.end, true) }))));
+      setMsg("Term dates saved.");
+    } catch (e) { setErr((e as Error).message); }
+  };
+  const now = Date.now() / 1000;
+  return (
+    <>
+      <p className="muted">Quotas count prints submitted during a term and start again at the next one. Outside every term, there is no quota.</p>
+      {rows.map((r, i) => {
+        const live = r.start && r.end && fromDay(r.start) <= now && now < fromDay(r.end, true);
+        return (
+          <div key={r.id ?? `new${i}`} className="period-row">
+            <label className="plate-field"><span>Name {live && <span className="tg tg-pin">Now</span>}</span><input value={r.name} maxLength={40} placeholder="Autumn term" onChange={(e) => set(i, "name", e.target.value)} /></label>
+            <label className="plate-field">First day<input type="date" value={r.start} onChange={(e) => set(i, "start", e.target.value)} /></label>
+            <label className="plate-field">Last day<input type="date" value={r.end} onChange={(e) => set(i, "end", e.target.value)} /></label>
+            <button className="icon" aria-label={`Remove ${r.name || "this term"}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
+          </div>
+        );
+      })}
+      {!rows.length && <p className="muted">No terms yet.</p>}
+      {msg && <p className="ok-note" role="status">{msg}</p>}{err && <p className="form-error" role="alert">{err}</p>}
+      <div className="row-actions">
+        <button className="btn" onClick={() => setRows([...rows, { name: "", start: "", end: "" }])}>Add a term</button>
+        <button className="btn primary" onClick={save}>Save</button>
+      </div>
+    </>
   );
 }
 
@@ -493,12 +596,25 @@ function PipelineTab() {
 
 function AuditTab() {
   const [log, setLog] = useState<AuditEntry[]>([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   useEffect(() => { api.audit().then(setLog); }, []);
+  const q = new URLSearchParams();
+  if (from) q.set("start", String(fromDay(from)));
+  if (to) q.set("end", String(fromDay(to, true)));
   return (
+    <>
+    <div className="row-actions audit-export">
+      <label className="plate-field">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+      <label className="plate-field">To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      <a className="btn" href={`/api/admin/audit.csv?${q}`} download><Download size={14} /> Download CSV</a>
+      <span className="muted small-text">{from || to ? "Only the chosen days." : "Leave the dates empty for the whole log."} The table below shows the latest 100.</span>
+    </div>
     <table className="audit">
       <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead>
       <tbody>{log.map((a) => <tr key={a.id}><td>{when(a.at)}</td><td>{a.actor}</td><td>{a.action}</td><td>{a.detail}</td></tr>)}</tbody>
     </table>
+    </>
   );
 }
 
