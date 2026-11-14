@@ -22,6 +22,9 @@ class PrinterAdapter(Protocol):
     def snapshot(self) -> bytes:
         """One JPEG from the printer's camera. Raises camera.CameraError."""
 
+    def light(self, on: bool) -> None:
+        """Switch the printer's light on or off. Raises AdapterError."""
+
     def stop(self) -> None:
         """Close the connection."""
 

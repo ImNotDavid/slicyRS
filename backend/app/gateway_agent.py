@@ -128,6 +128,16 @@ class Agent:
         except (bambulan.PrinterError, ValueError) as e:
             return {"ok": False, "error": str(e)}
 
+    def handle_light(self, msg: dict[str, Any]) -> dict[str, Any]:
+        link = self.links.get(msg["printer_id"])
+        if link is None:
+            return {"ok": False, "error": "This gateway has no connection to that printer"}
+        try:
+            link.light(bool(msg.get("on")))
+            return {"ok": True}
+        except bambulan.PrinterError as e:
+            return {"ok": False, "error": str(e)}
+
     def handle_snapshot(self, msg: dict[str, Any]) -> dict[str, Any]:
         import base64
         from .camera import CameraError
@@ -167,9 +177,9 @@ class Agent:
                         log.info("connected to %s", self.core_url)
                     elif kind == "printers":
                         await self.loop.run_in_executor(None, self.set_printers, msg["printers"])
-                    elif kind in ("print", "probe", "control", "snapshot"):
+                    elif kind in ("print", "probe", "control", "snapshot", "light"):
                         handler = {"print": self.handle_print, "probe": self.handle_probe, "control": self.handle_control,
-                                   "snapshot": self.handle_snapshot}[kind]
+                                   "snapshot": self.handle_snapshot, "light": self.handle_light}[kind]
                         t = asyncio.create_task(self._answer(msg, handler))
                         tasks.add(t)
                         t.add_done_callback(tasks.discard)

@@ -117,6 +117,9 @@ class LanLink:
                 pass
         if "hms" in report:
             update["hms"] = report["hms"]
+        for light in report.get("lights_report") or []:      # the printer says whether its light is on
+            if light.get("node") == "chamber_light":
+                update["light"] = light.get("mode")
         for src, dst in (("print_error", "print_error"), ("layer_num", "layer_num"),
                          ("total_layer_num", "total_layer_num"), ("subtask_name", "subtask_name")):
             if src in report:
@@ -174,6 +177,18 @@ class LanLink:
                 raise PrinterError(f"The printer reported HMS error {code.replace('_', '-')} when asked to start. {on_card}")
             time.sleep(0.5)
         return False
+
+    def light(self, on: bool) -> None:
+        """Switch the printer's light (the "chamber light" node, which is the work light on an A1). Raises PrinterError."""
+        if not self.client.is_connected():
+            raise PrinterError("The server is not connected to this printer's MQTT service")
+        cmd = {"system": {"sequence_id": "0", "command": "ledctrl", "led_node": "chamber_light", "led_mode": "on" if on else "off",
+                          "led_on_time": 500, "led_off_time": 500, "loop_times": 0, "interval_time": 0}}
+        info = self.client.publish(f"device/{self.serial}/request", json.dumps(cmd), qos=1)
+        try:
+            info.wait_for_publish(timeout=10)
+        except (ValueError, RuntimeError) as e:
+            raise PrinterError(f"The light command could not be sent: {e}")
 
     def snapshot(self) -> bytes:
         """One picture from the printer's camera (A1 and P1 families). Raises camera.CameraError."""

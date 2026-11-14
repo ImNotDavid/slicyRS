@@ -45,7 +45,7 @@ gateways = store.gateways
 HELLO_TIMEOUT_S = 10
 # What a gateway may write into a printer's status: the keys a LAN link produces, nothing else (and nothing large).
 STATUS_KEYS = {"state", "progress", "remaining_min", "nozzle_c", "bed_c", "hms", "print_error", "layer_num", "total_layer_num",
-               "subtask_name", "ams", "error", "nozzle_mm"}
+               "subtask_name", "ams", "error", "nozzle_mm", "light"}
 MAX_STATUS_BYTES = 20_000
 PRINT_TIMEOUT_S = 240          # upload and start of a large file over a slow link
 CONTROL_TIMEOUT_S = 30           # pause, resume or stop: the printer answers within seconds
@@ -176,6 +176,12 @@ class RemoteLink:
         if not res.get("ok"):
             raise CameraError(res.get("error") or "The gateway could not take a picture")
         return base64.b64decode(res["jpeg"])
+
+    def light(self, on: bool) -> None:
+        res = hub.request(self.gateway_id, {"type": "light", "printer_id": self.printer_id, "on": bool(on)}, CONTROL_TIMEOUT_S)
+        if not res.get("ok"):
+            from .bambulan import PrinterError
+            raise PrinterError(res.get("error") or "The gateway could not switch the light")
 
     def control(self, action: str) -> bool:
         res = hub.request(self.gateway_id, {"type": "control", "printer_id": self.printer_id, "action": action}, CONTROL_TIMEOUT_S)

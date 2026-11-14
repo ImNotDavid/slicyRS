@@ -46,10 +46,15 @@ def test_bad_frames_are_refused(payload, why):
 
 class FakeLink:
     calls = 0
+    events: list = []
 
     def snapshot(self):
         FakeLink.calls += 1
+        FakeLink.events.append("picture")
         return JPEG
+
+    def light(self, on):
+        FakeLink.events.append("light on" if on else "light off")
 
 
 def _printer(model="A1 mini"):
@@ -87,7 +92,10 @@ def test_the_finished_plate_is_photographed_onto_the_job(client, monkeypatch):
     me = client.get("/api/me").json()
     store.jobs.put(jid, {"id": jid, "name": "Photo", "owner_id": me["id"], "owner_email": me["email"], "printer_id": pid, "phase": "printed",
                          "state": "done", "created": time.time()})
+    FakeLink.events = []
+    monkeypatch.setattr(camera, "LIGHT_SETTLE_S", 0)
     camera.photograph_plate(jid, pid, delay=0)
+    assert FakeLink.events == ["light on", "picture", "light off"]          # lit for the photo, then put back
     page = client.get(f"/api/jobs/{jid}/page").json()
     assert page["photo"].startswith(f"/api/jobs/{jid}/photo.jpg")
     assert client.get(f"/api/jobs/{jid}/photo.jpg").content == JPEG
@@ -141,3 +149,47 @@ def test_snapshot_over_tls_logs_in_and_returns_the_first_picture(tmp_path):
     t.join(5)
     srv.close()
     assert seen["login"][48:56] == b"87654321"
+
+
+
+def test_a_light_that_was_already_on_is_left_on(client, monkeypatch):
+    pid = _printer()
+    store.printers.update(pid, status={"state": "FINISH", "light": "on"})
+    monkeypatch.setattr(adapter, "get", lambda p: FakeLink())
+    FakeLink.events = []
+    assert camera.lit_picture(store.printers.get(pid), settle=0) == JPEG
+    assert FakeLink.events == ["picture"]
+
+
+def test_the_picture_is_still_taken_if_the_light_cannot_be_switched(client, monkeypatch):
+    class NoLight(FakeLink):
+        def light(self, on):
+            raise RuntimeError("no light")
+    pid = _printer()
+    monkeypatch.setattr(adapter, "get", lambda p: NoLight())
+    assert camera.lit_picture(store.printers.get(pid), settle=0) == JPEG
+
+
+def test_the_light_command_matches_bambu_and_the_report_is_read():
+    import json as _json
+    from app import bambulan
+    sent, seen = [], {}
+    link = bambulan.LanLink({"id": "p", "host": "h", "serial": "SER"}, "code", lambda pid, u: seen.update(u), lambda: {}, lambda: None)
+    link.client.is_connected = lambda: True
+    class Info:
+        def wait_for_publish(self, timeout=0):
+            pass
+    link.client.publish = lambda topic, payload, qos=0: sent.append((topic, _json.loads(payload))) or Info()
+    link.light(True)
+    assert sent[0][0] == "device/SER/request" and sent[0][1]["system"]["command"] == "ledctrl" and sent[0][1]["system"]["led_mode"] == "on"
+    msg = type("M", (), {"payload": _json.dumps({"print": {"lights_report": [{"node": "chamber_light", "mode": "off"}]}}).encode()})()
+    link._on_message(None, None, msg)
+    assert seen["light"] == "off"
+
+
+def test_the_gateway_switches_the_light_for_its_printers():
+    from app.gateway_agent import Agent
+    agent = Agent("http://localhost:1", "t", "test")
+    FakeLink.events = []
+    agent.links = {"p1": FakeLink()}
+    assert agent.handle_light({"printer_id": "p1", "on": True}) == {"ok": True} and FakeLink.events == ["light on"]

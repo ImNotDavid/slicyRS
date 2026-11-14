@@ -97,7 +97,39 @@ def printer_picture(printer: dict[str, Any], max_age: float = CACHE_S) -> bytes:
 
 
 PHOTO = "plate_photo.jpg"
-PHOTO_DELAY_S = 20          # let the toolhead park and the lights settle before the picture
+PHOTO_DELAY_S = 20          # let the toolhead park before the picture
+LIGHT_SETTLE_S = 2.0        # after switching the light on, before the picture (the camera adjusts its exposure)
+
+
+def lit_picture(printer: dict[str, Any], settle: float = LIGHT_SETTLE_S) -> bytes:
+    """A picture taken with the printer's light on (owner request); the light goes back to how it was afterwards.
+    If the light cannot be switched, the picture is still taken."""
+    import logging
+    from . import adapter, store
+    if not supported(printer):
+        raise CameraError(f"Camera pictures are not supported for the {printer.get('model')} yet")
+    link = adapter.get(printer["id"])
+    if link is None:
+        raise CameraError("The server has no connection to this printer")
+    was_on = ((store.printers.get(printer["id"]) or {}).get("status") or {}).get("light") == "on"
+    switched = False
+    if not was_on:
+        try:
+            link.light(True)
+            switched = True
+            time.sleep(settle)
+        except Exception:
+            logging.getLogger("camera").info("could not switch the light on for %s", printer.get("name"), exc_info=True)
+    try:
+        data = link.snapshot()
+        _cache[printer["id"]] = (time.time(), data)
+        return data
+    finally:
+        if switched:
+            try:
+                link.light(False)
+            except Exception:
+                logging.getLogger("camera").info("could not switch the light back off for %s", printer.get("name"), exc_info=True)
 
 
 def photograph_plate(job_id: str, printer_id: str, delay: float = PHOTO_DELAY_S) -> None:
@@ -112,7 +144,7 @@ def photograph_plate(job_id: str, printer_id: str, delay: float = PHOTO_DELAY_S)
             job = store.jobs.get(job_id)
             if not p or not job or not files.exists(JOBS, job_id):
                 return
-            data = printer_picture(p, max_age=0)
+            data = lit_picture(p)
             files.write_bytes(JOBS, job_id, PHOTO, data)
             store.jobs.update(job_id, photo_at=time.time())
         except Exception:
