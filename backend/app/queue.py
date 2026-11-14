@@ -39,6 +39,9 @@ def lane_jobs(lane: str) -> list[dict[str, Any]]:
 def fits(job: dict[str, Any], printer: dict[str, Any]) -> str | None:
     """Why a job could not be lined up for a printer, or None. Being busy or offline is fine (it waits); being unable to print
     the part, or being out of service, is not."""
+    from . import groups as G
+    if not G.printer_allows(printer, G.job_group(job)):
+        return "the printer is only for other groups"
     if (why := upkeep.unavailable(printer)):
         return why[0].lower() + why[1:]
     c = assign.evaluate({**printer, "assume_available": True}, tuple(job["dims"]), job["filament"], job_nozzle(job), job_position(job))
@@ -89,13 +92,17 @@ def _card(job: dict[str, Any], printers: list[dict[str, Any]], est) -> dict[str,
             "fits": {p["id"]: fits(job, p) for p in printers} if job.get("phase") == "pooled" else {}}
 
 
-def board() -> dict[str, Any]:
-    """Everything the Queue page shows: the pool and every printer's line, with what is printing and what is on its way."""
+def board(user: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Everything the Queue page shows: the pool and every printer's line, with what is printing and what is on its way.
+    With `user`, waiting jobs are limited to the groups where they may manage the queue (3.0)."""
     from .forecast import estimate_s
     from .routes.common import live_progress
     printers = [p for p in store.printers.all() if p.get("enabled", True)]
     jobs = store.jobs.all()
-    lanes = [{"id": POOL, "jobs": [_card(j, printers, estimate_s) for j in lane_jobs(POOL) if not j.get("batch_lead")]}]
+    from . import groups as G
+    allowed = G.groups_with(user, "queue") if user else None
+    ok = (lambda j: True) if allowed is None else (lambda j: G.job_group(j) in allowed)
+    lanes = [{"id": POOL, "jobs": [_card(j, printers, estimate_s) for j in lane_jobs(POOL) if not j.get("batch_lead") and ok(j)]}]
     for p in printers:
         mine = [j for j in jobs if j.get("printer_id") == p["id"] and not j.get("batch_lead")]
         now = next((j for j in mine if j.get("phase") == "printing"), None)
@@ -106,6 +113,6 @@ def board() -> dict[str, Any]:
             "unavailable": upkeep.unavailable(p), "wait_s": upkeep.wait_s(p), "bed": (p.get("bed") or {}).get("state", "unknown"),
             "now": ({**_card(now, printers, estimate_s), "live": live_progress(now)} if now else None),
             "coming": [_card(j, printers, estimate_s) for j in coming],           # already assigned: on their way, not movable
-            "jobs": [_card(j, printers, estimate_s) for j in lane_jobs(p["id"]) if not j.get("batch_lead")],
+            "jobs": [_card(j, printers, estimate_s) for j in lane_jobs(p["id"]) if not j.get("batch_lead") and ok(j)],
         })
     return {"lanes": lanes, "at": time.time()}

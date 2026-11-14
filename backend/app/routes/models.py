@@ -127,11 +127,11 @@ def assign_printer(body: AssignIn, user: dict = User):
     parts = plate_of(body)
     if parts is None:
         size = meshio.dims(_transformed(body.model_id, body.rotation, body.scale, user))
-        ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, tuple(body.position))
+        ranked = assign.rank(_fleet(user), size, body.filament, body.nozzle_mm, tuple(body.position))
     else:
         instances = plate_instances(parts, user)
         size, centre = multipart.envelope(instances)
-        ranked = assign.rank(_fleet(), size, body.filament, body.nozzle_mm, centre)
+        ranked = assign.rank(_fleet(user), size, body.filament, body.nozzle_mm, centre)
         _annotate_overflow(ranked, instances)
     best = ranked[0] if ranked and ranked[0].eligible else None
     waits = {p["id"]: upkeep.wait_s(p) for p in store.printers.all()}      # 2.5: how long until each could start this

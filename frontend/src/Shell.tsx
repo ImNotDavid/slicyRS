@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { BarChart3, Bell, Box, CircleDot, ClipboardList, Columns3, Home, ListChecks, LogOut, MoreHorizontal, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
-import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User } from "./api";
+import { BarChart3, Bell, Box, Users, CircleDot, ClipboardList, Columns3, Home, ListChecks, LogOut, MoreHorizontal, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User, type UserCan } from "./api";
 import JobPage from "./components/JobPage";
 import QueuePage from "./components/QueuePage";
 import HomePage from "./components/HomePage";
 import PartsPage from "./components/PartsPage";
 import FilamentPage from "./components/FilamentPage";
 import DashboardPage from "./components/DashboardPage";
+import MyGroupsPage from "./components/MyGroupsPage";
+import AccountGroups from "./components/AccountGroups";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -17,27 +19,32 @@ import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
 const PHONE_TABS = 4;      // owner decision: on a phone, four tabs plus More
-type Page = "home" | "workspace" | "jobs" | "parts" | "alljobs" | "queue" | "job" | "fleet" | "filament" | "dashboard" | "admin";
+type Page = "home" | "workspace" | "jobs" | "parts" | "groups" | "alljobs" | "queue" | "job" | "fleet" | "filament" | "dashboard" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", filament: "Filament", dashboard: "Dashboard", admin: "Admin" };
-const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", filament: "filament", dashboard: "dashboard", admin: "admin" };
+const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", groups: "My groups", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", filament: "Filament", dashboard: "Dashboard", admin: "Admin" };
+const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", groups: "groups", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", filament: "filament", dashboard: "dashboard", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
-const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" || p === "dashboard" ? admin : p === "fleet" || p === "alljobs" || p === "queue" || p === "filament" ? operator : true);
+// pages only some people have (3.0: from the person's rights in their groups)
+const allowed = (p: Page, can: UserCan) => (p === "admin" || p === "dashboard" ? can.admin : p === "alljobs" ? can.all_jobs : p === "queue" ? can.queue
+  : p === "filament" ? can.filament : p === "fleet" ? can.fleet : p === "groups" ? can.manage_groups.length > 0 : true);
 // routes: #/workspace, #/jobs, #/jobs/<id>, #/all-jobs, #/fleet, #/admin
-const readRoute = (admin: boolean, operator: boolean): { page: Page; jobId: string | null } => {
+const readRoute = (can: UserCan): { page: Page; jobId: string | null } => {
   const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
   if (head === "jobs" && id) return { page: "job", jobId: id };
   const p = (Object.keys(HASH) as Page[]).find((k) => HASH[k] === head && k !== "job");
-  return { page: p && allowed(p, admin, operator) ? p : "home", jobId: null };     // owner decision (2.18): everyone lands on Home
+  return { page: p && allowed(p, can) ? p : "home", jobId: null };     // owner decision (2.18): everyone lands on Home
 };
 const storedTheme = (): Theme => { try { return (localStorage.getItem("theme") as Theme) || "auto"; } catch { return "auto"; } };
 
 /** Pages with a left menu (a bottom tab bar on phones). The workspace stays mounted so a plate in progress survives a look at Jobs. */
-export default function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+export default function Shell({ user, onSignOut, onUserChanged }: { user: User; onSignOut: () => void; onUserChanged: () => void }) {
   const isAdmin = user.role === "admin";
-  const isOperator = isAdmin || !!user.operator;
-  const [route, setRoute] = useState(() => readRoute(isAdmin, isOperator));
+  const can: UserCan = user.can ?? { all_jobs: !!user.operator || isAdmin, queue: !!user.operator || isAdmin, filament: !!user.operator || isAdmin,
+    fleet: !!user.operator || isAdmin, manage_groups: [], admin: isAdmin };
+  const isOperator = can.fleet;
+  const [route, setRoute] = useState(() => readRoute(can));
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const page = route.page;
   const [reuseRequest, setReuseRequest] = useState<JobPageData | null>(null);
   const [partRequest, setPartRequest] = useState<{ id: string; add: boolean } | null>(null);
@@ -48,10 +55,10 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [printers, setPrinters] = useState<Printer[]>([]);
 
   useEffect(() => {
-    const onHash = () => setRoute(readRoute(isAdmin, isOperator));
+    const onHash = () => setRoute(readRoute(can));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [isAdmin, isOperator]);
+  }, [JSON.stringify(can)]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", theme);
@@ -73,10 +80,11 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   // staff pages carry the yellow staff marker so nobody mistakes them for something every member has
   const items: { id: Page; icon: typeof Box; staff?: string }[] = [
     { id: "home", icon: Home }, { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks }, { id: "parts", icon: Package },
-    ...(isOperator ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
-    ...(isOperator ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
-    ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
-    ...(isOperator ? [{ id: "filament" as Page, icon: CircleDot, staff: "Operators and admins only" }] : []),
+    ...(can.manage_groups.length ? [{ id: "groups" as Page, icon: Users, staff: "Group operators" }] : []),
+    ...(can.all_jobs ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
+    ...(can.queue ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
+    ...(can.fleet ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
+    ...(can.filament ? [{ id: "filament" as Page, icon: CircleDot, staff: "Operators and admins only" }] : []),
     ...(isAdmin ? [{ id: "dashboard" as Page, icon: BarChart3, staff: "Admins only" }] : []),
     ...(isAdmin ? [{ id: "admin" as Page, icon: ShieldCheck, staff: "Admins only" }] : []),
   ];
@@ -127,6 +135,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
             <Menu.Portal>
               <Menu.Content className="acct-menu" side="top" align="start" sideOffset={8}>
                 <div className="menu-head"><strong>{user.name || user.email}</strong><span className="muted">{user.email}</span></div>
+                <Menu.Item className="menu-item" onSelect={() => setGroupsOpen(true)}><Users size={16} /> My groups</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={() => setPrefsOpen(true)}><Bell size={16} /> Notifications</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={onSignOut}><LogOut size={16} /> Sign out</Menu.Item>
                 <Menu.Item className="menu-item" onSelect={async () => { await api.logoutAll().catch(() => {}); onSignOut(); }}><LogOut size={16} /> Sign out all devices</Menu.Item>
@@ -137,6 +146,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
       </aside>
 
       <NotifyPrefs open={prefsOpen} onOpenChange={setPrefsOpen} />
+      <AccountGroups user={user} open={groupsOpen} onOpenChange={setGroupsOpen} onChanged={onUserChanged} />
       <div className="page" hidden={page !== "workspace"}>
         <ErrorBoundary what="The workspace"><App user={user}
           reuseRequest={reuseRequest} onReused={() => { setReuseRequest(null); go("workspace"); }}
@@ -146,12 +156,13 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
         <main className="page">
           {page !== "job" && <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>}
           {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
-          {page === "queue" && isOperator && <QueuePage onOpenJob={openJobPage} />}
-          {page === "filament" && isOperator && <FilamentPage catalog={catalog} printers={printers} />}
+          {page === "queue" && can.queue && <QueuePage onOpenJob={openJobPage} />}
+          {page === "groups" && can.manage_groups.length > 0 && <MyGroupsPage />}
+          {page === "filament" && can.filament && <FilamentPage catalog={catalog} printers={printers} />}
           {page === "dashboard" && isAdmin && <DashboardPage />}
           {page === "home" && <HomePage user={user} go={(p) => go(p)} onOpenJob={openJobPage} />}
           {page === "parts" && <PartsPage onUse={(id, add) => setPartRequest({ id, add })} onOpenJob={openJobPage} />}
-          {page === "alljobs" && isOperator && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}
+          {page === "alljobs" && can.all_jobs && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}
           {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
           {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}
           {page === "admin" && isAdmin && (catalog ? <AdminModal inline catalog={catalog} me={user} onPrintersChanged={refreshPrinters} /> : <p className="muted">Loading…</p>)}

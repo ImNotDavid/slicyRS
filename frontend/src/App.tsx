@@ -695,7 +695,7 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
         </div>
       </main>
 
-      {modal === "submit" && model && <SubmitModal spec={{ ...plateSpec(parts), filament, preset, settings, goal }} onClose={() => setModal(null)}
+      {modal === "submit" && model && <SubmitModal user={user} spec={{ ...plateSpec(parts), filament, preset, settings, goal }} onClose={() => setModal(null)}
         onDone={(j) => {
           setModal(null); setMessage({ kind: "ok", text: `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
     </div>

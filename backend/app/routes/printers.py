@@ -18,8 +18,8 @@ router = APIRouter()
 @router.get("/api/printers")
 def list_printers(user: dict = User):
     """Fleet status for every signed-in user (connection details are admin-only)."""
-    people, connection = permissions.can(user, "printer.see_people"), permissions.can(user, "printer.see_connection")
-    return [_public_printer(p, connection, people) for p in store.printers.all()]
+    connection = permissions.can(user, "printer.see_connection")
+    return [_public_printer(p, connection, permissions.can(user, "printer.see_people", p)) for p in store.printers.all()]
 
 
 class PrinterIn(BaseModel):
@@ -34,6 +34,7 @@ class PrinterIn(BaseModel):
     bed_type: str = DEFAULT_BED_TYPE  # the build plate fitted to this printer (admin-managed)
     nozzle_mm: float = 0.4            # nozzle fitted (admin-set; a connected printer reports its own, which wins)
     gateway: str | None = None        # id of the remote gateway that reaches this printer; empty = this server connects directly
+    groups: list[str] = []            # 3.0: limit the printer to these groups; empty = shared by everyone
     status: dict[str, Any] | None = None
 
 
@@ -45,6 +46,8 @@ def _validate_printer(body: PrinterIn) -> None:
     if body.bed_type not in BED_TYPES:
         raise HTTPException(400, f"Unknown build plate. Choose one of: {', '.join(BED_TYPES)}")
     body.gateway = body.gateway or None
+    if any(not store.groups.get(g) for g in body.groups):
+        raise HTTPException(400, "Unknown group")
     if body.gateway and not store.gateways.get(body.gateway):
         raise HTTPException(400, "Unknown gateway")
     if body.host:
@@ -189,21 +192,21 @@ class MaintenanceIn(BaseModel):
 def printer_maintenance(printer_id: str, body: MaintenanceIn, user: dict = User):
     """Take a printer out of the pool for maintenance (with a note everyone sees), or put it back."""
     _printer_or_404(printer_id)
-    permissions.require(user, "printer.maintain", message="Only an operator or an admin can change maintenance")
+    permissions.require(user, "printer.maintain", printer_id, message="Only an operator or an admin can change maintenance")
     p = upkeep.set_maintenance(printer_id, body.on, body.note, user)
     if not body.on:
         allocator.tick()
-    return _public_printer(p, permissions.can(user, "printer.see_connection"), True)
+    return _public_printer(p, permissions.can(user, "printer.see_connection"), permissions.can(user, "printer.see_people", p))
 
 
 @router.post("/api/printers/{printer_id}/ready")
 def printer_ready(printer_id: str, user: dict = User):
     """After a failed print or an error: someone has checked the printer, so it can take jobs again."""
     _printer_or_404(printer_id)
-    permissions.require(user, "printer.maintain", message="Only an operator or an admin can mark a printer ready")
+    permissions.require(user, "printer.maintain", printer_id, message="Only an operator or an admin can mark a printer ready")
     p = upkeep.mark_ready(printer_id, user)
     allocator.tick()
-    return _public_printer(p, permissions.can(user, "printer.see_connection"), True)
+    return _public_printer(p, permissions.can(user, "printer.see_connection"), permissions.can(user, "printer.see_people", p))
 
 
 @router.post("/api/printers/{printer_id}/bed/occupied")

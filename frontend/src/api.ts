@@ -28,7 +28,7 @@ export type Printer = {
   bed?: Bed;
   users?: PrinterPerson[]; last_user?: PrinterPerson | null;   // operators and admins only
   maintenance?: { on: boolean; note: string; by: string; at: number } | null; attention?: { reason: string; at: number; job_id?: string | null } | null;
-  unavailable?: string | null; wait_s?: number | null; camera?: boolean; needs_cause?: string | null;
+  unavailable?: string | null; wait_s?: number | null; camera?: boolean; needs_cause?: string | null; groups?: string[];
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null; remaining_min?: number; layer_num?: number; total_layer_num?: number; nozzle_c?: number; bed_c?: number };
   // admin only
@@ -85,9 +85,16 @@ export type JobPage = {
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
   name: string; model: string; host?: string | null; port?: number; serial?: string | null; access_code?: string | null;
-  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; nozzle_mm?: number; gateway?: string | null; status?: Printer["status"];
+  hardened_nozzle?: boolean; enabled?: boolean; bed_type?: string; nozzle_mm?: number; gateway?: string | null; status?: Printer["status"]; groups?: string[];
 };
-export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null };
+export type MyGroup = { id: string; name: string; default: boolean; main: boolean; role_id: string | null; role: string; rights: string[] };
+export type UserCan = { all_jobs: boolean; queue: boolean; filament: boolean; fleet: boolean; manage_groups: string[]; admin: boolean };
+export type User = { id: string; email: string; name: string; role: "admin" | "user"; operator?: boolean; active: boolean; invited_by: string | null; created: number; last_login: number | null;
+  groups?: MyGroup[]; main_group?: string; can?: UserCan };
+export type RoleDef = { id: string; name: string; desc: string; rights: string[]; builtin: boolean; locked: boolean; people: number };
+export type GroupDef = { id: string; name: string; desc: string; default_role: string; default: boolean; members: number; operators: string[]; only_printers: { id: string; name: string }[] };
+export type GroupMember = { id: string; email: string; name: string; role_id: string | null; role: string; admin: boolean; active: boolean; invited: boolean; jobs: number; last_login: number | null };
+export type ManagedGroup = { id: string; name: string; default: boolean; members: GroupMember[]; only_printers: string[]; roles: { id: string; name: string }[]; waiting: number };
 export type AuthConfig = { sso: boolean; sso_name: string; dev: boolean; email_login: boolean };
 export type StorageInfo = {
   disk: { total: number; used: number; free: number; free_percent: number | null; low: boolean };
@@ -168,7 +175,7 @@ export const api = {
   logout: () => send("POST", "/auth/logout").then(j<{ ok: boolean }>),
   users: () => fetch("/api/admin/users").then(j<User[]>),
   invite: (u: { email: string; name: string; role: string }) => send("POST", "/api/admin/users", u).then(j<User>),
-  patchUser: (id: string, p: { role?: string; active?: boolean; operator?: boolean }) => send("PATCH", `/api/admin/users/${id}`, p).then(j<User>),
+  patchUser: (id: string, p: { role?: string; active?: boolean; operator?: boolean; transfer_parts_to?: string }) => send("PATCH", `/api/admin/users/${id}`, p).then(j<User>),
   deleteUser: (id: string) => send("DELETE", `/api/admin/users/${id}`).then(j<{ ok: boolean }>),
   storage: () => fetch("/api/admin/storage").then(j<StorageInfo>),
   saveStorage: (s: Partial<StorageInfo["settings"]>) => send("PUT", "/api/admin/storage/settings", s).then(j<StorageInfo["settings"]>),
@@ -199,7 +206,7 @@ export const api = {
   draft: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null }) =>
     post("/api/jobs/preview", body).then(j<Job>),
   forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
-  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean; timelapse?: boolean }) => {
+  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean; timelapse?: boolean; group_id?: string; printer_id?: string | null }) => {
     const res = await post(`/api/jobs/${id}/submit`, body);
     if (res.status === 409) { const d = await res.json().catch(() => ({})); if (d.earliest_pickup) throw Object.assign(new Error(d.detail), { earliest: d.earliest_pickup as number }); throw new Error(d.detail ?? "Cannot submit"); }
     return j<Job>(res);
@@ -227,6 +234,20 @@ export const api = {
   deleteSpool: (id: string) => send("DELETE", `/api/filament/spools/${id}`).then(j<{ ok: boolean }>),
   dashboard: (days: 7 | 30) => fetch(`/api/admin/dashboard?days=${days}`).then(j<Dashboard>),
   explainFailure: (jobId: string, cause: string, note = "") => send("PUT", `/api/jobs/${jobId}/cause`, { cause, note }).then(j<FailureCause>),
+  roles: () => fetch("/api/admin/roles").then(j<{ roles: RoleDef[]; rights: { id: string; label: string }[] }>),
+  addRole: (r: { name: string; desc: string; rights: string[] }) => post("/api/admin/roles", r).then(j<RoleDef>),
+  updateRole: (id: string, r: { name: string; desc: string; rights: string[] }) => send("PUT", `/api/admin/roles/${id}`, r).then(j<RoleDef>),
+  deleteRole: (id: string) => send("DELETE", `/api/admin/roles/${id}`).then(j<{ ok: boolean }>),
+  adminGroups: () => fetch("/api/admin/groups").then(j<GroupDef[]>),
+  addGroup: (g: { name: string; desc: string; default_role: string }) => post("/api/admin/groups", g).then(j<GroupDef>),
+  updateGroup: (id: string, g: { name: string; desc: string; default_role: string }) => send("PUT", `/api/admin/groups/${id}`, g).then(j<GroupDef>),
+  makeDefaultGroup: (id: string) => post(`/api/admin/groups/${id}/default`).then(j<GroupDef>),
+  deleteGroup: (id: string) => send("DELETE", `/api/admin/groups/${id}`).then(j<{ ok: boolean }>),
+  managedGroups: () => fetch("/api/groups/managed").then(j<ManagedGroup[]>),
+  addMember: (gid: string, email: string, role_id: string) => post(`/api/groups/${gid}/members`, { email, role_id }).then(j<GroupMember>),
+  setMemberRole: (gid: string, uid: string, role_id: string) => send("PUT", `/api/groups/${gid}/members/${uid}`, { role_id }).then(j<GroupMember>),
+  removeMember: (gid: string, uid: string) => send("DELETE", `/api/groups/${gid}/members/${uid}`).then(j<{ ok: boolean }>),
+  setMainGroup: (group_id: string) => send("PUT", "/api/me/main_group", { group_id }).then(j<{ groups: MyGroup[]; main_group: string }>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean; cause?: string | null; cause_note?: string }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

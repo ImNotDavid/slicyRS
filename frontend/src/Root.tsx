@@ -25,7 +25,7 @@ export default function Root() {
 
   if (!ready) return <div className="loading">Loading…</div>;
   if (!user) return <Login onSignedIn={setUser} />;
-  return <Shell user={user} onSignOut={async () => { await api.logout(); setUser(null); }} />;
+  return <Shell user={user} onUserChanged={() => api.me().then(setUser).catch(() => {})} onSignOut={async () => { await api.logout(); setUser(null); }} />;
 }
 
 function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {

@@ -103,7 +103,7 @@ def confirm_clear(printer_id: str, user: dict[str, Any], checklist: dict[str, bo
 
 def mark_occupied(printer_id: str, user: dict[str, Any]) -> dict[str, Any]:
     from . import permissions
-    if not permissions.can(user, "plate.mark_occupied"):
+    if not permissions.can(user, "plate.mark_occupied", printer_id):
         raise PermissionError("Only an operator or an admin can mark a plate as occupied")
     p = store.printers.get(printer_id) or {}
     set_state(printer_id, "occupied", "manual", by=user["email"])

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .. import allocator, assign, forecast, jobstate, meshio, multipart, pipeline, printing, slicer, store, thumbnail
 from .. import bedstate, permissions
+from .. import groups as groups_mod
 from ..auth import audit
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
@@ -31,6 +32,14 @@ class SliceIn(TransformIn):
 
 # Decided by the server, never by the user: the build plate comes from the assigned printer.
 SERVER_MANAGED_SETTINGS = {"curr_bed_type"}
+
+
+def _direct_group(user: dict[str, Any], printer: dict[str, Any]) -> str:
+    """A job sliced straight for a printer counts against the person's main group, or, for a printer limited to some groups,
+    the first of those the person is in."""
+    gs = [g for g in (printer.get("groups") or []) if groups_mod.in_group(user, g)]
+    main = groups_mod.main_group(user)
+    return main if not gs or main in gs else gs[0]
 
 
 def _discard_slice_drafts(user: dict[str, Any], model_id: str | None, keep: str | None = None) -> None:
@@ -57,7 +66,7 @@ def start_slice(body: SliceIn, user: dict = User):
         return _slice_plate(body, plate, user)
     mesh = _transformed(body.model_id, body.rotation, body.scale, user)
     size = meshio.dims(mesh)
-    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset), tuple(body.position))
+    ranked = assign.rank(_fleet(user), size, body.filament, preset_nozzle(body.preset), tuple(body.position))
     if body.printer_id:
         chosen = next((c for c in ranked if c.printer_id == body.printer_id), None)
         if not chosen or not chosen.eligible:
@@ -90,7 +99,7 @@ def start_slice(body: SliceIn, user: dict = User):
         "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
         "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
         "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(),
-        "submitted_at": time.time(),
+        "submitted_at": time.time(), "group_id": _direct_group(user, printer),
         "spec": {"model_id": body.model_id, "rotation": list(body.rotation), "scale": body.scale, "position": list(body.position),
                  "filament": body.filament, "preset": body.preset, "settings": body.settings, "goal": body.goal},
     })
@@ -120,9 +129,13 @@ def list_jobs(scope: str = "mine", user: dict = User):
     """My jobs (everyone), or with `scope=all` every job (operators and admins: the All jobs page)."""
     if scope not in ("mine", "all"):
         raise HTTPException(400, "scope must be mine or all")
+    visible: set[str] = set()
     if scope == "all":
         permissions.require(user, "job.see_all", message="Only operators and admins can see everyone's jobs")
-    jobs = [j for j in store.jobs.all() if not j.get("draft") and (scope == "all" or j.get("owner_id") == user["id"])]
+        visible = groups_mod.groups_with(user, "see_all")          # 3.0: the groups whose jobs this person may see
+    jobs = [j for j in store.jobs.all() if not j.get("draft")
+            and ((scope == "all" and groups_mod.job_group(j) in visible) or j.get("owner_id") == user["id"])
+            and (scope == "all" or j.get("owner_id") == user["id"])]
     return sorted((_with_live(_with_plate_flag(j)) for j in jobs), key=lambda j: -j["created"])
 
 
@@ -235,7 +248,7 @@ def create_draft(body: DraftIn, user: dict = User):
     size = meshio.dims(mesh)
     nozzle = preset_nozzle(body.preset)
     if not forecast.eligible_printers(size, body.filament, nozzle, tuple(body.position)):
-        why = sorted({b for c in assign.rank(_fleet(), size, body.filament, nozzle, tuple(body.position)) for b in c.blockers if b != "Printer is offline"})
+        why = sorted({b for c in assign.rank(_fleet(user), size, body.filament, nozzle, tuple(body.position)) for b in c.blockers if b != "Printer is offline"})
         raise HTTPException(409, "No printer in the fleet can ever print this part. " + "; ".join(why))
     job_id = uuid.uuid4().hex[:12]
     files.create(JOBS, job_id)
@@ -285,7 +298,7 @@ def _draft_plate(body: DraftIn, plate, settings: dict[str, Any], user: dict[str,
     size, centre = multipart.envelope(instances)
     nozzle = preset_nozzle(body.preset)
     if not forecast.eligible_printers(size, body.filament, nozzle, centre):
-        ranked = assign.rank(_fleet(), size, body.filament, nozzle, centre)
+        ranked = assign.rank(_fleet(user), size, body.filament, nozzle, centre)
         raise HTTPException(409, "No printer in the fleet can ever print this plate. " + _plate_blockers(ranked, instances, True))
     job_id = uuid.uuid4().hex[:12]
     files.create(JOBS, job_id)
@@ -305,7 +318,7 @@ def _draft_plate(body: DraftIn, plate, settings: dict[str, Any], user: dict[str,
 def _slice_plate(body: SliceIn, plate, user: dict[str, Any]):
     instances = plate_instances(plate, user)
     size, centre = multipart.envelope(instances)
-    ranked = assign.rank(_fleet(), size, body.filament, preset_nozzle(body.preset), centre)
+    ranked = assign.rank(_fleet(user), size, body.filament, preset_nozzle(body.preset), centre)
     if body.printer_id:
         chosen = next((c for c in ranked if c.printer_id == body.printer_id), None)
         if not chosen or not chosen.eligible:
@@ -326,6 +339,7 @@ def _slice_plate(body: SliceIn, plate, user: dict[str, Any]):
         "filament": body.filament, "preset": body.preset, "dims": size, "candidates": [c.asdict() for c in ranked],
         "loaded_slot": chosen.loaded_slot, "queued": False, "printed": False,
         "bed_type": printer.get("bed_type") or DEFAULT_BED_TYPE, "phase": "slicing", "phase_at": time.time(), "submitted_at": time.time(),
+        "group_id": _direct_group(user, printer),
         "spec": {"parts": parts, "position": list(centre), "filament": body.filament, "preset": body.preset, "settings": body.settings, "goal": body.goal},
     })
     jobstate.event(job_id, "phase", user["email"], **{"from": None, "to": "slicing", "reason": "plate sliced directly for a chosen printer"})
@@ -346,6 +360,8 @@ class SubmitIn(BaseModel):
     auto_start: bool = True                  # ignored: pool jobs always start by themselves now (owner decision); kept for old clients
     allow_batching: bool = False             # may share a plate with other people's parts (they wait for a partner while there is time)
     timelapse: bool = False                  # record a timelapse of the print (2.8)
+    group_id: str | None = None              # which of the person's groups the print is for (3.0); default: their main group
+    printer_id: str | None = None            # a printer preference, only with the "pick_printer" right in that group (3.0)
 
 
 @router.post("/api/jobs/{job_id}/submit")
@@ -355,6 +371,21 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
     if job.get("phase") != "previewed":
         raise HTTPException(409, "The preview is not ready yet" if job.get("phase") in ("submitted", "previewing") else
                             f"This job cannot be submitted (it is {job.get('phase')})")
+    gid = body.group_id or groups_mod.main_group(user)
+    if not groups_mod.in_group(user, gid):
+        raise HTTPException(403, "You are not in that group")
+    pinned = None
+    if body.printer_id:
+        permissions.require(user, "printer.pick", gid, message="Your role in that group does not let you choose a printer")
+        from .. import queue as queue_mod
+        printer = store.printers.get(body.printer_id)
+        if not printer or not groups_mod.printer_allows(printer, gid):
+            raise HTTPException(400, "That printer is not available to this group")
+        if (why := queue_mod.fits({**job, "group_id": gid}, printer)):
+            raise HTTPException(409, f"{printer['name']} cannot print this: {why}")
+        pinned = printer["id"]
+    store.jobs.update(job_id, group_id=gid, pinned_printer=pinned)
+    job = store.jobs.get(job_id)
     now = time.time()
     if body.pickup_by is not None and body.pickup_by <= now:
         raise HTTPException(400, "The pickup time must be in the future")

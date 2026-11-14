@@ -27,7 +27,7 @@ def _public_printer(p: dict[str, Any], admin: bool, people: bool = False) -> dic
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host")),
            "maintenance": p.get("maintenance") if (p.get("maintenance") or {}).get("on") else None,   # the note is for everyone (owner decision)
            "attention": p.get("attention") or None, "unavailable": upkeep.unavailable(p), "wait_s": upkeep.wait_s(p),
-           "camera": _has_camera(p), "needs_cause": _needs_cause(p)}
+           "camera": _has_camera(p), "needs_cause": _needs_cause(p), "groups": p.get("groups") or []}
     if people or admin:
         out.update(printer_people(p))
     if admin:
@@ -97,8 +97,11 @@ def _queue_depth(printer_id: str) -> int:
                if j.get("printer_id") == printer_id and j.get("queued") and not j.get("printed"))
 
 
-def _fleet() -> list[dict[str, Any]]:
-    return [{**p, "queue_depth": _queue_depth(p["id"])} for p in store.printers.all() if p.get("enabled", True)]
+def _fleet(user: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Enabled printers; with `user`, only those the person may use (a printer limited to groups they are not in is left out, 3.0)."""
+    from .. import groups as G
+    return [{**p, "queue_depth": _queue_depth(p["id"])} for p in store.printers.all() if p.get("enabled", True)
+            and (user is None or G.user_can_use(user, p))]
 
 
 def _checked_model(model_id: str, user: dict[str, Any]) -> str:

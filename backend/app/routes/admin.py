@@ -41,7 +41,8 @@ def invite_user(body: InviteIn, admin: dict = Depends(require_admin)):
 class UserPatch(BaseModel):
     role: str | None = None
     active: bool | None = None
-    operator: bool | None = None   # may clear build plates and is told when one waits
+    operator: bool | None = None   # Operator in the default group (3.0); may clear build plates and is told when one waits
+    transfer_parts_to: str | None = None   # offboarding: hand this person's parts to another account (email)
 
 
 def _other_active_admins(exclude_id: str) -> int:
@@ -58,7 +59,20 @@ def patch_user(user_id: str, body: UserPatch, admin: dict = Depends(require_admi
     losing_admin = target["role"] == "admin" and ((body.role == "user") or (body.active is False))
     if losing_admin and _other_active_admins(user_id) == 0:
         raise HTTPException(409, "There must be at least one active admin")
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    fields = {k: v for k, v in body.model_dump().items() if v is not None and k != "transfer_parts_to"}
+    if body.transfer_parts_to:
+        to = auth.find_user_by_email(auth.norm_email(body.transfer_parts_to) or "")
+        if not to:
+            raise HTTPException(400, "No account with that email to hand the parts to")
+        moved = 0
+        for mdl in store.models.all():
+            if mdl.get("owner_id") == user_id:
+                store.models.update(mdl["id"], owner_id=to["id"], folder_id=None)
+                moved += 1
+        audit(admin, "parts_transfer", f"{moved} part(s) from {target['email']} to {to['email']}")
+    if body.operator is not None:
+        from .. import groups as G
+        G.set_membership(user_id, G.default_group()["id"], "operator" if body.operator else "member")
     rec = store.users.update(user_id, **fields)
     audit(admin, "user_update", f"{target['email']}: {fields}")
     if body.active is False:

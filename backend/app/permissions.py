@@ -1,86 +1,107 @@
-"""Who may do what: the one place every route and module asks (2.15).
+"""Who may do what: the one place every route and module asks (2.15), now per group (3.0, docs/PERMISSIONS_DESIGN.md).
 
-The rules are the ones the app already had, gathered here so that pause, cancel and queue controls (2.2, 2.4) and the later roles
-and groups rework (3.0) change one table instead of tests scattered through the code.
+A person has one role in each group they belong to; a role is a set of rights (`groups.RIGHTS`). Admin is fixed and may do
+everything. A job belongs to a group; a printer is shared (governed by the default group) or limited to some groups.
 
-Roles today: an admin (role "admin"); an operator (an ordinary user with the operator flag: clears plates and is told about
-printers); everyone else is a member. An admin can do everything an operator can.
-
-    action                  who
-    admin                   admins (users, printers, gateways, storage, pipeline, audit, notification channels, statistics)
-    job.see_all             operators and admins (the All jobs page); everyone has My jobs
-    job.view                the job's owner, an operator or an admin (the job page, its preview and history; read only)
-    job.manage              the job's owner, or an admin (download, queue, print, submit, cancel, discard)
-    print.pause             an owner of any part on the plate, an operator or an admin (pause and resume a running print)
-    print.stop              operators and admins; an owner too unless the plate is shared (stopping ruins every part on it)
-    model.use               the model's uploader, or an admin
-    plate.clear             an operator or admin, or any owner of a part on the printer's latest plate
-    plate.mark_occupied     an operator or admin
-    printer.see_people      an operator or admin (who is using each printer)
-    failures.view           an operator or admin (failure patterns and flags; members see no advice, owner decision)
-    failures.explain        the job's owner, an operator or an admin (say why a print failed)
-    filament.manage         an operator or admin (the filament inventory: add, edit, load and correct spools)
-    queue.manage            an operator or admin (reorder the pool, line a job up for a printer)
-    printer.maintain        an operator or admin (maintenance on or off, mark a printer ready after it needed attention)
-    printer.see_connection  admins (address, serial, gateway)
-    preset.share            admins (publish a preset to everyone)
-    preset.delete           the preset's owner, or an admin for a shared one
+    action                  allowed when                                                      target
+    admin                   site admin                                                        -
+    job.see_all             "see_all" in any group (the All jobs page shows those groups)     -
+    job.view                the job's owner, or "see_all" in the job's group                  job
+    job.manage              the job's owner, or "manage_jobs" in the job's group              job
+    print.pause             an owner on the plate, or "pause" in the job's group              job
+    print.stop              as print.pause, but an owner only if the plate is not shared      job
+    model.use               the model's uploader, or an admin                                 model
+    plate.clear             an owner on the printer's latest plate, or "plates" for it        printer id
+    plate.mark_occupied     "plates" for the printer                                          printer id (or none: any)
+    printer.see_people      "people" for the printer (none: in any group)                     printer (optional)
+    printer.see_connection  site admin                                                        -
+    printer.maintain        "maintain" for the printer (none: in any group)                   printer id (optional)
+    printer.pick            "pick_printer" in the group the print is for                      group id
+    queue.manage            "queue" in any group                                              -
+    filament.manage         "filament" in any group                                           -
+    failures.view           "failures" in any group (owner decision: members see no advice)  -
+    failures.explain        an owner on the plate, or "failures" in the job's group           job
+    group.members           "members" in that group                                           group id
+    preset.share            "share_presets" in any group                                      -
+    preset.delete           the preset's owner, or an admin for a shared one                  preset
 """
 from typing import Any
 
 from fastapi import HTTPException
 
-ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage", "failures.view", "failures.explain",
-           "printer.see_connection", "preset.share", "preset.delete"}
+from . import groups as G
+
+ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear",
+           "plate.mark_occupied", "printer.see_people", "printer.see_connection", "printer.maintain", "printer.pick",
+           "queue.manage", "filament.manage", "failures.view", "failures.explain", "group.members", "preset.share", "preset.delete"}
 
 
 def is_admin(user: dict[str, Any]) -> bool:
-    return user.get("role") == "admin"
+    return G.is_admin(user)
 
 
 def is_operator(user: dict[str, Any]) -> bool:
-    """Has the operator's powers (an admin has them too)."""
-    return is_admin(user) or bool(user.get("operator"))
+    """Has staff rights somewhere (used for menus and for who is told about printer problems)."""
+    return bool(user) and user.get("active", True) and G.is_staff(user)
 
 
 def _owns(user: dict[str, Any], rec: dict[str, Any] | None) -> bool:
     return bool(rec) and rec.get("owner_id") == user["id"]
 
 
+def _printer_right(user: dict[str, Any], right: str, printer_id: str | None) -> bool:
+    if printer_id is None:
+        return G.any_right(user, right)
+    from . import store
+    p = store.printers.get(printer_id)
+    return any(right in G.rights_in(user, g) for g in G.printer_groups(p))
+
+
 def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
-    """`target` is what the action is about: a job, a model or a preset record, or a printer id for plate actions."""
     if action not in ACTIONS:
         raise ValueError(f"Unknown permission {action}")
     if not user or not user.get("active", True):
         return False
-    if action in ("admin", "printer.see_connection", "preset.share"):
+    if action in ("admin", "printer.see_connection"):
         return is_admin(user)
-    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage", "failures.view"):
-        return is_operator(user)
-    if action in ("print.pause", "print.stop"):
+    if action == "job.see_all":
+        return G.any_right(user, "see_all")
+    if action in ("queue.manage", "filament.manage", "failures.view", "preset.share"):
+        return G.any_right(user, {"queue.manage": "queue", "filament.manage": "filament", "failures.view": "failures",
+                                  "preset.share": "share_presets"}[action])
+    if action == "job.view":
+        return bool(target) and (_owns(user, target) or "see_all" in G.rights_in(user, G.job_group(target)))
+    if action == "job.manage":
+        return bool(target) and (_owns(user, target) or "manage_jobs" in G.rights_in(user, G.job_group(target)))
+    if action == "model.use":
+        return bool(target) and (_owns(user, target) or is_admin(user))
+    if action in ("print.pause", "print.stop", "failures.explain"):
         if not target:
             return False
-        if is_operator(user):
+        right = "failures" if action == "failures.explain" else "pause"
+        if right in G.rights_in(user, G.job_group(target)):
             return True
         from .plates import jobs_on_plate   # local import: plates imports the store at load time
         plate = jobs_on_plate(target)
         mine = any(j.get("owner_id") == user["id"] for j in plate)
-        shared = len({j.get("owner_id") for j in plate}) > 1
-        return mine and (action == "print.pause" or not shared)
-    if action == "failures.explain":
-        if not target:
-            return False
-        from .plates import jobs_on_plate   # local import: plates imports the store at load time
-        return is_operator(user) or any(j.get("owner_id") == user["id"] for j in jobs_on_plate(target))
-    if action == "job.view":
-        return bool(target) and (_owns(user, target) or is_operator(user))
-    if action in ("job.manage", "model.use"):
-        return bool(target) and (_owns(user, target) or is_admin(user))     # nothing to act on is never allowed, even for admins
+        if action == "print.stop":
+            return mine and len({j.get("owner_id") for j in plate}) <= 1     # stopping ruins every part on a shared plate
+        return mine
     if action == "plate.clear":
-        if is_operator(user):
+        if _printer_right(user, "plates", target):
             return True
         from .bedstate import last_plate     # local import: bedstate asks this module too
         return any(j.get("owner_id") == user["id"] for j in last_plate(target))   # any one owner may clear a shared plate
+    if action == "plate.mark_occupied":
+        return _printer_right(user, "plates", target)
+    if action == "printer.see_people":
+        return _printer_right(user, "people", (target or {}).get("id") if isinstance(target, dict) else target)
+    if action == "printer.maintain":
+        return _printer_right(user, "maintain", target)
+    if action == "printer.pick":
+        return bool(target) and "pick_printer" in G.rights_in(user, target)
+    if action == "group.members":
+        return bool(target) and "members" in G.rights_in(user, target)
     if action == "preset.delete":
         return _owns(user, target) or (is_admin(user) and (target or {}).get("scope") == "shared")
     return False

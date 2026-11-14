@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import Frame from "./Frame";
-import { api, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
+import { api, type GroupDef, type RoleDef, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose?: () => void; onPrintersChanged: () => void; inline?: boolean };
-type Tab = "printers" | "gateways" | "notifications" | "users" | "storage" | "pipeline" | "audit";
+type Tab = "printers" | "gateways" | "notifications" | "users" | "roles" | "groups" | "storage" | "pipeline" | "audit";
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -12,7 +12,7 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
   const [tab, setTab] = useState<Tab>("printers");
   const tabs = (
     <div className="tabs inline" role="tablist">
-      {(["printers", "gateways", "notifications", "users", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
+      {(["printers", "gateways", "notifications", "users", "roles", "groups", "storage", "pipeline", "audit"] as Tab[]).map((t) => (
         <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "audit" ? "Audit log" : t[0].toUpperCase() + t.slice(1)}</button>
       ))}
     </div>
@@ -23,10 +23,108 @@ export default function AdminModal({ catalog, me, onClose, onPrintersChanged, in
       {tab === "gateways" && <GatewaysTab />}
       {tab === "notifications" && <NotificationsTab />}
       {tab === "users" && <UsersTab me={me} />}
+      {tab === "roles" && <RolesTab />}
+      {tab === "groups" && <GroupsTab />}
       {tab === "storage" && <StorageTab />}
       {tab === "pipeline" && <PipelineTab />}
       {tab === "audit" && <AuditTab />}
     </Frame>
+  );
+}
+
+// ------------------------------------------------------------------ roles (3.0)
+
+function RolesTab() {
+  const [data, setData] = useState<{ roles: RoleDef[]; rights: { id: string; label: string }[] } | null>(null);
+  const [sel, setSel] = useState("operator");
+  const [draft, setDraft] = useState<{ name: string; desc: string; rights: string[] } | null>(null);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const load = useCallback(() => api.roles().then(setData).catch((e) => setErr(e.message)), []);
+  useEffect(() => { load(); }, [load]);
+  const cur = data?.roles.find((r) => r.id === sel) ?? data?.roles[0];
+  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", rights: cur.rights }); }, [cur?.id, data]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const act = async (fn: () => Promise<unknown>, ok: string) => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
+  if (!data || !cur || !draft) return <p className="muted">Loading…</p>;
+  return (
+    <>
+      <p className="muted">A person has one role in each group they belong to; their rights for that group's prints, printers and members come from it. Admin is fixed; the others can be changed, and you can add your own.</p>
+      <div className="split">
+        <div className="side-list">
+          {data.roles.map((r) => (
+            <button key={r.id} className={"li" + (r.id === cur.id ? " on" : "")} onClick={() => setSel(r.id)}>
+              <span><b>{r.name}</b><span className="muted small-text"> · {r.people} {r.people === 1 ? "person" : "people"}</span></span>
+              <span className={"tg" + (r.locked ? " tg-y" : r.builtin ? "" : " tg-pin")}>{r.locked ? "Fixed" : r.builtin ? "Built in" : "Custom"}</span></button>
+          ))}
+          <button className="btn" onClick={() => act(async () => { const r = await api.addRole({ name: `New role ${data.roles.length}`, desc: "", rights: [] }); setSel(r.id); }, "Role added")}>New role</button>
+        </div>
+        <div className="side-detail">
+          <div className="row-actions">
+            <input value={draft.name} disabled={cur.locked} onChange={(e) => setDraft({ ...draft, name: e.target.value })} aria-label="Role name" className="name-input" />
+            {!cur.locked && <button className="btn primary" onClick={() => act(() => api.updateRole(cur.id, draft), "Saved")}>Save</button>}
+            {!cur.builtin && <button className="btn danger" onClick={() => confirm(`Delete ${cur.name}? People holding it become Members.`) && act(async () => { await api.deleteRole(cur.id); setSel("operator"); }, "Deleted")}>Delete</button>}
+          </div>
+          <input value={draft.desc} disabled={cur.locked} placeholder="What this role is for" onChange={(e) => setDraft({ ...draft, desc: e.target.value })} aria-label="Description" />
+          {cur.locked && <p className="tg tg-y self-start">Admin always has every right</p>}
+          <div className="rights-grid">
+            {data.rights.map((r) => {
+              const on = draft.rights.includes(r.id);
+              return <label key={r.id} className={"right" + (on ? " on" : "") + (cur.locked ? " locked" : "")}><input type="checkbox" checked={on} disabled={cur.locked}
+                onChange={() => setDraft({ ...draft, rights: on ? draft.rights.filter((x) => x !== r.id) : [...draft.rights, r.id] })} /> {r.label}</label>;
+            })}
+          </div>
+          <p className="muted small-text">Never delegable (admins only): people across all groups, roles, groups, printer set-up, gateways, notification channels, storage, pipeline settings, audit log and the dashboard.</p>
+          {msg && <p className="ok-note" role="status">{msg}</p>}{err && <p className="form-error" role="alert">{err}</p>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ groups (3.0)
+
+function GroupsTab() {
+  const [groups, setGroups] = useState<GroupDef[]>([]);
+  const [roles, setRoles] = useState<RoleDef[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ name: string; desc: string; default_role: string } | null>(null);
+  const [appoint, setAppoint] = useState("");
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const load = useCallback(() => Promise.all([api.adminGroups().then(setGroups), api.roles().then((r) => setRoles(r.roles))]).catch((e) => setErr(e.message)), []);
+  useEffect(() => { load(); }, [load]);
+  const cur = groups.find((g) => g.id === sel) ?? groups[0];
+  useEffect(() => { if (cur) setDraft({ name: cur.name, desc: cur.desc ?? "", default_role: cur.default_role }); }, [cur?.id, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const act = async (fn: () => Promise<unknown>, ok: string) => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
+  if (!cur || !draft) return <p className="muted">Loading…</p>;
+  return (
+    <div className="split">
+      <div className="side-list">
+        {groups.map((g) => (
+          <button key={g.id} className={"li" + (g.id === cur.id ? " on" : "")} onClick={() => setSel(g.id)}>
+            <span><b>{g.name}</b><span className="muted small-text"> · {g.members} {g.members === 1 ? "person" : "people"}</span></span>{g.default && <span className="tg tg-pin">Default</span>}</button>
+        ))}
+        <button className="btn" onClick={() => { const n = prompt("Name of the new group"); if (n?.trim()) act(async () => { const g = await api.addGroup({ name: n.trim(), desc: "", default_role: "member" }); setSel(g.id); }, "Group added"); }}>New group</button>
+      </div>
+      <div className="side-detail">
+        <label className="plate-field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
+        <label className="plate-field">Description<input value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} /></label>
+        <label className="plate-field">Role for new members<select value={draft.default_role} onChange={(e) => setDraft({ ...draft, default_role: e.target.value })}>
+          {roles.filter((r) => r.id !== "admin").map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+        <div className="row-actions"><button className="btn primary" onClick={() => act(() => api.updateGroup(cur.id, draft), "Saved")}>Save</button>
+          {!cur.default && <button className="btn" onClick={() => act(() => api.makeDefaultGroup(cur.id), "Now the default group")}>Make default</button>}
+          {!cur.default && <button className="btn danger" onClick={() => confirm(`Delete ${cur.name}? Its jobs stay and count against the default group.`) && act(async () => { await api.deleteGroup(cur.id); setSel(null); }, "Deleted")}>Delete</button>}</div>
+        {cur.default && <p className="tg tg-y self-start">Default group: everyone is in it; it cannot be deleted</p>}
+        <h4>Operators</h4>
+        <p className="muted">{cur.operators.length ? cur.operators.join(", ") : "None yet."} Operators manage the group's members themselves on their My groups page.</p>
+        <form className="row-actions" onSubmit={(e) => { e.preventDefault(); if (appoint.trim()) act(async () => { await api.addMember(cur.id, appoint.trim(), "operator"); setAppoint(""); }, "Operator appointed"); }}>
+          <input value={appoint} onChange={(e) => setAppoint(e.target.value)} placeholder="Email of a new operator" aria-label="Email of a new operator" />
+          <button className="btn" disabled={!appoint.trim()}>Appoint operator</button></form>
+        <h4>Printers only for this group</h4>
+        <p className="muted">{cur.only_printers.length ? cur.only_printers.map((p) => p.name).join(", ") : "None. Limit a printer to groups in the Printers tab (edit the printer)."}</p>
+        {msg && <p className="ok-note" role="status">{msg}</p>}{err && <p className="form-error" role="alert">{err}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -135,7 +233,10 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
     ...EMPTY, model: printer?.model ?? models[0], name: printer?.name ?? "", host: printer?.host ?? "", port: printer?.port ?? 8883,
     serial: printer?.serial ?? "", hardened_nozzle: !!printer?.hardened_nozzle, enabled: printer?.enabled ?? true,
     bed_type: printer?.bed_type ?? catalog.default_bed_type, gateway: printer?.gateway ?? "", nozzle_mm: printer?.nozzle_mm ?? 0.4,
+    groups: printer?.groups ?? ([] as string[]),
   });
+  const [allGroups, setAllGroups] = useState<GroupDef[]>([]);
+  useEffect(() => { api.adminGroups().then(setAllGroups).catch(() => {}); }, []);
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<ProbeResult | "testing" | null>(null);
   const live = !!f.host;
@@ -143,6 +244,7 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
   const body = (): PrinterInput => ({
     name: f.name, model: f.model, host: f.host || null, port: Number(f.port) || 8883, serial: f.serial || null,
     access_code: f.access_code || null, hardened_nozzle: f.hardened_nozzle, enabled: f.enabled, bed_type: f.bed_type, nozzle_mm: f.nozzle_mm, gateway: f.gateway || null,
+    groups: f.groups,
   });
   const save = async () => {
     setErr("");
@@ -189,6 +291,13 @@ function PrinterForm({ catalog, printer, onDone }: { catalog: Catalog; printer?:
             {gateways.map((g) => <option key={g.id} value={g.id}>{g.name}{g.online ? "" : " (offline)"}</option>)}
           </select>
         </label>
+        <fieldset className="plate-field group-limit"><legend>Who may use it</legend>
+          <label className="check"><input type="radio" checked={!f.groups.length} onChange={() => setF({ ...f, groups: [] })} /> Everyone (shared)</label>
+          <label className="check"><input type="radio" checked={!!f.groups.length} onChange={() => setF({ ...f, groups: allGroups.filter((g) => !g.default).slice(0, 1).map((g) => g.id) })} disabled={!allGroups.some((g) => !g.default)} /> Only these groups</label>
+          {!!f.groups.length && allGroups.filter((g) => !g.default).map((g) => (
+            <label key={g.id} className="check sub"><input type="checkbox" checked={f.groups.includes(g.id)} onChange={(e) => setF({ ...f, groups: e.target.checked ? [...f.groups, g.id] : f.groups.filter((x) => x !== g.id) })} /> {g.name}</label>
+          ))}
+        </fieldset>
         <label className="check"><input type="checkbox" checked={f.hardened_nozzle} onChange={(e) => set("hardened_nozzle", e.target.checked)} /> Hardened nozzle</label>
         <label className="check"><input type="checkbox" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} /> Enabled (eligible for jobs)</label>
       </div>
@@ -306,7 +415,12 @@ function UsersTab({ me }: { me: User }) {
             <option value="user">User</option><option value="admin">Admin</option>
           </select>
           <label className="check" title="Can confirm build plates are clear and is told when one is waiting"><input type="checkbox" checked={!!u.operator} onChange={(e) => guard(() => api.patchUser(u.id, { operator: e.target.checked }))} aria-label={`Operator ${u.email}`} /> Operator</label>
-          <label className="check"><input type="checkbox" checked={u.active} onChange={(e) => guard(() => api.patchUser(u.id, { active: e.target.checked }))} aria-label={`Active ${u.email}`} /> Active</label>
+          <label className="check"><input type="checkbox" checked={u.active} onChange={(e) => {
+            if (e.target.checked) { guard(() => api.patchUser(u.id, { active: true })); return; }
+            if (!confirm(`Disable ${u.email}? They are signed out everywhere. Their jobs and parts are kept.`)) return;
+            const to = prompt("Hand their parts to another account? Enter an email, or leave empty to keep them under this person.", "") ?? "";
+            guard(() => api.patchUser(u.id, to.trim() ? { active: false, transfer_parts_to: to.trim() } : { active: false }));
+          }} aria-label={`Active ${u.email}`} /> Active</label>
           <button className="icon" aria-label={`Delete ${u.email}`} disabled={u.id === me.id}
             onClick={() => confirm(`Delete ${u.email}?`) && guard(() => api.deleteUser(u.id))}><Trash2 size={16} /></button>
         </div>

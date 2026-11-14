@@ -51,6 +51,8 @@ def predict(job: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     cfg = pipelinecfg.get()
     margin = cfg["cooling_margin_min"] * 60
     printers = eligible_printers(job["dims"], job["filament"], job_nozzle(job), job_position(job))
+    from . import groups as G
+    printers = [p for p in printers if G.printer_allows(p, G.job_group(job))]   # 3.0: printers limited to other groups
     if job.get("pinned_printer"):                       # lined up for one printer by staff (2.2)
         printers = [p for p in printers if p["id"] == job["pinned_printer"]] or printers
     if not printers:

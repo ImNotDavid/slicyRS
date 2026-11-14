@@ -212,7 +212,9 @@ def end_session(sid: str, user: dict[str, Any] = Depends(current_user)):
 
 @router.get("/api/me")
 def me(user: dict[str, Any] = Depends(current_user)):
-    return public_user(user)
+    from .routes.groups import me_extra      # 3.0: groups, main group and staff rights for the web app
+    from . import permissions
+    return {**public_user(user), "operator": permissions.is_operator(user), **me_extra(user)}
 
 
 # ------------------------------------------------- emailed one-time login codes

@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Any
 
+from . import groups as G
 from . import assign, bedstate, forecast, jobstate, notify, pipeline, upkeep, pipelinecfg, plates, queue, store, taskqueue
 from .bedstate import BUSY
 from .catalog import job_nozzle, job_position
@@ -47,9 +48,9 @@ def priority(job: dict[str, Any]) -> tuple:
 def waiting_reason(job: dict[str, Any]) -> str:
     """Why a pooled job has not been given a printer yet, in words for the job's owner."""
     held = {j.get("printer_id") for j in store.jobs.all() if _holds(j)}
-    printers = store.printers.all()
+    printers = [p for p in store.printers.all() if G.printer_allows(p, G.job_group(job))]
     if not printers:
-        return "No printers are set up"
+        return "No printers are set up for this job's group"
     can = {c.printer_id for c in assign.rank([{**p, "assume_available": True} for p in printers], tuple(job["dims"]), job["filament"], job_nozzle(job), job_position(job))
            if c.eligible}
     if not can:
@@ -104,9 +105,9 @@ def assign_pool() -> int:
     for job in pooled:
         if job["id"] in taken:
             continue
-        free = free_printers()
+        free = [p for p in free_printers() if G.printer_allows(p, G.job_group(job))]   # 3.0: printers limited to other groups are left out
         if not free:
-            break
+            continue
         if job.get("pinned_printer"):              # lined up for one printer: it waits for that one only
             free = [p for p in free if p["id"] == job["pinned_printer"]]
             if not free:
@@ -119,7 +120,8 @@ def assign_pool() -> int:
         reason = "; ".join(best.reasons)
         if job.get("allow_batching"):
             partners = plates.find_partners(job, printer, [j for j in pooled if j["id"] not in taken
-                                                           and j.get("pinned_printer") in (None, printer["id"])], now)
+                                                           and j.get("pinned_printer") in (None, printer["id"])
+                                                           and G.printer_allows(printer, G.job_group(j))], now)
             if not partners and plates.hold_reason(job, now):
                 continue                         # keep the printer for others while this job waits for a partner
             if partners:

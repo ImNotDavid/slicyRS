@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/api/queue")
 def get_queue(user: dict = User):
     permissions.require(user, "queue.manage", message="Only operators and admins can see the queue")
-    return queue.board()
+    return queue.board(user)
 
 
 class MoveIn(BaseModel):
@@ -23,6 +23,10 @@ class MoveIn(BaseModel):
 @router.post("/api/queue/move")
 def move_job(body: MoveIn, user: dict = User):
     permissions.require(user, "queue.manage", message="Only operators and admins can change the queue")
+    from .. import groups as G, store
+    job = store.jobs.get(body.job_id)
+    if job and "queue" not in G.rights_in(user, G.job_group(job)):
+        raise HTTPException(403, "You cannot move jobs of that group")
     try:
         out = queue.move(body.job_id, body.lane, body.index, user)
     except ValueError as e:

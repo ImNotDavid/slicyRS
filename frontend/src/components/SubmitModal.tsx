@@ -1,18 +1,26 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { api, type Forecast, type Job, type PlateSpec } from "../api";
+import { api, type Forecast, type Job, type PlateSpec, type Printer, type User } from "../api";
 import { fmtTime } from "../format";
 
 type Props = {
   spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null };
-  onClose: () => void; onDone: (j: Job) => void;
+  onClose: () => void; onDone: (j: Job) => void; user?: User;
 };
 
 const local = (t: number) => { const d = new Date(t * 1000 - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
 const fmt = (t: number) => new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
 
 /** Send a part to the shared pool: a printer-independent preview first, then an optional pickup time and automatic start. */
-export default function SubmitModal({ spec, onClose, onDone }: Props) {
+export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
+  // 3.0: which group the print is for, and (if that group's role allows it) a printer of the person's choice
+  const myGroups = user?.groups ?? [];
+  const [groupId, setGroupId] = useState(user?.main_group ?? myGroups[0]?.id ?? "");
+  const [printerId, setPrinterId] = useState("");
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  useEffect(() => { api.printers().then(setPrinters).catch(() => {}); }, []);
+  const canPick = !!myGroups.find((g) => g.id === groupId)?.rights.includes("pick_printer");
+  const pickable = printers.filter((p) => p.enabled && (!p.groups?.length || p.groups.includes(groupId)));
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
   const [by, setBy] = useState("");
@@ -48,7 +56,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
   const submit = async () => {
     if (!job) return;
     setBusy(true); setError(""); setEarliest(null);
-    try { onDone(await api.submit(job.id, { pickup_by: pickup ?? null, auto_start: true, allow_batching: share, timelapse: lapse })); }
+    try { onDone(await api.submit(job.id, { pickup_by: pickup ?? null, auto_start: true, allow_batching: share, timelapse: lapse, group_id: groupId || undefined, printer_id: canPick && printerId ? printerId : null })); }
     catch (e) { setError((e as Error).message); setEarliest((e as { earliest?: number }).earliest ?? null); }
     setBusy(false);
   };
@@ -72,6 +80,18 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
           )}
           {ready && (
             <>
+              {myGroups.length > 1 && (
+                <label className="field-row">This print is for
+                  <select value={groupId} onChange={(e) => { setGroupId(e.target.value); setPrinterId(""); }}>
+                    {myGroups.map((g) => <option key={g.id} value={g.id}>{g.name}{g.main ? " (main group)" : ""}</option>)}</select></label>
+              )}
+              {canPick && (
+                <label className="field-row">Where should it print?
+                  <select value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
+                    <option value="">Any printer that fits (the pool chooses)</option>
+                    {pickable.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model}){p.groups?.length ? " · only for this group" : ""}</option>)}</select>
+                  <span className="muted small-text">Your role in this group lets you choose. A chosen printer means the job waits for it.</span></label>
+              )}
               <label className="field-row">Pickup by (optional)
                 <input type="datetime-local" value={by} min={local(Date.now() / 1000)} onChange={(e) => { setBy(e.target.value); setError(""); setEarliest(null); }} />
               </label>

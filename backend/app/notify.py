@@ -18,7 +18,7 @@ from collections import deque
 from typing import Any
 from urllib.parse import urlparse
 
-from . import config, mailer, store
+from . import config, mailer, permissions, store
 
 log = logging.getLogger("notify")
 
@@ -117,7 +117,7 @@ def emit(kind: str, subject: str, body: str, *, owners: list[str] | None = None,
             told.add(u["id"])
     if EVENTS[kind]["operator_default"] is not None:
         for u in store.users.all():
-            if u.get("active", True) and (u.get("operator")) and u["id"] not in told and wants(u, kind, True):
+            if u.get("active", True) and permissions.is_operator(u) and u["id"] not in told and wants(u, kind, True):
                 queued.append((_email, (kind, u["email"], subject, (operator_body or body) + tail)))
     for ch in store.channels.all():
         if ch.get("enabled", True) and kind in (ch.get("events") or []):
