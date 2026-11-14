@@ -526,8 +526,11 @@ span.small { font-size: 12px; }
 .spool-form input, .spool-form select { border: 1px solid var(--text); border-radius: 0; background: var(--surface); color: var(--text); padding: 7px 9px; font-family: var(--font); font-size: 14px; text-transform: none; letter-spacing: 0; }
 .spool-form .row { display: flex; gap: 6px; }
 .spool-form input[type="color"] { width: 44px; padding: 2px; }
-.jc.spool { cursor: default; }
-.jc.spool:hover { box-shadow: none; }
-.jc.spool.empty { opacity: 0.6; }
+.jc.spool-card { cursor: default; }
+.jc.spool-card:hover { box-shadow: none; }
+.jc.spool-card.empty { opacity: 0.6; }
 .spool-top { display: flex; gap: 12px; align-items: center; padding: 14px 14px 0; }
 .swatch { width: 36px; height: 36px; border: 1px solid var(--text-muted); flex: none; }
+
+.parts-main .jobs-search { flex: none; }     /* a column flex parent would otherwise stretch it to its 280 px basis */
+.spool-form .custom { margin-top: 4px; }

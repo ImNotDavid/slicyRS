@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { api, type Catalog, type Printer, type Spool } from "../api";
 
+// owner request: colour and brand are chosen from lists ("Other" allows anything else)
+const BRANDS = ["Bambu Lab", "Polymaker", "Prusament", "eSun", "Sunlu", "Elegoo", "Overture", "Jayo", "Generic"];
+const COLOURS: [string, string][] = [["Black", "#111111"], ["White", "#f4f4f4"], ["Grey", "#8a8a8a"], ["Silver", "#c0c0c0"], ["Red", "#d0242b"], ["Orange", "#f07a1a"],
+  ["Yellow", "#f5d000"], ["Green", "#2f9e44"], ["Blue", "#1f5fd6"], ["Light blue", "#58a6ff"], ["Purple", "#7b3fbf"], ["Pink", "#f06aa6"], ["Brown", "#7a4b2a"],
+  ["Beige", "#d8c3a0"], ["Gold", "#c9a227"], ["Transparent", "#e8eef2"]];
+const OTHER = "__other";
+
 const EMPTY = { material: "PLA", colour_name: "", colour_hex: "#888888", brand: "", start_g: 1000, remaining_g: null as number | null, price: null as number | null, notes: "", printer_id: "" };
 
 /** Filament inventory (2.10): spools with remaining weight and cost; operators and admins. */
@@ -15,7 +22,7 @@ export default function FilamentPage({ catalog, printers }: { catalog: Catalog |
   const save = async () => {
     if (!form) return;
     setErr("");
-    const body = { ...form, printer_id: form.printer_id || null };
+    const body = { ...form, colour_name: form.colour_name.trim(), brand: form.brand.trim(), printer_id: form.printer_id || null };
     try { if (editing) await api.updateSpool(editing, body); else await api.addSpool(body); setForm(null); setEditing(null); load(); }
     catch (e) { setErr((e as Error).message); }
   };
@@ -35,9 +42,22 @@ export default function FilamentPage({ catalog, printers }: { catalog: Catalog |
       {form && (
         <div className="spool-form card-like">
           <label>Material<select value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })}>{materials.map((m) => <option key={m}>{m}</option>)}</select></label>
-          <label>Colour<span className="row"><input type="color" value={form.colour_hex} onChange={(e) => setForm({ ...form, colour_hex: e.target.value })} aria-label="Colour" />
-            <input value={form.colour_name} maxLength={40} placeholder="Name (e.g. Jade White)" onChange={(e) => setForm({ ...form, colour_name: e.target.value })} aria-label="Colour name" /></span></label>
-          <label>Brand<input value={form.brand} maxLength={60} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
+          <label>Colour
+            <select value={COLOURS.some(([n]) => n === form.colour_name) ? form.colour_name : form.colour_name ? OTHER : ""}
+              onChange={(e) => { const c = COLOURS.find(([n]) => n === e.target.value); setForm(c ? { ...form, colour_name: c[0], colour_hex: c[1] } : { ...form, colour_name: e.target.value === OTHER ? " " : "" }); }}>
+              <option value="">Choose a colour</option>{COLOURS.map(([n]) => <option key={n} value={n}>{n}</option>)}<option value={OTHER}>Other…</option>
+            </select>
+            {form.colour_name && !COLOURS.some(([n]) => n === form.colour_name) && (
+              <span className="row custom"><input type="color" value={form.colour_hex} onChange={(e) => setForm({ ...form, colour_hex: e.target.value })} aria-label="Colour" />
+                <input value={form.colour_name.trim()} maxLength={40} placeholder="Colour name" onChange={(e) => setForm({ ...form, colour_name: e.target.value || " " })} aria-label="Colour name" /></span>
+            )}
+          </label>
+          <label>Brand
+            <select value={BRANDS.includes(form.brand) ? form.brand : form.brand ? OTHER : ""} onChange={(e) => setForm({ ...form, brand: e.target.value === OTHER ? " " : e.target.value })}>
+              <option value="">Choose a brand</option>{BRANDS.map((b) => <option key={b}>{b}</option>)}<option value={OTHER}>Other…</option>
+            </select>
+            {form.brand && !BRANDS.includes(form.brand) && <input className="custom" value={form.brand.trim()} maxLength={60} placeholder="Brand" onChange={(e) => setForm({ ...form, brand: e.target.value || " " })} aria-label="Brand" />}
+          </label>
           <label>Spool weight (g)<input type="number" min={1} value={form.start_g} onChange={(e) => setForm({ ...form, start_g: Number(e.target.value) })} /></label>
           <label>Remaining (g)<input type="number" min={0} value={form.remaining_g ?? ""} placeholder="full" onChange={(e) => setForm({ ...form, remaining_g: e.target.value === "" ? null : Number(e.target.value) })} /></label>
           <label>Price<input type="number" min={0} step="0.01" value={form.price ?? ""} placeholder="optional" onChange={(e) => setForm({ ...form, price: e.target.value === "" ? null : Number(e.target.value) })} /></label>
@@ -49,7 +69,7 @@ export default function FilamentPage({ catalog, printers }: { catalog: Catalog |
       {err && <p className="form-error" role="alert">{err}</p>}
       <section className="jgrid" aria-label="Spools">
         {(data?.spools ?? []).map((s) => (
-          <article key={s.id} className={"jc spool" + (s.empty ? " empty" : "")}>
+          <article key={s.id} className={"jc spool-card" + (s.empty ? " empty" : "")}>
             <div className="spool-top"><span className="swatch" style={{ background: s.colour_hex ?? "#888" }} /><div><b>{s.material}</b><div className="muted small-text">{[s.colour_name, s.brand].filter(Boolean).join(" · ") || "—"}</div></div></div>
             <div className="body">
               <div className="live-bar" role="meter" aria-label="Remaining filament" aria-valuenow={s.percent ?? 0} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${s.percent ?? 0}%` }} /></div>
