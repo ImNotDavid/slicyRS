@@ -28,7 +28,7 @@ export type Printer = {
   bed?: Bed;
   users?: PrinterPerson[]; last_user?: PrinterPerson | null;   // operators and admins only
   maintenance?: { on: boolean; note: string; by: string; at: number } | null; attention?: { reason: string; at: number; job_id?: string | null } | null;
-  unavailable?: string | null; wait_s?: number | null;
+  unavailable?: string | null; wait_s?: number | null; camera?: boolean;
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null; remaining_min?: number; layer_num?: number; total_layer_num?: number; nozzle_c?: number; bed_c?: number };
   // admin only
@@ -51,7 +51,7 @@ export type JobPage = {
   settings: Record<string, number | string | boolean>; parts: JobPart[]; shared_with: { name: string; owner?: string }[];
   printer: { id: string; name: string; model: string; bed_type: string } | null; estimate_s: number | null; actual_s: number | null;
   filament_g: number | null; layers: number | null; result: Job["result"]; gcode: boolean; files_deleted: boolean; plate_to_clear: boolean;
-  photo: string | null; events: JobEvent[]; live: Live | null;
+  photo: string | null; camera: boolean; events: JobEvent[]; live: Live | null;
 };
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {

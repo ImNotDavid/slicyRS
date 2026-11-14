@@ -438,3 +438,10 @@ span.small { font-size: 12px; }
 .drop-hint { border: 1px dashed var(--text-muted); color: var(--text-muted); font-size: 12px; padding: 10px; text-align: center; }
 .drop-hint.bad { border-color: #b91c1c; color: #b91c1c; }
 .toast-q { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--surface); font-size: 13px; padding: 10px 14px; z-index: 30; max-width: 90vw; }
+
+/* printer camera (2.7) */
+.camera-view { position: relative; min-height: 200px; background: #000; display: grid; place-items: center; border: 1px solid var(--text-muted); }
+.camera-view img { display: block; width: 100%; height: auto; }
+.camera-view .muted { color: #bbb; padding: 20px; text-align: center; }
+.cam-badge { position: absolute; left: 8px; top: 8px; background: var(--brand-yellow); color: #000; font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 6px; }

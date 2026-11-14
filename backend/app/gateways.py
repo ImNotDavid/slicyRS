@@ -169,6 +169,14 @@ class RemoteLink:
             raise PrinterError(res.get("error") or "The gateway could not print this")
         return bool(res.get("started"))
 
+    def snapshot(self) -> bytes:
+        import base64
+        from .camera import CameraError
+        res = hub.request(self.gateway_id, {"type": "snapshot", "printer_id": self.printer_id}, CONTROL_TIMEOUT_S)
+        if not res.get("ok"):
+            raise CameraError(res.get("error") or "The gateway could not take a picture")
+        return base64.b64decode(res["jpeg"])
+
     def control(self, action: str) -> bool:
         res = hub.request(self.gateway_id, {"type": "control", "printer_id": self.printer_id, "action": action}, CONTROL_TIMEOUT_S)
         if not res.get("ok"):

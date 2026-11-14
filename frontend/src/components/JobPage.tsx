@@ -4,6 +4,7 @@ import { api, gcodeUrl, type Catalog, type JobPage as Page } from "../api";
 import Viewport from "./Viewport";
 import PlateCheck from "./PlateCheck";
 import LiveProgress from "./LiveProgress";
+import CameraView from "./CameraView";
 import { statusOf } from "./JobsGrid";
 import { fmtTime } from "../format";
 import { TRAVEL, type FeatureInfo } from "../gcode";
@@ -40,7 +41,7 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
   const [layers, setLayers] = useState(0);
   const [top, setTop] = useState(0);
   const [features, setFeatures] = useState<FeatureInfo[]>([]);
-  const [view, setView] = useState<"toolpaths" | "photo">("toolpaths");
+  const [view, setView] = useState<"toolpaths" | "photo" | "camera">("toolpaths");
   const [tab, setTab] = useState<Tab>("settings");
   const [allSettings, setAllSettings] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -116,14 +117,15 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
 
       <div className="job-main">
         <section className="job-card" aria-label="Preview">
-          <div className="card-head"><h3>{view === "photo" ? "Plate photo" : "Sliced preview"}</h3>
+          <div className="card-head"><h3>{view === "photo" ? "Plate photo" : view === "camera" ? "Live camera" : "Sliced preview"}</h3>
             <div className="seg small" role="radiogroup" aria-label="Preview">
               <button role="radio" aria-checked={view === "toolpaths"} className={view === "toolpaths" ? "on" : ""} onClick={() => setView("toolpaths")}>Toolpaths</button>
               <button role="radio" aria-checked={view === "photo"} className={view === "photo" ? "on" : ""} onClick={() => setView("photo")}>Plate photo</button>
+              {p.camera && p.printer && (p.live || p.plate_to_clear) && <button role="radio" aria-checked={view === "camera"} className={view === "camera" ? "on" : ""} onClick={() => setView("camera")}>Live camera</button>}
             </div></div>
-          {view === "photo" ? (
+          {view === "camera" && p.printer ? <CameraView printerId={p.printer.id} /> : view === "photo" ? (
             p.photo ? <img src={p.photo} alt="The finished plate" className="job-photo" /> :
-              <div className="photo-slot big"><Camera size={22} /><span>A camera picture of the finished plate shows here once printer cameras are connected.</span></div>
+              <div className="photo-slot big"><Camera size={22} /><span>{p.camera ? "A picture of the plate is taken when the print ends." : "This printer's camera is not supported yet (the A1 and P1 families are)."}</span></div>
           ) : gcode ? (
             <>
               <div className="job-preview">
@@ -152,7 +154,7 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
           <section className="job-card" aria-label="Finished plate">
             <h3>Finished plate</h3>
             {p.photo ? <img src={p.photo} alt="The finished plate" className="job-photo" /> :
-              <div className="photo-slot"><Camera size={20} /><span>A camera picture of the finished plate shows here once printer cameras are connected.</span></div>}
+              <div className="photo-slot"><Camera size={20} /><span>{p.camera ? "A picture of the plate is taken when the print ends." : "This printer's camera is not supported yet."}</span></div>}
           </section>
         </div>
       </div>

@@ -152,6 +152,20 @@ def bed_clear(printer_id: str, body: BedClearIn, user: dict = User):
     return bed
 
 
+@router.get("/api/printers/{printer_id}/camera.jpg")
+def printer_camera(printer_id: str, user: dict = User):
+    """A recent picture from the printer's camera (owner decision: everyone signed in may look). Reused for 2.5 s so many viewers
+    do not each open a connection to the printer."""
+    from fastapi.responses import Response
+    from .. import camera
+    p = _printer_or_404(printer_id)
+    try:
+        data = camera.printer_picture(p)
+    except camera.CameraError as e:
+        raise HTTPException(404 if "not supported" in str(e) or "no connection" in str(e) else 502, str(e))
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 class MaintenanceIn(BaseModel):
     on: bool
     note: str = Field("", max_length=200)

@@ -26,7 +26,8 @@ def _public_printer(p: dict[str, Any], admin: bool, people: bool = False) -> dic
            "bed_type": p.get("bed_type") or DEFAULT_BED_TYPE, "bed": bedstate.get(p), "nozzle_mm": assign.nozzle_of(p),
            "queue_depth": _queue_depth(p["id"]), "live": bool(p.get("host")),
            "maintenance": p.get("maintenance") if (p.get("maintenance") or {}).get("on") else None,   # the note is for everyone (owner decision)
-           "attention": p.get("attention") or None, "unavailable": upkeep.unavailable(p), "wait_s": upkeep.wait_s(p)}
+           "attention": p.get("attention") or None, "unavailable": upkeep.unavailable(p), "wait_s": upkeep.wait_s(p),
+           "camera": _has_camera(p)}
     if people or admin:
         out.update(printer_people(p))
     if admin:
@@ -78,6 +79,12 @@ def printer_people(printer: dict[str, Any]) -> dict[str, Any]:
             users.append(who(j))
     last = who(finished[-1]) if finished and not users else None
     return {"users": users, "last_user": last}
+
+
+def _has_camera(p: dict[str, Any]) -> bool:
+    """Whether a live picture can be asked for: a supported model the server reaches directly or through a gateway."""
+    from .. import camera
+    return camera.supported(p) and bool((p.get("host") and p.get("serial") and p.get("access_code")) or p.get("gateway"))
 
 
 def _queue_depth(printer_id: str) -> int:

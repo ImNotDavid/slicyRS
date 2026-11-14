@@ -11,7 +11,7 @@ from .. import bedstate, goals, jobstate, meshio, permissions, plates, store, th
 from ..catalog import FIELDS, job_nozzle
 from ..defaults import ui_defaults
 from ..storage import JOBS, MODELS, files
-from .common import User, live_progress
+from .common import User, _has_camera, live_progress
 from .jobs import _viewable_job
 
 router = APIRouter()
@@ -91,7 +91,8 @@ def job_page(job_id: str, user: dict = User):
         "plate_to_clear": bool(printer and job.get("phase") in FINISHED and bed.get("state") == "occupied"
                                and any(j["id"] == job["id"] for j in bedstate.last_plate(printer["id"]))),
         "live": live_progress(job),         # percent, time left, layer and temperatures while it prints (2.1)
-        "photo": None,                      # a camera picture of the finished plate (2.7) lands here
+        "photo": f"/api/jobs/{job['id']}/photo.jpg?t={int(lead.get('photo_at') or 0)}" if _photo_path(lead) else None,   # 2.7
+        "camera": bool(printer and _has_camera(printer)),
         "events": jobstate.events_for(job["id"]),
     }
 
@@ -142,3 +143,22 @@ def job_thumbnail(job_id: str, user: dict = User):
                 raise HTTPException(404, "No picture for this job")
             files.write_bytes(JOBS, job["id"], THUMB, thumbnail.render(mesh, size=256, colour=THUMB_COLOUR))
     return Response(path.read_bytes(), media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+
+def _photo_path(job: dict[str, Any]):
+    from ..camera import PHOTO
+    if job.get("files_deleted_at") or not job.get("photo_at") or not files.exists(JOBS, job["id"]):
+        return None
+    p = files.path(JOBS, job["id"], PHOTO)
+    return p if p.exists() else None
+
+
+@router.get("/api/jobs/{job_id}/photo.jpg")
+def job_photo(job_id: str, user: dict = User):
+    """The camera picture of the plate taken when the print ended (2.7)."""
+    job = _viewable_job(job_id, user)
+    lead = plates.lead_of(job) or job
+    path = _photo_path(lead) or _photo_path(job)
+    if not path:
+        raise HTTPException(404, "No photo for this job")
+    return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})

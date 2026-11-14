@@ -175,6 +175,11 @@ class LanLink:
             time.sleep(0.5)
         return False
 
+    def snapshot(self) -> bytes:
+        """One picture from the printer's camera (A1 and P1 families). Raises camera.CameraError."""
+        from .camera import snapshot
+        return snapshot(self.host, self.code)
+
     # what the printer reports once each command has taken effect
     CONTROL_DONE = {"pause": {"PAUSE"}, "resume": {"RUNNING", "PREPARE"}, "stop": {"FAILED", "IDLE", "FINISH"}}
 

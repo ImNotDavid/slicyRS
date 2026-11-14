@@ -19,6 +19,9 @@ class PrinterAdapter(Protocol):
     def control(self, action: str) -> bool:
         """Pause, resume or stop the running print ("pause" | "resume" | "stop"). True once the printer reports it. Raises AdapterError."""
 
+    def snapshot(self) -> bytes:
+        """One JPEG from the printer's camera. Raises camera.CameraError."""
+
     def stop(self) -> None:
         """Close the connection."""
 

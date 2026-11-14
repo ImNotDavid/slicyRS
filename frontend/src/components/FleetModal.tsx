@@ -5,6 +5,7 @@ import { Harry } from "./Brand";
 import type { Printer } from "../api";
 import PlateCheck from "./PlateCheck";
 import LiveProgress from "./LiveProgress";
+import CameraView from "./CameraView";
 
 type Props = { printers: Printer[]; onClose?: () => void; onChanged?: () => void; inline?: boolean; onOpenJob?: (id: string) => void };
 
@@ -18,6 +19,7 @@ const textOn = (hex: string) => {
 export default function FleetModal({ printers, onClose, onChanged, inline, onOpenJob }: Props) {
   const visible = printers.filter((p) => p.enabled);
   const [open, setOpen] = useState<string | null>(null);
+  const [cam, setCam] = useState<string | null>(null);
   const [maint, setMaint] = useState<{ id: string; note: string } | null>(null);
   const [err, setErr] = useState("");
   const act = async (fn: () => Promise<unknown>) => { setErr(""); try { await fn(); setMaint(null); onChanged?.(); } catch (e) { setErr((e as Error).message); } };
@@ -54,6 +56,8 @@ export default function FleetModal({ printers, onClose, onChanged, inline, onOpe
                   <span key={s.slot} className="slot" title={`${s.type} ${s.remain}%`} style={{ background: s.color, color: textOn(s.color) }}>{s.type}</span>
                 ))}
               </div>
+              {p.camera && <button className="mini self-start" aria-pressed={cam === p.id} onClick={() => setCam(cam === p.id ? null : p.id)}>{cam === p.id ? "Hide camera" : "Camera"}</button>}
+              {cam === p.id && <CameraView printerId={p.id} />}
               {p.attention && (
                 <div className="upkeep attention" role="status"><b>Needs attention</b><span>{p.attention.reason}. It stays out of the pool until someone checks it.</span>
                   <button className="btn primary" onClick={() => act(() => api.markReady(p.id))}>Mark ready</button></div>
