@@ -13,7 +13,7 @@ class AdapterError(Exception):
 
 @runtime_checkable
 class PrinterAdapter(Protocol):
-    def send_print(self, local_path: Path, remote_name: str, plate: str = ...) -> bool:
+    def send_print(self, local_path: Path, remote_name: str, plate: str = ..., timelapse: bool = False) -> bool:
         """Transfer a sliced job and start it. True once the printer reports it started. Raises AdapterError."""
 
     def control(self, action: str) -> bool:

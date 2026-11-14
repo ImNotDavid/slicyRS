@@ -192,3 +192,9 @@ Frontend typecheck: `cd frontend && npx tsc --noEmit`. **This was not run after 
 - UI: `components/CameraView.tsx` (refreshes every 3 s while the tab is visible); job page preview switch gains "Live camera" while printing or waiting to be cleared, Plate photo and Finished plate show the saved picture; Fleet cards have a Camera button.
 - Tests use a fake TLS camera with a generated certificate (`tests/test_camera.py`). Not yet seen on a real A1 mini.
 - Light for the plate photo (owner request): `LanLink.light(on)` sends Bambu `ledctrl` for `chamber_light` (the work light on an A1); the printer's `lights_report` is read into `status.light`. `camera.lit_picture` switches the light on (unless it already is), waits 2 s for the exposure, takes the picture, and switches it off again; a light that cannot be switched does not stop the picture. Gateways forward a `light` message. Live views do not touch the light.
+
+## Timelapse (2.8)
+
+- Asked for per print: `timelapse` on the job (Submit dialog box, `POST /api/jobs/{id}/submit {timelapse}`, or `POST /api/jobs/{id}/print?timelapse=true`). `printing.start` records the card's existing videos (`timelapse_before`), sends `"timelapse": true` in the Bambu `project_file` command (also through gateways), and sets `timelapse_wanted`.
+- `app/timelapse.py`: after the result (`outcomes`), a background thread waits 45 s, then every 30 s lists `/timelapse` over FTPS, takes the newest new video once its size is the same on two checks, copies it to `timelapse.mp4|avi` in the job's files, deletes it from the card, and records `timelapse_saved` (or `timelapse_missing` after 20 minutes). `LanLink.list_timelapses`, `timelapse_size`, `fetch_timelapse`. Gateway printers: the video is recorded but not fetched yet.
+- `GET /api/jobs/{id}/timelapse` (job.view). Job page: Timelapse option in the preview switch (video for MP4, download for AVI) and a line in Files. The test FTPS server now understands NLST, RETR and DELE.

@@ -190,8 +190,10 @@ def _remote_name(job: dict[str, Any]) -> str:
 
 
 @router.post("/api/jobs/{job_id}/print")
-def print_job(job_id: str, user: dict = User):
+def print_job(job_id: str, timelapse: bool = False, user: dict = User):
     job = _owned_job(job_id, user)
+    if timelapse:                                   # 2.8: the owner asked for a timelapse of this print
+        job = store.jobs.update(job_id, timelapse=True) or job
     bundle = _job_file(job_id, "bundle", user)
     if job.get("batch_lead"):                       # any owner on a shared plate may start it
         job = store.jobs.get(job["batch_lead"]) or job
@@ -343,6 +345,7 @@ class SubmitIn(BaseModel):
     colour: str = Field("any", max_length=40)  # recorded for later colour matching
     auto_start: bool = True                  # ignored: pool jobs always start by themselves now (owner decision); kept for old clients
     allow_batching: bool = False             # may share a plate with other people's parts (they wait for a partner while there is time)
+    timelapse: bool = False                  # record a timelapse of the print (2.8)
 
 
 @router.post("/api/jobs/{job_id}/submit")
@@ -364,7 +367,8 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
                                        "Choose a later time or submit without one.",
                              "earliest_pickup": check["earliest_finish"]}, status_code=409)
     jobstate.transition(job_id, "pooled", user["email"], state="pooled", pooled=True, draft=False, submitted_at=now, pickup_by=body.pickup_by,
-                        colour=body.colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False)
+                        colour=body.colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False,
+                        timelapse=body.timelapse)
     _discard_slice_drafts(user, (job.get("spec") or {}).get("model_id"), keep=job_id)
     audit(user, "job_submit", f"{job['name']}" + (f" pickup by {time.strftime('%Y-%m-%d %H:%M', time.localtime(body.pickup_by))}" if body.pickup_by else ""))
     allocator.tick()

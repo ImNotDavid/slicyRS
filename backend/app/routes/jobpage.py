@@ -2,6 +2,7 @@
 from typing import Any
 
 import threading
+from pathlib import Path
 
 import trimesh
 from fastapi import APIRouter, HTTPException
@@ -93,6 +94,9 @@ def job_page(job_id: str, user: dict = User):
         "live": live_progress(job),         # percent, time left, layer and temperatures while it prints (2.1)
         "photo": f"/api/jobs/{job['id']}/photo.jpg?t={int(lead.get('photo_at') or 0)}" if _photo_path(lead) else None,   # 2.7
         "camera": bool(printer and _has_camera(printer)),
+        "timelapse": (f"/api/jobs/{job['id']}/timelapse" if _timelapse_path(lead) else None),
+        "timelapse_type": (lead.get("timelapse_file") or "").rsplit(".", 1)[-1] or None,
+        "timelapse_wanted": bool(job.get("timelapse") or lead.get("timelapse_wanted")),
         "events": jobstate.events_for(job["id"]),
     }
 
@@ -162,3 +166,24 @@ def job_photo(job_id: str, user: dict = User):
     if not path:
         raise HTTPException(404, "No photo for this job")
     return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+def _timelapse_path(job: dict[str, Any]):
+    name = job.get("timelapse_file")
+    if not name or job.get("files_deleted_at") or not files.exists(JOBS, job["id"]):
+        return None
+    p = files.path(JOBS, job["id"], name)
+    return p if p.exists() else None
+
+
+@router.get("/api/jobs/{job_id}/timelapse")
+def job_timelapse(job_id: str, user: dict = User):
+    """The print's timelapse video (2.8): the job's owners, operators and admins (owner decision)."""
+    from fastapi.responses import FileResponse
+    job = _viewable_job(job_id, user)
+    lead = plates.lead_of(job) or job
+    path = _timelapse_path(lead)
+    if not path:
+        raise HTTPException(404, "No timelapse for this job")
+    media = "video/mp4" if path.suffix == ".mp4" else "video/x-msvideo"
+    return FileResponse(path, media_type=media, filename=f"{Path(job['name']).stem}-timelapse{path.suffix}")

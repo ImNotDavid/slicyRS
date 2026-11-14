@@ -51,7 +51,7 @@ export type JobPage = {
   settings: Record<string, number | string | boolean>; parts: JobPart[]; shared_with: { name: string; owner?: string }[];
   printer: { id: string; name: string; model: string; bed_type: string } | null; estimate_s: number | null; actual_s: number | null;
   filament_g: number | null; layers: number | null; result: Job["result"]; gcode: boolean; files_deleted: boolean; plate_to_clear: boolean;
-  photo: string | null; camera: boolean; events: JobEvent[]; live: Live | null;
+  photo: string | null; camera: boolean; timelapse: string | null; timelapse_type: string | null; timelapse_wanted: boolean; events: JobEvent[]; live: Live | null;
 };
 export type Gateway = { id: string; name: string; created: number | null; last_seen: number | null; version?: string | null; online: boolean; printers: string[] };
 export type PrinterInput = {
@@ -170,7 +170,7 @@ export const api = {
   draft: (body: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null }) =>
     post("/api/jobs/preview", body).then(j<Job>),
   forecast: (id: string, pickup_by?: number) => fetch(`/api/jobs/${id}/forecast${pickup_by ? `?pickup_by=${pickup_by}` : ""}`).then(j<Forecast>),
-  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean }) => {
+  submit: async (id: string, body: { pickup_by?: number | null; colour?: string; auto_start?: boolean; allow_batching?: boolean; timelapse?: boolean }) => {
     const res = await post(`/api/jobs/${id}/submit`, body);
     if (res.status === 409) { const d = await res.json().catch(() => ({})); if (d.earliest_pickup) throw Object.assign(new Error(d.detail), { earliest: d.earliest_pickup as number }); throw new Error(d.detail ?? "Cannot submit"); }
     return j<Job>(res);
@@ -193,7 +193,7 @@ export const api = {
   jobs: (scope: "mine" | "all" = "mine") => fetch(`/api/jobs${scope === "all" ? "?scope=all" : ""}`).then(j<Job[]>),
   jobPage: (id: string) => fetch(`/api/jobs/${id}/page`).then(j<JobPage>),
   modelInfo: (id: string) => fetch(`/api/models/${id}`).then(j<{ id: string; name: string; dims: [number, number, number] }>),
-  print: (id: string) => post(`/api/jobs/${id}/print`).then(j<{ ok: boolean; started: boolean; file: string }>),
+  print: (id: string, timelapse = false) => post(`/api/jobs/${id}/print${timelapse ? "?timelapse=true" : ""}`).then(j<{ ok: boolean; started: boolean; file: string }>),
   printers: () => fetch("/api/printers").then(j<Printer[]>),
   gateways: () => fetch("/api/admin/gateways").then(j<Gateway[]>),
   addGateway: (name: string) => send("POST", "/api/admin/gateways", { name }).then(j<Gateway & { token: string }>),

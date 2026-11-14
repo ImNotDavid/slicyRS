@@ -110,7 +110,8 @@ class Agent:
         try:
             if msg.get("size") and path.stat().st_size != msg["size"]:
                 return {"ok": False, "error": "The file arrived incomplete at the gateway"}
-            return {"ok": True, "started": bool(link.send_print(path, msg["remote_name"], msg.get("plate") or "Metadata/plate_1.gcode"))}
+            return {"ok": True, "started": bool(link.send_print(path, msg["remote_name"], msg.get("plate") or "Metadata/plate_1.gcode",
+                                                                timelapse=bool(msg.get("timelapse"))))}
         except bambulan.PrinterError as e:
             return {"ok": False, "error": str(e)}
         except Exception as e:

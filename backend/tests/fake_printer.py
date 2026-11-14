@@ -95,6 +95,29 @@ class FakeFTPS:
                     if self.drop:
                         return  # Bambu quirk: control connection vanishes after the transfer
                     send("226 Transfer complete")
+                elif cmd == "NLST":
+                    folder = arg.rstrip("/") + "/"
+                    names = "".join(k[len(folder):] + "\r\n" for k in self.files if k.startswith(folder))
+                    send("150 listing")
+                    dconn, _ = data_listener.accept()
+                    dconn = self.ctx.wrap_socket(dconn, server_side=True)
+                    dconn.sendall(names.encode())
+                    dconn.unwrap()
+                    dconn.close()
+                    send("226 done")
+                elif cmd == "RETR":
+                    if arg not in self.files:
+                        send("550 no such file")
+                        continue
+                    send("150 sending")
+                    dconn, _ = data_listener.accept()
+                    dconn = self.ctx.wrap_socket(dconn, server_side=True)
+                    dconn.sendall(self.files[arg])
+                    dconn.unwrap()
+                    dconn.close()
+                    send("226 done")
+                elif cmd == "DELE":
+                    send("250 deleted" if self.files.pop(arg, None) is not None else "550 no such file")
                 elif cmd == "SIZE":
                     if self.size_supported and arg in self.files:
                         send(f"213 {len(self.files[arg])}")

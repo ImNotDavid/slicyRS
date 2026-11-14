@@ -130,7 +130,7 @@ class LanLink:
         if update:
             self.on_status(self.id, update)
 
-    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode") -> bool:
+    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode", timelapse: bool = False) -> bool:
         """Upload a sliced .gcode.3mf over FTPS, then start it over MQTT. Returns True once the printer reports it started.
 
         Raises PrinterError with a user-readable message on any failure.
@@ -149,7 +149,7 @@ class LanLink:
             "project_id": "0", "profile_id": "0", "task_id": "0", "subtask_id": "0",
             "subtask_name": remote_name.removesuffix(".gcode.3mf"), "url": f"file:///sdcard/{remote_name}",
             "md5": _plate_md5(local_path, plate),
-            "timelapse": False, "bed_leveling": True, "flow_cali": True, "vibration_cali": True,
+            "timelapse": bool(timelapse), "bed_leveling": True, "flow_cali": True, "vibration_cali": True,
             "layer_inspect": True, "use_ams": use_ams, "bed_type": bed,
         }}
         if use_ams:
@@ -217,6 +217,72 @@ class LanLink:
                 return True
             time.sleep(0.5)
         return False
+
+    TIMELAPSE_DIR = "/timelapse"
+
+    def _ftp(self) -> "_ImplicitFTPS":
+        ftp = _ImplicitFTPS()
+        ftp.connect(self.host, self.ftp_port, timeout=30)
+        ftp.login("bblp", self.code)
+        ftp.prot_p()
+        ftp.voidcmd("TYPE I")
+        return ftp
+
+    def list_timelapses(self) -> list[str]:
+        """Paths of the timelapse videos on the SD card (2.8). An empty list when the folder does not exist yet."""
+        ftp = self._ftp()
+        try:
+            try:
+                names = ftp.nlst(self.TIMELAPSE_DIR)
+            except ftplib.error_perm:
+                return []
+            out = []
+            for n in names:
+                base = n.rsplit("/", 1)[-1]
+                if base.lower().endswith((".mp4", ".avi")):
+                    out.append(f"{self.TIMELAPSE_DIR}/{base}")
+            return sorted(out)
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+
+    def timelapse_size(self, path: str) -> int | None:
+        ftp = self._ftp()
+        try:
+            return ftp.size(path)
+        except (ftplib.Error, OSError, EOFError):
+            return None
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+
+    def fetch_timelapse(self, path: str, dest: Path, delete: bool = True) -> int:
+        """Copy one timelapse off the SD card to `dest`, then delete it from the card (owner decision). Returns its size."""
+        ftp = self._ftp()
+        try:
+            try:
+                size = ftp.size(path)
+            except (ftplib.Error, OSError, EOFError):
+                size = None
+            with open(dest, "wb") as fh:
+                ftp.retrbinary(f"RETR {path}", fh.write)
+            got = dest.stat().st_size
+            if size is not None and got != size:
+                raise PrinterError(f"The timelapse copy is incomplete ({got} of {size} bytes)")
+            if delete:
+                ftp.delete(path)
+            return got
+        except ftplib.error_perm as e:
+            raise PrinterError(f"The printer refused the timelapse: {e}")
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
 
     def _upload(self, local_path: Path, remote_name: str) -> None:
         size = local_path.stat().st_size

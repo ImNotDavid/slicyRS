@@ -136,8 +136,9 @@ def _record_final(printer_id: str, status: dict[str, Any], name: str) -> None:
         "duration_s": round(now - started) if started else None,
     }
     result["summary"] = _summary(outcome, job, result)
-    from . import camera              # a picture of how the plate ended up, for the job page (2.7); never fails the result
+    from . import camera, timelapse   # a picture of how the plate ended up (2.7) and the video, if one was asked for (2.8)
     camera.photograph_plate(job["id"], printer_id)
+    timelapse.after_print(store.jobs.get(job["id"]) or job, printer_id)
     from .printcontrol import recent_control
     stopped = recent_control(job, "stop") if outcome == "failed" else None
     if stopped:

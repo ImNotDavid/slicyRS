@@ -17,6 +17,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
   const [error, setError] = useState("");
   const [by, setBy] = useState("");
   const [share, setShare] = useState(false);
+  const [lapse, setLapse] = useState(false);
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [earliest, setEarliest] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,7 +48,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
   const submit = async () => {
     if (!job) return;
     setBusy(true); setError(""); setEarliest(null);
-    try { onDone(await api.submit(job.id, { pickup_by: pickup ?? null, auto_start: true, allow_batching: share })); }
+    try { onDone(await api.submit(job.id, { pickup_by: pickup ?? null, auto_start: true, allow_batching: share, timelapse: lapse })); }
     catch (e) { setError((e as Error).message); setEarliest((e as { earliest?: number }).earliest ?? null); }
     setBusy(false);
   };
@@ -75,6 +76,7 @@ export default function SubmitModal({ spec, onClose, onDone }: Props) {
                 <input type="datetime-local" value={by} min={local(Date.now() / 1000)} onChange={(e) => { setBy(e.target.value); setError(""); setEarliest(null); }} />
               </label>
               <label className="check"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} /> Allow my part to share a plate with other people's parts</label>
+              <label className="check"><input type="checkbox" checked={lapse} onChange={(e) => setLapse(e.target.checked)} /> Record a timelapse of the print (it appears on the job's page afterwards)</label>
               {share && <p className="muted">Only parts in the same filament and layer height can share; each part keeps its own wall, infill, speed and support settings. The job may wait for a partner (never past your pickup time, and at most the admin-set maximum), and if one part on a shared plate fails, the others can be affected. Any one owner can clear the plate afterwards.</p>}
               <p className="muted">The system picks the printer, and the print starts by itself as soon as that printer is free and its plate is clear. Leave the time empty if you do not mind when it is done.</p>
             </>

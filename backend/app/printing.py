@@ -38,9 +38,17 @@ def start(job: dict[str, Any], bundle: Path, actor: dict[str, Any] | None, requi
         raise PrintBlocked(409, "This printer has no live connection (an admin must add its IP, serial and access code); "
                                 "download the file and print from SD instead")
     who = actor["email"] if actor else "allocator"
+    from . import plates
+    want_timelapse = any(j.get("timelapse") for j in plates.jobs_on_plate(job))     # 2.8: recorded only when an owner asked
+    before: list[str] = []
+    if want_timelapse and hasattr(link, "list_timelapses"):
+        try:
+            before = link.list_timelapses()          # so the new video can be told apart from older ones afterwards
+        except Exception:
+            logging.getLogger("slicyrs").info("could not list timelapses before printing", exc_info=True)
     try:
         remote = remote_name(job)
-        started = link.send_print(bundle, remote)
+        started = link.send_print(bundle, remote, timelapse=want_timelapse)
     except AdapterError as e:
         audit(actor, "print_failed", f"{job['name']} -> {job['printer_name']}: {e}")
         raise PrintBlocked(502, str(e))
@@ -49,7 +57,7 @@ def start(job: dict[str, Any], bundle: Path, actor: dict[str, Any] | None, requi
         audit(actor, "print_failed", f"{job['name']} -> {job['printer_name']}: {type(e).__name__}")
         raise PrintBlocked(502, f"Unexpected error talking to the printer: {type(e).__name__}: {e}")
     jobstate.transition(job["id"], "printing", who, force=True, queued=True, printed=True, remote_name=remote,
-                        started_at=time.time(), result=None)
+                        started_at=time.time(), result=None, timelapse_wanted=want_timelapse, timelapse_before=before)
     bedstate.set_state(job["printer_id"], "occupied", "print_started", by=who)
     audit(actor, "print", f"{job['name']} -> {job['printer_name']}")
     return {"ok": True, "started": started, "file": remote}

@@ -243,11 +243,12 @@ export default function App({ user, reuseRequest, onReused }: {
     setBusy(false);
   };
 
+  const [lapse, setLapse] = useState(false);   // 2.8: record a timelapse of a print started from here
   const print = async () => {
     if (!job) return;
     setBusy(true);
     try {
-      const r = await api.print(job.id);
+      const r = await api.print(job.id, lapse);
       setJob({ ...job, printed: true, queued: true });
       setMessage({ kind: "ok", text: r.started ? `Printing on ${job.printer_name}` : `Uploaded '${r.file}' to ${job.printer_name}'s SD card but it has not reported starting. Start it from the printer's screen.` });
       refreshPrinters();
@@ -669,6 +670,7 @@ export default function App({ user, reuseRequest, onReused }: {
               <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
             </button>
             <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
+            <label className="lapse-toggle" title="Record a timelapse of this print"><input type="checkbox" checked={lapse} onChange={(e) => setLapse(e.target.checked)} disabled={!ready || job?.printed} /> Timelapse</label>
             <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
           </>}
         </div>

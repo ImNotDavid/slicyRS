@@ -41,7 +41,7 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
   const [layers, setLayers] = useState(0);
   const [top, setTop] = useState(0);
   const [features, setFeatures] = useState<FeatureInfo[]>([]);
-  const [view, setView] = useState<"toolpaths" | "photo" | "camera">("toolpaths");
+  const [view, setView] = useState<"toolpaths" | "photo" | "camera" | "timelapse">("toolpaths");
   const [tab, setTab] = useState<Tab>("settings");
   const [allSettings, setAllSettings] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -117,13 +117,17 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
 
       <div className="job-main">
         <section className="job-card" aria-label="Preview">
-          <div className="card-head"><h3>{view === "photo" ? "Plate photo" : view === "camera" ? "Live camera" : "Sliced preview"}</h3>
+          <div className="card-head"><h3>{view === "photo" ? "Plate photo" : view === "camera" ? "Live camera" : view === "timelapse" ? "Timelapse" : "Sliced preview"}</h3>
             <div className="seg small" role="radiogroup" aria-label="Preview">
               <button role="radio" aria-checked={view === "toolpaths"} className={view === "toolpaths" ? "on" : ""} onClick={() => setView("toolpaths")}>Toolpaths</button>
               <button role="radio" aria-checked={view === "photo"} className={view === "photo" ? "on" : ""} onClick={() => setView("photo")}>Plate photo</button>
+              {p.timelapse && <button role="radio" aria-checked={view === "timelapse"} className={view === "timelapse" ? "on" : ""} onClick={() => setView("timelapse")}>Timelapse</button>}
               {p.camera && p.printer && (p.live || p.plate_to_clear) && <button role="radio" aria-checked={view === "camera"} className={view === "camera" ? "on" : ""} onClick={() => setView("camera")}>Live camera</button>}
             </div></div>
-          {view === "camera" && p.printer ? <CameraView printerId={p.printer.id} /> : view === "photo" ? (
+          {view === "timelapse" && p.timelapse ? (p.timelapse_type === "mp4"
+            ? <video className="job-video" src={p.timelapse} controls preload="metadata" />
+            : <div className="photo-slot big"><span>This printer records timelapses as {p.timelapse_type?.toUpperCase()} files, which browsers cannot play. <a href={p.timelapse}>Download it</a> and open it in a video player such as VLC.</span></div>)
+          : view === "camera" && p.printer ? <CameraView printerId={p.printer.id} /> : view === "photo" ? (
             p.photo ? <img src={p.photo} alt="The finished plate" className="job-photo" /> :
               <div className="photo-slot big"><Camera size={22} /><span>{p.camera ? "A picture of the plate is taken when the print ends." : "This printer's camera is not supported yet (the A1 and P1 families are)."}</span></div>
           ) : gcode ? (
@@ -203,6 +207,7 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
         {tab === "files" && (
           <dl className="review-facts">
             <dt>Model{p.parts.length > 1 ? "s" : ""}</dt><dd>{p.parts.map((x) => `${x.name}${x.available ? "" : " (removed)"}`).join(", ")}</dd>
+            <dt>Timelapse</dt><dd>{p.timelapse ? <a href={p.timelapse}>Download</a> : p.timelapse_wanted ? (p.events.some((e) => e.kind === "timelapse_missing") ? "Asked for, but no video was found on the printer" : j.result ? "Being copied from the printer…" : "Will be recorded") : "Not asked for"}</dd>
             <dt>Sliced file</dt><dd>{p.gcode ? "Available" : p.files_deleted ? "Removed to save space" : "Not sliced yet"}</dd>
             <dt>Plate layout</dt><dd>{p.parts.length > 1 ? `${p.parts.length} parts` : "1 part"}{p.shared_with.length ? `, plus ${p.shared_with.length} from other people` : ""}</dd>
             <dt>Created</dt><dd>{when(j.created)}</dd>
