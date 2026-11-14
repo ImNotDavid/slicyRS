@@ -28,7 +28,7 @@ export type Printer = {
   bed?: Bed;
   users?: PrinterPerson[]; last_user?: PrinterPerson | null;   // operators and admins only
   maintenance?: { on: boolean; note: string; by: string; at: number } | null; attention?: { reason: string; at: number; job_id?: string | null } | null;
-  unavailable?: string | null; wait_s?: number | null; camera?: boolean;
+  unavailable?: string | null; wait_s?: number | null; camera?: boolean; needs_cause?: string | null;
   id: string; name: string; model: string; hardened_nozzle?: boolean; enabled: boolean; queue_depth: number; live: boolean; bed_type: string; nozzle_mm?: number;
   status: { state: string; ams?: AmsSlot[]; progress?: number; error?: string | null; remaining_min?: number; layer_num?: number; total_layer_num?: number; nozzle_c?: number; bed_c?: number };
   // admin only
@@ -50,7 +50,7 @@ export type HomeData = {
   pool: { jobs_waiting: number; printers: number; printers_free: number; typical_wait_s: number | null; printers_out: number };
   notices: { id: string; text: string; level: "info" | "warning"; created: number; by: string; until: number | null }[];
   fleet?: { by_state: Record<string, number>; needs_attention: { id: string; name: string; why: string }[]; maintenance: { id: string; name: string; note: string }[];
-    plates_to_clear: { id: string; name: string }[]; at_risk: number };
+    plates_to_clear: { id: string; name: string }[]; at_risk: number; flags?: FailureFlag[] };
 };
 export type SavedPart = { id: string; name: string; created: number | null; last_used: number | null; dims: [number, number, number] | null; folder_id: string | null;
   available: boolean; size: number; jobs: number; printed: number; last_job: { id: string; name: string; phase: string; filament: string } | null };
@@ -65,10 +65,17 @@ export type Dashboard = {
   failure_reasons: { reason: string; count: number }[];
   queue: { samples: number; median_s: number | null; p90_s: number | null; max_s: number | null; waiting_now: number; at_risk_now: number; pickups: number; late_pickups: number };
   filament: { total_g: number; by_material: { material: string; grams: number }[]; by_person: { person: string; grams: number }[] };
+  learning: { window_days: number; flags: FailureFlag[]; causes: { cause: string; count: number }[]; unexplained: number };
 };
+export type FailureCause = { cause: string; label: string; note: string; by: string; at: number };
+export type FailureFlag = { kind: string; what: string; prints: number; failed: number; rate: number; text: string; printer_id?: string };
+export const CAUSE_LABELS: Record<string, string> = {      // keep in step with backend/app/failures.py
+  didnt_stick: "Did not stick to the plate", spaghetti: "Spaghetti (came loose mid-print)", warping: "Warping or lifting corners",
+  layer_shift: "Layer shift", clog: "Clog or under-extrusion", filament: "Filament ran out or tangled",
+  quality: "Finished, but the quality was bad", on_purpose: "Stopped on purpose", other: "Something else" };
 export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
 export type JobPage = {
-  job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
+  job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; cause: FailureCause | null; can_explain: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
   changed_settings: { key: string; label: string; value: number | string | boolean; default: number | string | boolean | null; unit?: string }[];
   settings: Record<string, number | string | boolean>; parts: JobPart[]; shared_with: { name: string; owner?: string }[];
   printer: { id: string; name: string; model: string; bed_type: string } | null; estimate_s: number | null; actual_s: number | null;
@@ -219,8 +226,9 @@ export const api = {
   updateSpool: (id: string, s: Record<string, unknown>) => send("PUT", `/api/filament/spools/${id}`, s).then(j<Spool>),
   deleteSpool: (id: string) => send("DELETE", `/api/filament/spools/${id}`).then(j<{ ok: boolean }>),
   dashboard: (days: 7 | 30) => fetch(`/api/admin/dashboard?days=${days}`).then(j<Dashboard>),
+  explainFailure: (jobId: string, cause: string, note = "") => send("PUT", `/api/jobs/${jobId}/cause`, { cause, note }).then(j<FailureCause>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
-  bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
+  bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean; cause?: string | null; cause_note?: string }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),
   pipeline: () => fetch("/api/admin/pipeline").then(j<PipelineSettings>),
   savePipeline: (s: Partial<PipelineSettings>) => send("PUT", "/api/admin/pipeline", s).then(j<PipelineSettings>),

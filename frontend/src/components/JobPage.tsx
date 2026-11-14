@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Camera, Download, Pause, Play, Repeat, Square, X } from "lucide-react";
-import { api, gcodeUrl, type Catalog, type JobPage as Page } from "../api";
+import { api, CAUSE_LABELS, gcodeUrl, type Catalog, type JobPage as Page } from "../api";
 import Viewport from "./Viewport";
 import PlateCheck from "./PlateCheck";
 import LiveProgress from "./LiveProgress";
@@ -46,6 +46,8 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
   const [allSettings, setAllSettings] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [busy, setBusy] = useState("");
+  const [cause, setCause] = useState("");
+  const [causeNote, setCauseNote] = useState("");
   const control = async (action: "pause" | "resume" | "stop") => {
     if (action === "stop" && !confirm("Stop this print? It cannot be resumed, and the part on the plate is lost.")) return;
     setBusy(action); setErr("");
@@ -105,7 +107,22 @@ export default function JobPage({ id, catalog, onBack, onReuse }: {
           <LiveProgress live={p.live} full />
         </section>
       )}
-      {clearing && p.printer && <PlateCheck printerId={p.printer.id} onDone={() => { setClearing(false); load(); }} />}
+      {clearing && p.printer && <PlateCheck printerId={p.printer.id} askCause={p.can_explain && !p.cause} onDone={() => { setClearing(false); load(); }} />}
+      {(p.can_explain || p.cause) && (
+        <section className="cause-card" aria-label="Why it failed">
+          <span className="lbl">Why did it fail?</span>
+          {p.cause && <p><b>{p.cause.label}</b>{p.cause.note ? `: ${p.cause.note}` : ""} <span className="muted small-text">({p.cause.by})</span></p>}
+          {p.can_explain && (
+            <div className="cause-form">
+              <select value={cause || p.cause?.cause || ""} onChange={(e) => setCause(e.target.value)} aria-label="Cause">
+                <option value="">Choose what happened</option>{Object.entries(CAUSE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              <input value={causeNote} maxLength={300} placeholder="Anything else (optional)" onChange={(e) => setCauseNote(e.target.value)} aria-label="Note" />
+              <button className="btn" disabled={!cause} onClick={() => api.explainFailure(id, cause, causeNote).then(() => { setCause(""); setCauseNote(""); load(); }).catch((e) => alert(e.message))}>{p.cause ? "Change" : "Save"}</button>
+            </div>
+          )}
+          <p className="muted small-text">This helps operators spot patterns, like a printer or material that keeps failing.</p>
+        </section>
+      )}
 
       <section className="stats-strip" aria-label="Key numbers">
         <div className="stat"><span className="lbl">Print time</span><b>{fmtTime(p.actual_s ?? p.estimate_s)}</b><span>{p.actual_s != null ? `estimate ${fmtTime(p.estimate_s)}` : "estimate"}</span></div>

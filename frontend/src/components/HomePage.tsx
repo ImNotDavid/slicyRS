@@ -67,6 +67,7 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
             {h.fleet.needs_attention.map((p) => <button key={p.id} className="home-row collect" onClick={() => go("fleet")}><span className="tg tg-y">Attention</span><b>{p.name}</b><span className="muted">{p.why}</span></button>)}
             {h.fleet.plates_to_clear.map((p) => <button key={p.id} className="home-row" onClick={() => go("fleet")}><span className="tg">Plate</span><b>{p.name}</b><span className="muted">waiting to be cleared</span></button>)}
             {h.fleet.maintenance.map((p) => <button key={p.id} className="home-row quiet" onClick={() => go("fleet")}><span className="tg">Maintenance</span><b>{p.name}</b><span className="muted">{p.note}</span></button>)}
+            {(h.fleet.flags ?? []).map((f, i) => <button key={i} className="home-row collect" onClick={() => go("fleet")}><span className="tg tg-y">Pattern</span><b>{f.what}</b><span className="muted">{f.text}</span></button>)}
             {h.fleet.at_risk > 0 && <p className="muted small-text">{h.fleet.at_risk} job{h.fleet.at_risk > 1 ? "s" : ""} may miss the pickup time.</p>}
             {!h.fleet.needs_attention.length && !h.fleet.plates_to_clear.length && !h.fleet.maintenance.length && <p className="muted">Nothing needs you right now.</p>}
           </section>

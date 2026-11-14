@@ -75,7 +75,7 @@ export default function FleetModal({ printers, onClose, onChanged, inline, onOpe
                 </div>
               ) : <button className="mini self-start" onClick={() => setMaint({ id: p.id, note: "" })}>Maintenance…</button>)}
               {p.wait_s != null && p.wait_s > 0 && <span className="muted small">Free in about {Math.round(p.wait_s / 60)} min</span>}
-              {open === p.id && <PlateCheck printerId={p.id} onDone={() => { setOpen(null); onChanged?.(); }} />}
+              {open === p.id && <PlateCheck printerId={p.id} askCause={!!p.needs_cause} onDone={() => { setOpen(null); onChanged?.(); }} />}
             </div>
           ))}
       {err && <p className="form-error" role="alert">{err}</p>}

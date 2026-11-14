@@ -16,6 +16,7 @@ from .common import User, _has_camera, live_progress
 from .jobs import _viewable_job
 
 router = APIRouter()
+from ..failures import CAUSES as _CAUSES, failed as _failed   # 2.13
 FINISHED = ("printed", "failed", "unknown")
 
 
@@ -71,6 +72,9 @@ def job_page(job_id: str, user: dict = User):
         "can_manage": permissions.can(user, "job.manage", job),
         "can_pause": job.get("phase") == "printing" and permissions.can(user, "print.pause", job),
         "can_stop": job.get("phase") == "printing" and permissions.can(user, "print.stop", job),
+        "cause": job.get("cause"),
+        "can_explain": _failed(job) and not (job.get("result") or {}).get("stopped_by") and permissions.can(user, "failures.explain", job),
+        "cause_labels": _CAUSES,
         "owner": job.get("owner_email") if staff or job.get("owner_id") == user["id"] else None,
         "goal": {"id": goal["id"], "name": goal["name"]} if goal else None,
         "preset": preset,

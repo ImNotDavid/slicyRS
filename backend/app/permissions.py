@@ -17,6 +17,8 @@ printers); everyone else is a member. An admin can do everything an operator can
     plate.clear             an operator or admin, or any owner of a part on the printer's latest plate
     plate.mark_occupied     an operator or admin
     printer.see_people      an operator or admin (who is using each printer)
+    failures.view           an operator or admin (failure patterns and flags; members see no advice, owner decision)
+    failures.explain        the job's owner, an operator or an admin (say why a print failed)
     filament.manage         an operator or admin (the filament inventory: add, edit, load and correct spools)
     queue.manage            an operator or admin (reorder the pool, line a job up for a printer)
     printer.maintain        an operator or admin (maintenance on or off, mark a printer ready after it needed attention)
@@ -28,7 +30,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage",
+ACTIONS = {"admin", "job.see_all", "job.view", "job.manage", "print.pause", "print.stop", "model.use", "plate.clear", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage", "failures.view", "failures.explain",
            "printer.see_connection", "preset.share", "preset.delete"}
 
 
@@ -53,7 +55,7 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         return False
     if action in ("admin", "printer.see_connection", "preset.share"):
         return is_admin(user)
-    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage"):
+    if action in ("job.see_all", "plate.mark_occupied", "printer.see_people", "printer.maintain", "queue.manage", "filament.manage", "failures.view"):
         return is_operator(user)
     if action in ("print.pause", "print.stop"):
         if not target:
@@ -65,6 +67,11 @@ def can(user: dict[str, Any], action: str, target: Any = None) -> bool:
         mine = any(j.get("owner_id") == user["id"] for j in plate)
         shared = len({j.get("owner_id") for j in plate}) > 1
         return mine and (action == "print.pause" or not shared)
+    if action == "failures.explain":
+        if not target:
+            return False
+        from .plates import jobs_on_plate   # local import: plates imports the store at load time
+        return is_operator(user) or any(j.get("owner_id") == user["id"] for j in jobs_on_plate(target))
     if action == "job.view":
         return bool(target) and (_owns(user, target) or is_operator(user))
     if action in ("job.manage", "model.use"):

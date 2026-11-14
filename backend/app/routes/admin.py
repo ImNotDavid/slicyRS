@@ -139,7 +139,8 @@ def fleet_dashboard(days: int = 7, admin: dict = Depends(require_admin)):
     from .. import dashboard
     if days not in (7, 30):
         raise HTTPException(400, "days must be 7 or 30")
-    return dashboard.summary(days)
+    from .. import failures
+    return {**dashboard.summary(days), "learning": failures.patterns()}
 
 
 @router.get("/api/admin/pipeline")

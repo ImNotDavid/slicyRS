@@ -399,6 +399,23 @@ def cancel_job(job_id: str, user: dict = User):
     return out
 
 
+class CauseIn(BaseModel):
+    cause: str
+    note: str = Field("", max_length=300)
+
+
+@router.put("/api/jobs/{job_id}/cause")
+def explain_failure(job_id: str, body: CauseIn, user: dict = User):
+    """Why a print failed (2.13): its owner or an operator says, and either can change it."""
+    from .. import failures
+    job = _viewable_job(job_id, user)
+    permissions.require(user, "failures.explain", job, message="Only the job's owner or an operator can say why it failed")
+    try:
+        return failures.set_cause(job, body.cause, body.note, user)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.post("/api/jobs/{job_id}/{action}")
 def control_print(job_id: str, action: str, user: dict = User):
     """Pause, resume or stop a running print (2.4). Owners, operators and admins may pause and resume; a shared plate can only

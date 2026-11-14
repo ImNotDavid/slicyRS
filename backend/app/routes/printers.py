@@ -130,6 +130,8 @@ class BedClearIn(BaseModel):
     bed_empty: bool = False
     plate_matches: bool = False
     filament_matches: bool = False
+    cause: str | None = None          # if the print on the plate failed: why (2.13), asked while clearing
+    cause_note: str = Field("", max_length=300)
 
 
 def _printer_or_404(printer_id: str) -> dict[str, Any]:
@@ -143,13 +145,25 @@ def _printer_or_404(printer_id: str) -> dict[str, Any]:
 def bed_clear(printer_id: str, body: BedClearIn, user: dict = User):
     _printer_or_404(printer_id)
     try:
-        bed = bedstate.confirm_clear(printer_id, user, body.model_dump())
+        from .. import failures
+        pending = failures.needs_cause(printer_id)
+        if body.cause and pending:
+            failures.set_cause(store.jobs.get(pending), body.cause, body.cause_note, user)
+        bed = bedstate.confirm_clear(printer_id, user, {k: v for k, v in body.model_dump().items() if k not in ("cause", "cause_note")})
     except PermissionError as e:
         raise HTTPException(403, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     allocator.tick()
     return bed
+
+
+@router.get("/api/failures")
+def failure_patterns(user: dict = User):
+    """Failure patterns for operators and admins (2.13)."""
+    from .. import failures
+    permissions.require(user, "failures.view", message="Only operators and admins see failure patterns")
+    return {**failures.patterns(), "cause_labels": failures.CAUSES}
 
 
 @router.get("/api/printers/{printer_id}/camera.jpg")

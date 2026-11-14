@@ -67,7 +67,8 @@ def _notices() -> list[dict[str, Any]]:
 def home(user: dict = User):
     out = {"mine": _mine(user), "pool": _pool(), "notices": _notices()}
     if permissions.is_operator(user):
-        out["fleet"] = _fleet()
+        from .. import failures
+        out["fleet"] = {**_fleet(), "flags": failures.patterns()["flags"][:5]}     # 2.13: staff only
     return out
 
 

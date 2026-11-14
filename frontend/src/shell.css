@@ -534,3 +534,11 @@ span.small { font-size: 12px; }
 
 .parts-main .jobs-search { flex: none; }     /* a column flex parent would otherwise stretch it to its 280 px basis */
 .spool-form .custom { margin-top: 4px; }
+
+/* failure learning (2.13) */
+.cause-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--text-muted); border-left: 4px solid #b91c1c; }
+.cause-card p { margin: 0; }
+.cause-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.cause-form select, .cause-form input { border: 1px solid var(--text); border-radius: 0; background: var(--surface); color: var(--text); padding: 7px 9px; }
+.cause-form input { flex: 1 1 200px; }
+.flag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
