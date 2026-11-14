@@ -44,6 +44,17 @@ export type QueueCard = { id: string; name: string; owner: string | null; filame
   pickup_by: number | null; at_risk: boolean; shared: boolean; phase: string; waiting_for: string | null; hand_placed: boolean; fits: Record<string, string | null>; live?: Live | null };
 export type QueueLane = { id: string; name?: string; model?: string; nozzle_mm?: number; state?: string | null; unavailable?: string | null; wait_s?: number | null;
   bed?: string; now?: QueueCard | null; coming?: QueueCard[]; jobs: QueueCard[] };
+export type HomeData = {
+  mine: { printing: { id: string; name: string; printer_name: string | null; live: Live | null }[]; waiting: { id: string; name: string; waiting_for: string | null; phase: string }[];
+    to_collect: { id: string; name: string; printer_name: string | null }[]; recent: { id: string; name: string; phase: string }[] };
+  pool: { jobs_waiting: number; printers: number; printers_free: number; typical_wait_s: number | null; printers_out: number };
+  notices: { id: string; text: string; level: "info" | "warning"; created: number; by: string; until: number | null }[];
+  fleet?: { by_state: Record<string, number>; needs_attention: { id: string; name: string; why: string }[]; maintenance: { id: string; name: string; note: string }[];
+    plates_to_clear: { id: string; name: string }[]; at_risk: number };
+};
+export type SavedPart = { id: string; name: string; created: number | null; last_used: number | null; dims: [number, number, number] | null; folder_id: string | null;
+  available: boolean; size: number; jobs: number; printed: number; last_job: { id: string; name: string; phase: string; filament: string } | null };
+export type PartFolder = { id: string; name: string; count: number };
 export type JobPart = { model_id: string | null; name: string; available: boolean; rotation?: [number, number, number]; scale?: number; position?: [number, number] };
 export type JobPage = {
   job: Job; mine: boolean; can_manage: boolean; can_pause: boolean; can_stop: boolean; owner: string | null; goal: { id: string; name: string } | null; preset: string; filament: string; nozzle_mm: number;
@@ -183,6 +194,15 @@ export const api = {
   queueBoard: () => fetch("/api/queue").then(j<{ lanes: QueueLane[]; at: number }>),
   queueMove: (job_id: string, lane: string, index: number) => post("/api/queue/move", { job_id, lane, index }).then(j<{ ok: boolean; lane: string; position: number }>),
   queueReset: () => post("/api/queue/reset").then(j<{ ok: boolean; reset: number }>),
+  home: () => fetch("/api/home").then(j<HomeData>),
+  addNotice: (text: string, level: "info" | "warning", until?: number | null) => post("/api/admin/notices", { text, level, until: until ?? null }).then(j<HomeData["notices"][number]>),
+  deleteNotice: (id: string) => send("DELETE", `/api/admin/notices/${id}`).then(j<{ ok: boolean }>),
+  parts: (q = "", folder = "") => fetch(`/api/parts?q=${encodeURIComponent(q)}&folder=${encodeURIComponent(folder)}`).then(j<{ parts: SavedPart[]; folders: PartFolder[] }>),
+  addFolder: (name: string) => post("/api/parts/folders", { name }).then(j<PartFolder>),
+  renameFolder: (id: string, name: string) => send("PATCH", `/api/parts/folders/${id}`, { name }).then(j<PartFolder>),
+  deleteFolder: (id: string) => send("DELETE", `/api/parts/folders/${id}`).then(j<{ ok: boolean }>),
+  updatePart: (id: string, p: { name?: string; folder_id?: string; clear_folder?: boolean }) => send("PATCH", `/api/parts/${id}`, p).then(j<SavedPart>),
+  deletePart: (id: string) => send("DELETE", `/api/parts/${id}`).then(j<{ ok: boolean }>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

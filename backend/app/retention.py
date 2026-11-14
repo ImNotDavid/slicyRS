@@ -18,7 +18,7 @@ log = logging.getLogger("retention")
 DEFAULTS = {
     "job_files_days": int(os.environ.get("RETENTION_JOB_FILES_DAYS", "30")),
     "failed_job_days": int(os.environ.get("RETENTION_FAILED_JOB_DAYS", "7")),
-    "model_files_days": int(os.environ.get("RETENTION_MODEL_FILES_DAYS", "30")),
+    "model_files_days": int(os.environ.get("RETENTION_MODEL_FILES_DAYS", "0")),   # 0: keep every model (owner decision, My Parts 2.17)
 }
 DRAFT_HOURS = float(os.environ.get("RETENTION_DRAFT_HOURS", "6"))   # a preview or slice nobody sent anywhere is thrown away after this
 MIN_FREE_MB = int(os.environ.get("MIN_FREE_MB", "1024"))        # uploads are refused below this

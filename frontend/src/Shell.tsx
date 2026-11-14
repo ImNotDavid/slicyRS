@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Bell, Box, ClipboardList, Columns3, ListChecks, LogOut, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
+import { Bell, Box, ClipboardList, Columns3, Home, ListChecks, LogOut, Package, Moon, PanelLeft, Printer as PrinterIcon, ShieldCheck, Sun, SunMoon } from "lucide-react";
 import { api, type Catalog, type Job, type JobPage as JobPageData, type Printer, type User } from "./api";
 import JobPage from "./components/JobPage";
 import QueuePage from "./components/QueuePage";
+import HomePage from "./components/HomePage";
+import PartsPage from "./components/PartsPage";
 import App from "./App";
 import FleetModal from "./components/FleetModal";
 import { Harry, Lettermark } from "./components/Brand";
@@ -12,10 +14,10 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import JobsGrid from "./components/JobsGrid";
 import AdminModal from "./components/AdminModal";
 
-type Page = "workspace" | "jobs" | "alljobs" | "queue" | "job" | "fleet" | "admin";
+type Page = "home" | "workspace" | "jobs" | "parts" | "alljobs" | "queue" | "job" | "fleet" | "admin";
 type Theme = "auto" | "light" | "dark";
-const TITLES: Record<Page, string> = { workspace: "Workspace", jobs: "My jobs", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", admin: "Admin" };
-const HASH: Record<Page, string> = { workspace: "workspace", jobs: "jobs", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", admin: "admin" };
+const TITLES: Record<Page, string> = { home: "Home", workspace: "Workspace", jobs: "My jobs", parts: "My parts", alljobs: "All jobs", queue: "Queue", job: "Job", fleet: "Fleet", admin: "Admin" };
+const HASH: Record<Page, string> = { home: "home", workspace: "workspace", jobs: "jobs", parts: "parts", alljobs: "all-jobs", queue: "queue", job: "jobs", fleet: "fleet", admin: "admin" };
 
 // pages only some people have: Fleet for operators and admins, Admin for admins
 const allowed = (p: Page, admin: boolean, operator: boolean) => (p === "admin" ? admin : p === "fleet" || p === "alljobs" || p === "queue" ? operator : true);
@@ -24,7 +26,7 @@ const readRoute = (admin: boolean, operator: boolean): { page: Page; jobId: stri
   const [head, id] = window.location.hash.replace(/^#\/?/, "").split("/");
   if (head === "jobs" && id) return { page: "job", jobId: id };
   const p = (Object.keys(HASH) as Page[]).find((k) => HASH[k] === head && k !== "job");
-  return { page: p && allowed(p, admin, operator) ? p : "workspace", jobId: null };
+  return { page: p && allowed(p, admin, operator) ? p : "home", jobId: null };     // owner decision (2.18): everyone lands on Home
 };
 const storedTheme = (): Theme => { try { return (localStorage.getItem("theme") as Theme) || "auto"; } catch { return "auto"; } };
 
@@ -35,6 +37,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const [route, setRoute] = useState(() => readRoute(isAdmin, isOperator));
   const page = route.page;
   const [reuseRequest, setReuseRequest] = useState<JobPageData | null>(null);
+  const [partRequest, setPartRequest] = useState<{ id: string; add: boolean } | null>(null);
   const [wide, setWide] = useState(false);                   // the workspace menu is an icon strip unless expanded
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -65,7 +68,7 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
   const openJobPage = (id: string) => { window.location.hash = "/jobs/" + id; };
   // staff pages carry the yellow staff marker so nobody mistakes them for something every member has
   const items: { id: Page; icon: typeof Box; staff?: string }[] = [
-    { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks },
+    { id: "home", icon: Home }, { id: "workspace", icon: Box }, { id: "jobs", icon: ListChecks }, { id: "parts", icon: Package },
     ...(isOperator ? [{ id: "alljobs" as Page, icon: ClipboardList, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "queue" as Page, icon: Columns3, staff: "Operators and admins only" }] : []),
     ...(isOperator ? [{ id: "fleet" as Page, icon: PrinterIcon, staff: "Operators and admins only" }] : []),
@@ -116,13 +119,16 @@ export default function Shell({ user, onSignOut }: { user: User; onSignOut: () =
       <NotifyPrefs open={prefsOpen} onOpenChange={setPrefsOpen} />
       <div className="page" hidden={page !== "workspace"}>
         <ErrorBoundary what="The workspace"><App user={user}
-          reuseRequest={reuseRequest} onReused={() => { setReuseRequest(null); go("workspace"); }} /></ErrorBoundary>
+          reuseRequest={reuseRequest} onReused={() => { setReuseRequest(null); go("workspace"); }}
+          partRequest={partRequest} onPartLoaded={() => { setPartRequest(null); go("workspace"); }} /></ErrorBoundary>
       </div>
       {page !== "workspace" && (
         <main className="page">
           {page !== "job" && <header className="page-head"><h1>{TITLES[page]}</h1>{staffNote ? <span className="staff-tag">{staffNote}</span> : <span className="hatch-chip wide" aria-hidden="true" />}</header>}
           {page === "jobs" && <JobsGrid scope="mine" catalog={catalog} onOpen={openJobPage} />}
           {page === "queue" && isOperator && <QueuePage onOpenJob={openJobPage} />}
+          {page === "home" && <HomePage user={user} go={(p) => go(p)} onOpenJob={openJobPage} />}
+          {page === "parts" && <PartsPage onUse={(id, add) => setPartRequest({ id, add })} onOpenJob={openJobPage} />}
           {page === "alljobs" && isOperator && <JobsGrid scope="all" catalog={catalog} onOpen={openJobPage} />}
           {page === "job" && route.jobId && <JobPage id={route.jobId} catalog={catalog} onBack={() => window.history.back()} onReuse={setReuseRequest} />}
           {page === "fleet" && isOperator && <FleetModal inline printers={printers} onChanged={refreshPrinters} onOpenJob={openJobPage} />}

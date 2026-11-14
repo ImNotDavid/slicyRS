@@ -20,8 +20,9 @@ const PLAY_SECONDS = 12;                       // a full run through the visible
 const waitText = (s?: number | null) => (s == null ? "" : s < 300 ? " · free now" : ` · about ${s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}` : Math.round(s / 60) + " min"} wait`);
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
-export default function App({ user, reuseRequest, onReused }: {
+export default function App({ user, reuseRequest, onReused, partRequest, onPartLoaded }: {
   user: User; reuseRequest: JobPage | null; onReused: () => void;
+  partRequest: { id: string; add: boolean } | null; onPartLoaded: () => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -188,6 +189,24 @@ export default function App({ user, reuseRequest, onReused }: {
   };
 
 
+
+  // My Parts: open a saved part on a new plate, or add it to the plate already here (2.17)
+  useEffect(() => {
+    if (!partRequest || !catalog) return;
+    (async () => {
+      try {
+        const m = await api.modelInfo(partRequest.id);
+        const p = newPart(m);
+        setJob(null); setGcode(null); setMode("prepare");
+        if (partRequest.add && parts.length) {
+          if (parts.length >= MAX_PARTS) setMessage({ kind: "error", text: `A plate holds at most ${MAX_PARTS} parts` });
+          else { setSelectedUid(p.uid); await arrangeAll([...parts, p]); }
+        } else { setParts([p]); setSelectedUid(p.uid); setManualPrinter(""); setStep(1); }
+        setMessage({ kind: "ok", text: `${m.name} ${partRequest.add && parts.length ? "added to the plate" : "opened"}` });
+      } catch (e) { setMessage({ kind: "error", text: (e as Error).message }); }
+      onPartLoaded();
+    })();
+  }, [partRequest, catalog]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Same settings again" from a job page: the same material, preset, goal and settings, and the same parts if their files still exist
   useEffect(() => {

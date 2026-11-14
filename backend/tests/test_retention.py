@@ -49,7 +49,13 @@ def default_settings():
 # --------------------------------------------------------------------- the rules
 
 def test_defaults():
-    assert retention.get_settings() == {"job_files_days": 30, "failed_job_days": 7, "model_files_days": 30}
+    assert retention.get_settings() == {"job_files_days": 30, "failed_job_days": 7, "model_files_days": 0}   # models kept (2.17)
+
+
+def test_models_are_kept_unless_an_admin_sets_an_expiry(me):
+    stale = old_model(me, 400)
+    retention.run()
+    assert files.exists(MODELS, stale)
 
 
 def test_expired_job_files_are_deleted_and_the_record_is_kept(me):
@@ -87,6 +93,7 @@ def test_recently_printed_job_keeps_its_files_even_if_created_long_ago(me):
 
 
 def test_unused_models_expire_and_used_ones_stay(me):
+    retention.set_settings({"model_files_days": 30})
     stale, fresh = old_model(me, 45), old_model(me, 3)
     retention.run()
     assert not files.exists(MODELS, stale) and store.models.get(stale)["files_deleted_at"]
@@ -115,6 +122,7 @@ def test_cleanup_is_idempotent(me):
 
 
 def test_model_use_postpones_expiry(me, client, fleet):
+    retention.set_settings({"model_files_days": 30})
     m = upload(client, VALID / "cube_binary.stl").json()
     store.models.update(m["id"], created=time.time() - 40 * DAY, last_used=time.time() - 40 * DAY)
     client.post("/api/assign", json={"model_id": m["id"], "filament": "PLA"})        # using it records the use
@@ -135,6 +143,7 @@ def test_expired_job_files_give_a_clear_410(client, me):
 
 
 def test_expired_model_gives_410_to_its_owner_and_404_to_others(client, me):
+    retention.set_settings({"model_files_days": 30})
     mid = old_model(me, 45)
     retention.run()
     assert client.get(f"/api/models/{mid}/preview.stl").status_code == 410
