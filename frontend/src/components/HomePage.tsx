@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, Megaphone, ShieldCheck, Trash2 } from "lucide-react";
-import { api, type HomeData, type QuotaPart, type QuotaStatus, type User } from "../api";
+import { api, type ApprovalCard, type HomeData, type QuotaPart, type QuotaStatus, type User } from "../api";
 import TermsDialog from "./TermsDialog";
 import LiveProgress from "./LiveProgress";
 import { Harry } from "./Brand";
@@ -8,14 +8,18 @@ import { Harry } from "./Brand";
 const minutes = (s: number | null) => (s == null ? "—" : s < 600 ? "under 10 min" : s < 3600 ? `about ${Math.round(s / 600) * 10} min` : `about ${Math.round(s / 1800) / 2} h`);
 
 /** Home (2.18): where everyone lands. Members: their jobs, how busy the pool is, notices. Staff also: fleet numbers. */
-export default function HomePage({ user, go, onOpenJob }: { user: User; go: (page: "workspace" | "jobs" | "fleet" | "queue") => void; onOpenJob: (id: string) => void }) {
+export default function HomePage({ user, go, onOpenJob }: { user: User; go: (page: "workspace" | "jobs" | "fleet" | "queue" | "approvals") => void; onOpenJob: (id: string) => void }) {
   const [h, setH] = useState<HomeData | null>(null);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [level, setLevel] = useState<"info" | "warning">("info");
   const [quotas, setQuotas] = useState<QuotaStatus[]>([]);
   const [showTerms, setShowTerms] = useState(false);
-  const load = () => { api.home().then(setH).catch((e) => setErr(e.message)); api.myQuota().then(setQuotas).catch(() => {}); };
+  const [approvals, setApprovals] = useState<ApprovalCard[]>([]);
+  const load = () => {
+    api.home().then(setH).catch((e) => setErr(e.message)); api.myQuota().then(setQuotas).catch(() => {});
+    if (user.can?.approve) api.approvals().then(setApprovals).catch(() => {});
+  };
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, []);
   if (err) return <p className="form-error">{err}</p>;
   if (!h) return <p className="muted">Loading…</p>;
@@ -67,7 +71,19 @@ export default function HomePage({ user, go, onOpenJob }: { user: User; go: (pag
           ))}</>}
         </section>
 
-        {quotas.some((q) => q.hours || q.grams) && (
+        {user.can?.approve && (
+          <section className="job-card staff-card" aria-label="Waiting for your approval">
+            <div className="card-head"><h3>Approvals <span className="staff-tag">{approvals.length} waiting</span></h3><button className="chip" onClick={() => go("approvals")}>Open Approvals</button></div>
+            {approvals.slice(0, 5).map((a) => (
+              <button key={a.id} className="home-row collect" onClick={() => go("approvals")}><span className="tg tg-y">Approve?</span><b>{a.name}</b>
+                <span className="muted">{a.owner} · {a.group} · {a.reasons.join(" and ")}</span></button>
+            ))}
+            {approvals.length > 5 && <p className="muted small-text">and {approvals.length - 5} more.</p>}
+            {!approvals.length && <p className="muted">Nothing is waiting for your approval.</p>}
+          </section>
+        )}
+
+        {!isAdmin && quotas.some((q) => q.hours || q.grams) && (
           <section className="job-card" aria-label="My allowance">
             <div className="card-head"><h3>My allowance</h3></div>
             {quotas.filter((q) => q.hours || q.grams).map((q) => (

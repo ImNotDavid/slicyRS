@@ -15,11 +15,11 @@ export default function MyGroupsPage() {
   useEffect(() => { load(); }, [load]);
   const act = async (fn: () => Promise<unknown>, ok: string) => { setErr(""); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr((e as Error).message); } };
   const topUp = (uid: string, name: string) => {
-    const h = prompt(`Extra print hours for ${name} this term (0 for none)`, "0"); if (h === null) return;
-    const gr = prompt(`Extra filament in grams for ${name} this term (0 for none)`, "0"); if (gr === null) return;
+    const h = prompt(`Extra print hours for ${name} this quota period (0 for none)`, "0"); if (h === null) return;
+    const gr = prompt(`Extra filament in grams for ${name} this quota period (0 for none)`, "0"); if (gr === null) return;
     const hours = Number(h) || 0, grams = Number(gr) || 0;
     if (hours < 0 || grams < 0 || (!hours && !grams)) return;
-    act(() => api.topUp(g.id, uid, hours, grams), `Added ${hours ? `${hours} h` : ""}${hours && grams ? " and " : ""}${grams ? `${grams} g` : ""} for ${name} this term`);
+    act(() => api.topUp(g.id, uid, hours, grams), `Added ${hours ? `${hours} h` : ""}${hours && grams ? " and " : ""}${grams ? `${grams} g` : ""} for ${name} this quota period`);
   };
   if (err && !groups) return <p className="form-error">{err}</p>;
   if (!groups) return <p className="muted">Loading…</p>;
@@ -40,7 +40,7 @@ export default function MyGroupsPage() {
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Imperial email to invite" aria-label="Email to invite" />
             <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role">{g.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
             <button className="btn primary" disabled={!email.trim()}>Invite</button></form></div>
-        <table className="audit"><thead><tr><th>Person</th><th>Role in this group</th><th>Jobs</th><th>Used this term</th><th>Last signed in</th><th></th></tr></thead>
+        <table className="audit"><thead><tr><th>Person</th><th>Role in this group</th><th>Jobs</th><th>Quota used</th><th>Last signed in</th><th></th></tr></thead>
           <tbody>{g.members.map((m) => (
             <tr key={m.id}><td><b>{m.name}</b><div className="muted small-text">{m.email}{m.invited ? " · invited, not signed in yet" : ""}{!m.active ? " · disabled" : ""}</div></td>
               <td>{m.admin ? <span className="tg tg-y">Admin</span> : (

@@ -63,3 +63,29 @@ def test_overlapping_terms_are_refused(client):
     now = time.time()
     r = client.put("/api/admin/periods", json=[{"name": "A", "start": now, "end": now + 10 * DAY}, {"name": "B", "start": now + 5 * DAY, "end": now + 20 * DAY}])
     assert r.status_code == 400 and "overlap" in r.json()["detail"]
+
+
+def test_weekly_and_monthly_quotas_start_again_on_calendar_boundaries(client, fleet):
+    from datetime import datetime
+    assert client.put("/api/admin/quota-cycle", json={"cycle": "fortnight"}).status_code == 400
+    assert make_user(client, "q.nosy@imperial.ac.uk").put("/api/admin/quota-cycle", json={"cycle": "week"}).status_code == 403
+    try:
+        assert client.put("/api/admin/quota-cycle", json={"cycle": "week"}).json()["cycle"] == "week"
+        wed = datetime(2026, 11, 18, 15, 0).timestamp()
+        w = quotas.current_period(wed)
+        assert datetime.fromtimestamp(w["start"]) == datetime(2026, 11, 16) and datetime.fromtimestamp(w["end"]) == datetime(2026, 11, 23)
+        client.put("/api/admin/quota-cycle", json={"cycle": "month"})
+        m = quotas.current_period(datetime(2026, 12, 31, 23, 0).timestamp())
+        assert m["name"] == "December 2026" and datetime.fromtimestamp(m["end"]) == datetime(2027, 1, 1)
+        d = _setup(client, hours=1)
+        c = make_user(client, "q.monthly@imperial.ac.uk")
+        me = c.get("/api/me").json()
+        last_month = pooled_job(me, "lm", time.time())
+        store.jobs.update(last_month, preview={"time_s": 3600}, submitted_at=quotas.current_period()["start"] - 60)
+        assert quotas.usage(me["id"], d["id"], quotas.current_period())["hours"] == 0      # last month does not count
+        q = next(x for x in c.get("/api/me/quota").json() if x["group_id"] == d["id"])
+        assert q["cycle"] == "month" and q["hours"]["left"] == 1
+        store.jobs.delete(last_month)
+        client.put(f"/api/admin/groups/{d['id']}", json={"name": d["name"], "default_role": "member"})
+    finally:
+        client.put("/api/admin/quota-cycle", json={"cycle": "term"})

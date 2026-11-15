@@ -361,6 +361,28 @@ def get_periods(admin: dict = Depends(require_admin)):
     return quotas.periods()
 
 
+class CycleIn(BaseModel):
+    cycle: str
+
+
+@router.get("/api/admin/quota-cycle")
+def get_cycle(admin: dict = Depends(require_admin)):
+    from .. import quotas
+    return {"cycle": quotas.cycle(), "current": quotas.current_period()}
+
+
+@router.put("/api/admin/quota-cycle")
+def put_cycle(body: CycleIn, admin: dict = Depends(require_admin)):
+    """How often every group's quota starts again: week (Monday), month (the 1st) or term (the term dates)."""
+    from .. import quotas
+    try:
+        c = quotas.set_cycle(body.cycle)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    audit(admin, "quota_cycle", c)
+    return {"cycle": c, "current": quotas.current_period()}
+
+
 @router.put("/api/admin/periods")
 def put_periods(body: list[PeriodIn], admin: dict = Depends(require_admin)):
     from .. import quotas

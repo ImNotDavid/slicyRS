@@ -93,7 +93,8 @@ export type User = { id: string; email: string; name: string; role: "admin" | "u
   groups?: MyGroup[]; main_group?: string; can?: UserCan; terms_needed?: boolean };
 export type QuotaPart = { allowance: number; used: number; left: number; share: number; warn: boolean } | null;
 export type Period = { id?: string; name: string; start: number; end: number };
-export type QuotaStatus = { group_id: string; group: string; period: Period | null; used: { hours: number; grams: number }; extra: { hours: number; grams: number }; hours: QuotaPart; grams: QuotaPart };
+export type QuotaCycle = "week" | "month" | "term";
+export type QuotaStatus = { group_id: string; group: string; period: Period | null; cycle: QuotaCycle; used: { hours: number; grams: number }; extra: { hours: number; grams: number }; hours: QuotaPart; grams: QuotaPart };
 export type CostRow = { key: string; name: string; prints: number; grams: number; cost: number; unpriced_g: number };
 export type CostReport = { start: number; end: number; prints: number; grams: number; cost: number; unpriced_g: number; by_person: CostRow[]; by_group: CostRow[];
   prices: Record<string, number>; periods: Period[] };
@@ -265,6 +266,8 @@ export const api = {
   acceptTerms: () => post("/api/terms/accept").then(j<{ version: number; at: number }>),
   publishTerms: (text: string) => send("PUT", "/api/admin/terms", { text }).then(j<TermsDoc>),
   myQuota: () => fetch("/api/me/quota").then(j<QuotaStatus[]>),
+  quotaCycle: () => fetch("/api/admin/quota-cycle").then(j<{ cycle: QuotaCycle; current: Period | null }>),
+  setQuotaCycle: (cycle: QuotaCycle) => send("PUT", "/api/admin/quota-cycle", { cycle }).then(j<{ cycle: QuotaCycle; current: Period | null }>),
   periods: () => fetch("/api/admin/periods").then(j<Period[]>),
   setPeriods: (p: Period[]) => send("PUT", "/api/admin/periods", p).then(j<Period[]>),
   topUp: (gid: string, uid: string, hours: number, grams: number, note = "") => post(`/api/groups/${gid}/members/${uid}/topup`, { hours, grams, note }).then(j<GroupMember>),

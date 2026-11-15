@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, Trash2, X } from "lucide-react";
 import Frame from "./Frame";
-import { api, type Period, type GroupDef, type RoleDef, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
+import { api, type Period, type QuotaCycle, type GroupDef, type RoleDef, type NotifyOverview, type AuditEntry, type Catalog, type Gateway, type PipelineSettings, type Printer, type PrinterInput, type ProbeResult, type Stats, type StorageInfo, type User } from "../api";
 
 type Props = { catalog: Catalog; me: User; onClose?: () => void; onPrintersChanged: () => void; inline?: boolean };
 type Tab = "printers" | "gateways" | "notifications" | "users" | "roles" | "groups" | "rules" | "periods" | "storage" | "pipeline" | "audit";
-const TAB_LABEL: Partial<Record<Tab, string>> = { audit: "Audit log", rules: "Terms and safety", periods: "Term dates" };
+const TAB_LABEL: Partial<Record<Tab, string>> = { audit: "Audit log", rules: "Terms and safety", periods: "Quota period" };
 const STATES = ["IDLE", "RUNNING", "PAUSE", "FAILED", "OFFLINE"];
 const when = (t: number | null) => (t ? new Date(t * 1000).toLocaleString() : "never");
 
@@ -121,14 +121,14 @@ function GroupsTab({ catalog }: { catalog: Catalog }) {
             onChange={(e) => setDraft({ ...draft, max_print_h: e.target.value === "" ? null : Number(e.target.value) })} />
           <span className="muted small-text">Longer prints for this group are refused at Submit. Leave empty for no limit.</span></label>
         <div className="form-grid">
-          <label className="plate-field">Print hours per member per term
+          <label className="plate-field">Print hours per member per quota period
             <input type="number" min={0} step={1} value={draft.quota_hours ?? ""} placeholder="No quota"
               onChange={(e) => setDraft({ ...draft, quota_hours: e.target.value === "" ? null : Number(e.target.value) })} /></label>
-          <label className="plate-field">Filament per member per term (g)
+          <label className="plate-field">Filament per member per quota period (g)
             <input type="number" min={0} step={50} value={draft.quota_g ?? ""} placeholder="No quota"
               onChange={(e) => setDraft({ ...draft, quota_g: e.target.value === "" ? null : Number(e.target.value) })} /></label>
         </div>
-        <p className="muted small-text">Allowances start again at each term in the Term dates tab. Members are warned at 80%; a print that would go over is refused. The group's operators can top a person up.</p>
+        <p className="muted small-text">Allowances start again every week, month or term, as set in the Quota period tab (the same for every group). Members are warned at 80%; a print that would go over is refused. The group's operators can top a person up.</p>
         <h4>Prints that need approval</h4>
         <div className="form-grid">
           <label className="plate-field">Longer than (hours)
@@ -198,9 +198,11 @@ function PeriodsTab() {
   const [rows, setRows] = useState<{ id?: string; name: string; start: string; end: string }[] | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [cycle, setCycle] = useState<{ cycle: QuotaCycle; current: Period | null } | null>(null);
   const show = (ps: Period[]) => setRows(ps.map((p) => ({ id: p.id, name: p.name, start: day(p.start), end: day(p.end - 86400) })));
-  useEffect(() => { api.periods().then(show).catch((e) => setErr(e.message)); }, []);
-  if (!rows) return <p className="muted">Loading…</p>;
+  useEffect(() => { api.periods().then(show).catch((e) => setErr(e.message)); api.quotaCycle().then(setCycle).catch(() => {}); }, []);
+  if (!rows || !cycle) return <p className="muted">Loading…</p>;
+  const pick = async (c: QuotaCycle) => { setErr(""); setMsg(""); try { setCycle(await api.setQuotaCycle(c)); setMsg("Quota period saved."); } catch (e) { setErr((e as Error).message); } };
   const set = (i: number, k: "name" | "start" | "end", v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const save = async () => {
     setErr(""); setMsg("");
@@ -213,7 +215,13 @@ function PeriodsTab() {
   const now = Date.now() / 1000;
   return (
     <>
-      <p className="muted">Quotas count prints submitted during a term and start again at the next one. Outside every term, there is no quota.</p>
+      <fieldset className="mat-pick cycle-pick"><legend>Every group's quota starts again</legend>
+        {([["week", "Every week (Monday)"], ["month", "Every month (the 1st)"], ["term", "Every term (the dates below)"]] as const).map(([c, label]) => (
+          <label key={c} className="check"><input type="radio" name="cycle" checked={cycle.cycle === c} onChange={() => pick(c)} /> {label}</label>))}
+      </fieldset>
+      <p className="muted small-text">{cycle.current ? `Now counting: ${cycle.current.name}, until ${new Date(cycle.current.end * 1000).toLocaleDateString([], { day: "numeric", month: "short" })}.` : "No term covers today, so there is no quota right now."} Top-ups last until the period ends.</p>
+      <h4>Term dates</h4>
+      <p className="muted">{cycle.cycle === "term" ? "Quotas count prints submitted during a term and start again at the next one. Outside every term, there is no quota." : "Not used for quotas while they start again every " + cycle.cycle + ", but the filament cost report still offers each term."}</p>
       {rows.map((r, i) => {
         const live = r.start && r.end && fromDay(r.start) <= now && now < fromDay(r.end, true);
         return (

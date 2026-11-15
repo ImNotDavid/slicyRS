@@ -32,7 +32,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
   const [earliest, setEarliest] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [termsOk, setTermsOk] = useState(!user?.terms_needed);      // 3.6: accept the rules before the first print
-  const [quotas, setQuotas] = useState<QuotaStatus[]>([]);           // 3.2: what is left this term, per group
+  const [quotas, setQuotas] = useState<QuotaStatus[]>([]);           // 3.2: what is left this quota period, per group
   useEffect(() => { api.myQuota().then(setQuotas).catch(() => {}); }, []);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
               )}
               {q && (q.hours || q.grams) && (
                 <p className={overQuota ? "form-error" : q.hours?.warn || q.grams?.warn ? "warn-note" : "muted"}>
-                  {overQuota ? "This print is more than you have left" : "Left for you"} in {q.group} this term ({q.period?.name}):{" "}
+                  {overQuota ? "This print is more than you have left" : "Left for you"} in {q.group} this {q.cycle} ({q.period?.name}):{" "}
                   {[q.hours && `${Math.max(0, q.hours.left).toFixed(1)} of ${q.hours.allowance.toFixed(1)} h`, q.grams && `${Math.max(0, Math.round(q.grams.left))} of ${Math.round(q.grams.allowance)} g`].filter(Boolean).join(", ")}.
                   {overQuota && " Ask one of the group's operators for more, or make the print smaller."}</p>
               )}
