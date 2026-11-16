@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { COLOURS } from "../colours";
 import { api, type Catalog, type Printer, type Spool } from "../api";
 
 // owner request: colour and brand are chosen from lists ("Other" allows anything else)
 const BRANDS = ["Bambu Lab", "Polymaker", "Prusament", "eSun", "Sunlu", "Elegoo", "Overture", "Jayo", "Generic"];
-const COLOURS: [string, string][] = [["Black", "#111111"], ["White", "#f4f4f4"], ["Grey", "#8a8a8a"], ["Silver", "#c0c0c0"], ["Red", "#d0242b"], ["Orange", "#f07a1a"],
-  ["Yellow", "#f5d000"], ["Green", "#2f9e44"], ["Blue", "#1f5fd6"], ["Light blue", "#58a6ff"], ["Purple", "#7b3fbf"], ["Pink", "#f06aa6"], ["Brown", "#7a4b2a"],
-  ["Beige", "#d8c3a0"], ["Gold", "#c9a227"], ["Transparent", "#e8eef2"]];
 const OTHER = "__other";
 
 const EMPTY = { material: "PLA", colour_name: "", colour_hex: "#888888", brand: "", start_g: 1000, remaining_g: null as number | null, price: null as number | null, notes: "", printer_id: "" };

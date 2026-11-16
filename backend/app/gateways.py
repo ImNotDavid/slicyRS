@@ -160,9 +160,10 @@ class RemoteLink:
     def __init__(self, printer_id: str, gateway_id: str):
         self.printer_id, self.gateway_id = printer_id, gateway_id
 
-    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode", timelapse: bool = False) -> bool:
+    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode", timelapse: bool = False,
+                   slot: int | None = None) -> bool:
         token = hub.offer_file(local_path, self.gateway_id)
-        res = hub.request(self.gateway_id, {"type": "print", "printer_id": self.printer_id, "remote_name": remote_name, "plate": plate, "timelapse": bool(timelapse),
+        res = hub.request(self.gateway_id, {"type": "print", "printer_id": self.printer_id, "remote_name": remote_name, "plate": plate, "timelapse": bool(timelapse), "slot": slot,
                                             "size": local_path.stat().st_size, "transfer": f"/gateway/transfer/{token}"}, PRINT_TIMEOUT_S)
         if not res.get("ok"):
             from .bambulan import PrinterError

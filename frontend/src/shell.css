@@ -593,3 +593,5 @@ span.small { font-size: 12px; }
 .price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; align-items: end; }
 .price-grid .row-actions { grid-column: 1 / -1; }
 .audit-export { align-items: end; flex-wrap: wrap; margin-bottom: 12px; }
+.dot-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--text-muted); margin-right: 6px; vertical-align: -1px; }
+.colour-chips .chip { display: inline-flex; align-items: center; }

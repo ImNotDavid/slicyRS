@@ -3,9 +3,10 @@ import { X } from "lucide-react";
 import { api, type Forecast, type Job, type PlateSpec, type Printer, type QuotaStatus, type User } from "../api";
 import { fmtTime } from "../format";
 import TermsDialog from "./TermsDialog";
+import { colourName } from "../colours";
 
 type Props = {
-  spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null };
+  spec: PlateSpec & { filament: string; preset: string; settings: Record<string, unknown>; goal?: string | null; colour?: string | null };
   onClose: () => void; onDone: (j: Job) => void; user?: User;
 };
 
@@ -61,7 +62,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
   const submit = async () => {
     if (!job) return;
     setBusy(true); setError(""); setEarliest(null);
-    try { onDone(await api.submit(job.id, { pickup_by: pickup ?? null, auto_start: true, allow_batching: share, timelapse: lapse, group_id: groupId || undefined, printer_id: canPick && printerId ? printerId : null })); }
+    try { onDone(await api.submit(job.id, { colour: spec.colour ?? undefined, pickup_by: pickup ?? null, auto_start: true, allow_batching: share, timelapse: lapse, group_id: groupId || undefined, printer_id: canPick && printerId ? printerId : null })); }
     catch (e) { setError((e as Error).message); setEarliest((e as { earliest?: number }).earliest ?? null); }
     setBusy(false);
   };
@@ -83,7 +84,7 @@ export default function SubmitModal({ spec, onClose, onDone, user }: Props) {
             <dl className="submit-facts">
               <dt>Part</dt><dd>{job!.name}</dd>
               <dt>Estimated print time</dt><dd>{fmtTime(job!.preview?.time_s)}</dd>
-              <dt>Filament</dt><dd>{job!.filament}{job!.preview?.filament_g != null ? ` · ${job!.preview.filament_g} g` : ""}</dd>
+              <dt>Filament</dt><dd>{spec.colour && <i className="dot-swatch" style={{ background: spec.colour }} aria-hidden="true" />}{spec.colour ? `${colourName(spec.colour)} ` : ""}{job!.filament}{job!.preview?.filament_g != null ? ` · ${job!.preview.filament_g} g` : ""}</dd>
               <dt>Expected ready</dt>
               <dd>{forecast?.feasible && forecast.earliest_finish ? `${fmt(forecast.earliest_finish)}${forecast.jobs_ahead ? ` (${forecast.jobs_ahead} ahead of you)` : ""}` : "no printer can print this"}</dd>
             </dl>

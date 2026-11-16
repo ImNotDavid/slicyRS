@@ -75,3 +75,36 @@ def totals() -> dict[str, dict[str, Any]]:
         if s.get("price") and s.get("start_g"):
             t["value"] = round(t["value"] + float(s["price"]) * rem / float(s["start_g"]), 2)
     return out
+
+
+def loaded(user: dict[str, Any] | None = None, group_id: str | None = None) -> list[dict[str, Any]]:
+    """What the pool can print with right now (owner decision): the materials and colours loaded in the AMS or on the external
+    spool of enabled, in-service printers, as the printers report them live. Limited to printers the person (or the group) may
+    use. [{material, colours: [{colour, printers: [names]}]}], materials in catalogue order."""
+    from . import assign, groups as G
+    from .catalog import FILAMENTS
+    from .upkeep import unavailable
+    out: dict[str, dict[str, list[str]]] = {}
+    for p in store.printers.all():
+        if not p.get("enabled", True) or unavailable(p):
+            continue
+        if group_id is not None and not G.printer_allows(p, group_id):
+            continue
+        if user is not None and not G.user_can_use(user, p):
+            continue
+        st = p.get("status") or {}
+        if st.get("state", "OFFLINE") == "OFFLINE":
+            continue
+        for t in assign.trays(st):
+            if t["type"] in FILAMENTS:
+                names = out.setdefault(t["type"], {}).setdefault((t.get("color") or "#888888").lower()[:7], [])
+                if p["name"] not in names:
+                    names.append(p["name"])
+    return [{"material": m, "colours": [{"colour": c, "printers": ps} for c, ps in sorted(out[m].items())]} for m in FILAMENTS if m in out]
+
+
+def is_loaded(material: str, colour: str | None, group_id: str | None = None) -> bool:
+    for m in loaded(group_id=group_id):
+        if m["material"] == material:
+            return colour in (None, "any") or any(c["colour"] == colour.lower()[:7] for c in m["colours"])
+    return False

@@ -70,6 +70,9 @@ def waiting_reason(job: dict[str, Any]) -> str:
     for p in printers:
         if p["id"] not in can:
             continue
+        if (job.get("colour") or "any") != "any" and assign.loaded_slot(p.get("status") or {}, job["filament"], job["colour"]) is None:
+            why.append(f"{p['name']} does not have {job['filament']} in the chosen colour loaded")
+            continue
         if p["id"] in free_ids:
             return plates.hold_reason(job, time.time()) or "Starting soon"
         st = (p.get("status") or {}).get("state", "OFFLINE")
@@ -112,7 +115,8 @@ def assign_pool() -> int:
             free = [p for p in free if p["id"] == job["pinned_printer"]]
             if not free:
                 continue
-        ranked = assign.rank([{**p, "queue_depth": 0} for p in free], tuple(job["dims"]), job["filament"], job_nozzle(job), job_position(job))
+        ranked = assign.rank([{**p, "queue_depth": 0} for p in free], tuple(job["dims"]), job["filament"], job_nozzle(job), job_position(job),
+                             job.get("colour"))
         best = next((c for c in ranked if c.eligible), None)
         if best is None:
             continue

@@ -3,7 +3,8 @@ import {
   AlertTriangle, ArrowDownToLine, Sparkles, Box, ChevronDown, ChevronUp, Download, FolderOpen, ListChecks, Maximize, Menu, Move3d, Pause, Play, Printer as PrinterIcon,
   RotateCcw, RotateCw, Scaling, Layers, ShieldCheck, LogOut,
 } from "lucide-react";
-import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type JobPage, type Printer, type Transform, type User } from "./api";
+import { api, gcodeUrl, modelUrl, type AssignResult, type Catalog, type Job, type JobPage, type LoadedMaterial, type Printer, type Transform, type User } from "./api";
+import { colourName } from "./colours";
 import { IDENTITY, MAX_PARTS, newPart, payload, plateSpec, type Part } from "./plate";
 import PartsPanel from "./components/PartsPanel";
 import Viewport from "./components/Viewport";
@@ -30,6 +31,30 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [overlapPairs, setOverlapPairs] = useState<[string, string][]>([]);
   const [filament, setFilament] = useState("PLA");
+  // owner request: only the materials and colours loaded in the pool's printers right now are offered
+  const [loaded, setLoaded] = useState<LoadedMaterial[] | null>(null);
+  const [colour, setColour] = useState<string | null>(null);
+  useEffect(() => {
+    const get = () => api.loadedFilament().then(setLoaded).catch(() => {});
+    get(); const t = setInterval(get, 30000); return () => clearInterval(t);
+  }, []);
+  const colours = loaded?.find((m) => m.material === filament)?.colours ?? [];
+  useEffect(() => {
+    if (!loaded) return;
+    if (loaded.length && !loaded.some((m) => m.material === filament)) { setFilament(loaded[0].material); return; }
+    if (!colours.some((c) => c.colour === colour)) setColour(colours[0]?.colour ?? null);
+  }, [loaded, filament]); // eslint-disable-line react-hooks/exhaustive-deps
+  const noFilament = loaded !== null && !colour;
+  const colourPicker = (
+    <div className="chips colour-chips" role="radiogroup" aria-label="Colour">
+      {colours.map((c) => (
+        <button key={c.colour} role="radio" aria-checked={colour === c.colour} className={"chip" + (colour === c.colour ? " on" : "")}
+          title={`Loaded on ${c.printers.join(", ")}`} onClick={() => setColour(c.colour)}>
+          <i className="dot-swatch" style={{ background: c.colour }} aria-hidden="true" />{colourName(c.colour)}</button>
+      ))}
+    </div>
+  );
+  const noFilamentNote = <p className="form-error">No filament is loaded in a printer you can use right now (or the printers are offline). Ask an operator to load some, then try again.</p>;
   const [preset, setPreset] = useState("0.20mm Standard");
   const [settings, setSettings] = useState<Record<string, Value>>({});
   // the tools act on the selected part; the rest of the app reads it as "the model" and "its transform"
@@ -380,16 +405,20 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
     <>
         <div className="card">
           <div className="printer-head">
-            <div className="spool" style={{ background: chosenPrinter?.status.ams?.find((s) => s.slot === chosen?.loaded_slot)?.color ?? "#2f6bff" }} />
+            <div className="spool" style={{ background: colour ?? chosenPrinter?.status.ams?.find((s) => s.slot === chosen?.loaded_slot)?.color ?? "#2f6bff" }} />
             <div>
               <strong>{filament}</strong>
               <div className="muted">{catalog.filaments[filament].nozzle}° / {catalog.filaments[filament].bed}°
                 {catalog.filaments[filament].enclosed ? " · needs enclosure" : ""}</div>
             </div>
           </div>
-          <select className="row-select" value={filament} onChange={(e) => setFilament(e.target.value)}>
-            {Object.entries(catalog.filaments).map(([key, f]) => <option key={key} value={key}>{f.orca}</option>)}
+          <select className="row-select" value={filament} onChange={(e) => setFilament(e.target.value)} aria-label="Material (loaded in the pool now)">
+            {(loaded ?? []).map((m) => <option key={m.material} value={m.material}>{catalog.filaments[m.material]?.orca ?? m.material}</option>)}
           </select>
+          <select className="row-select" value={colour ?? ""} onChange={(e) => setColour(e.target.value)} aria-label="Colour (loaded in the pool now)">
+            {colours.map((c) => <option key={c.colour} value={c.colour}>{colourName(c.colour)} ({c.colour}) · {c.printers.join(", ")}</option>)}
+          </select>
+          {noFilament && noFilamentNote}
           <select className="row-select" value={nozzle} aria-label="Nozzle size" onChange={(e) => changeNozzle(Number(e.target.value))}
             title="Only nozzle sizes that your printers have are offered">
             {fleetNozzles.map((n) => <option key={n} value={n}>{n} mm nozzle</option>)}
@@ -451,10 +480,14 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
           <section className="support-ctl" aria-label="Material and nozzle">
             <div className="lbl">Material</div>
             <div className="chips" role="radiogroup" aria-label="Material">
-              {Object.keys(catalog.filaments).map((key) => (
-                <button key={key} role="radio" aria-checked={filament === key} className={"chip" + (filament === key ? " on" : "")} onClick={() => setFilament(key)}>{key}</button>
+              {(loaded ?? []).map((m) => (
+                <button key={m.material} role="radio" aria-checked={filament === m.material} className={"chip" + (filament === m.material ? " on" : "")} onClick={() => setFilament(m.material)}>{m.material}</button>
               ))}
             </div>
+            {loaded === null && <p className="muted">Checking what is loaded in the printers…</p>}
+            {noFilament && noFilamentNote}
+            {colours.length > 0 && <><div className="lbl">Colour</div>{colourPicker}
+              <p className="muted small-text">Only what is loaded in the printers right now. Your print goes to a printer with this colour loaded.</p></>}
             <p className="muted">{catalog.filaments[filament].nozzle}° nozzle, {catalog.filaments[filament].bed}° bed{catalog.filaments[filament].enclosed ? ", needs an enclosed printer" : ""}</p>
             <div className="lbl">Nozzle</div>
             <div className="chips" role="radiogroup" aria-label="Nozzle size">
@@ -494,10 +527,10 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
           <div className="step-head"><span className="lbl">Step 4 of 4</span><h2>Send it</h2><p className="muted">The pool picks the first free printer that fits. Nothing is queued until you press the button.</p></div>
           <dl className="review-facts">
             <dt>Part</dt><dd>{plateName}</dd>
-            <dt>Material</dt><dd>{filament}, {nozzle} mm nozzle</dd>
+            <dt>Material</dt><dd>{colour ? `${colourName(colour)} ` : ""}{filament}, {nozzle} mm nozzle</dd>
             <dt>Goal</dt><dd>{goal ? catalog.goals.find((g) => g.id === goal)?.name : "Custom settings"}</dd>
           </dl>
-          <button className="btn primary big" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")}>SUBMIT TO POOL</button>
+          <button className="btn primary big" disabled={!model || busy || overlapPairs.length > 0 || !colour} onClick={() => setModal("submit")}>SUBMIT TO POOL</button>
         </>
       )}
       <div className="step-nav">
@@ -688,14 +721,14 @@ export default function App({ user, reuseRequest, onReused, partRequest, onPartL
             <button className="btn primary" disabled={!model || busy || overlapPairs.length > 0 || !assignment?.chosen && !manualPrinter} onClick={slice}>
               <Play size={14} /> {busy && job?.state === "slicing" ? "SLICING…" : "SLICE"}
             </button>
-            <button className="btn" disabled={!model || busy || overlapPairs.length > 0} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
+            <button className="btn" disabled={!model || busy || overlapPairs.length > 0 || !colour} onClick={() => setModal("submit")} title="Let the system choose a printer and when">SUBMIT TO POOL</button>
             <label className="lapse-toggle" title="Record a timelapse of this print"><input type="checkbox" checked={lapse} onChange={(e) => setLapse(e.target.checked)} disabled={!ready || job?.printed} /> Timelapse</label>
             <button className="btn go" disabled={!ready || busy || job?.printed} onClick={print}>{job?.printed ? "SENT" : "PRINT"}</button>
           </>}
         </div>
       </main>
 
-      {modal === "submit" && model && <SubmitModal user={user} spec={{ ...plateSpec(parts), filament, preset, settings, goal }} onClose={() => setModal(null)}
+      {modal === "submit" && model && <SubmitModal user={user} spec={{ ...plateSpec(parts), filament, preset, settings, goal, colour }} onClose={() => setModal(null)}
         onDone={(j) => {
           setModal(null); setMessage({ kind: "ok", text: j.phase === "awaiting_approval" ? `${j.name} needs approval because ${j.approval?.reasons.join(" and ")}. A group operator has been told; it joins the pool once approved. Follow it under Jobs.` : `${j.name} is in the print pool. Follow it under Jobs.` }); }} />}
     </div>

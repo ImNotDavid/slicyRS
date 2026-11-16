@@ -48,7 +48,10 @@ def start(job: dict[str, Any], bundle: Path, actor: dict[str, Any] | None, requi
             logging.getLogger("slicyrs").info("could not list timelapses before printing", exc_info=True)
     try:
         remote = remote_name(job)
-        started = link.send_print(bundle, remote, timelapse=want_timelapse)
+        from . import assign
+        colour = job.get("colour") if (job.get("colour") or "any") != "any" else None
+        slot = assign.loaded_slot(printer.get("status") or {}, job.get("filament") or "", colour)   # the tray with this filament and colour
+        started = link.send_print(bundle, remote, timelapse=want_timelapse, **({"slot": slot} if slot is not None else {}))
     except AdapterError as e:
         audit(actor, "print_failed", f"{job['name']} -> {job['printer_name']}: {e}")
         raise PrintBlocked(502, str(e))

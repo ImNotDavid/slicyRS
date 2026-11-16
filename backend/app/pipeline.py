@@ -14,7 +14,7 @@ from .storage import JOBS, files
 from .defaults import effective_overrides
 
 log = logging.getLogger("pipeline")
-PREVIEW_MODELS = ("P2S", "X1C")   # first one that exists in the catalog; the P2S is not selectable yet, so X1C stands in
+PREVIEW_MODELS = ("P2S", "X1C")   # the P2S is the reference printer for previews (docs/ARCHITECTURE.md); X1C if it is ever removed
 
 
 def preview_model() -> str:

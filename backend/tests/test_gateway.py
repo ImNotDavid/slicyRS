@@ -41,7 +41,7 @@ class FakeLink:
         self.error: Exception | None = None
         self.starts = True
 
-    def send_print(self, path: Path, remote_name: str, plate="Metadata/plate_1.gcode", timelapse=False):
+    def send_print(self, path: Path, remote_name: str, plate="Metadata/plate_1.gcode", timelapse=False, slot=None):
         if self.error:
             raise self.error
         self.received.append((remote_name, path.read_bytes()))

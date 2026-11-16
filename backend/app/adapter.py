@@ -13,8 +13,8 @@ class AdapterError(Exception):
 
 @runtime_checkable
 class PrinterAdapter(Protocol):
-    def send_print(self, local_path: Path, remote_name: str, plate: str = ..., timelapse: bool = False) -> bool:
-        """Transfer a sliced job and start it. True once the printer reports it started. Raises AdapterError."""
+    def send_print(self, local_path: Path, remote_name: str, plate: str = ..., timelapse: bool = False, slot: int | None = None) -> bool:
+        """Transfer a sliced job and start it, feeding from AMS `slot` if given. True once the printer reports it started. Raises AdapterError."""
 
     def control(self, action: str) -> bool:
         """Pause, resume or stop the running print ("pause" | "resume" | "stop"). True once the printer reports it. Raises AdapterError."""

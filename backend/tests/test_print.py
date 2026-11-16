@@ -95,6 +95,13 @@ def test_use_ams_follows_whether_the_printer_has_one(ftps, bundle):
     link.send_print(bundle, "b.gcode.3mf")
     p = link.client.published[-1][1]["print"]
     assert p["use_ams"] is True and p["ams_mapping"] == [2]
+    store.printers.update(pid, status={"state": "IDLE", "ams": [{"slot": 2, "type": "PLA", "color": "#fff", "remain": 90},
+                                                                {"slot": 3, "type": "PLA", "color": "#f00", "remain": 90}]})
+    link.send_print(bundle, "c.gcode.3mf", slot=3)                       # the tray holding the chosen colour
+    assert link.client.published[-1][1]["print"]["ams_mapping"] == [3]
+    store.printers.update(pid, status={**store.printers.get(pid)["status"], "state": "IDLE"})
+    link.send_print(bundle, "d.gcode.3mf", slot=254)                     # the external spool, beside an AMS
+    assert link.client.published[-1][1]["print"]["use_ams"] is False
 
 
 def test_survives_control_channel_drop_after_transfer(tmp_path, bundle):

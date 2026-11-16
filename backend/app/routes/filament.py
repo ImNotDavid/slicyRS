@@ -39,6 +39,12 @@ def list_spools(user: dict = User):
     return {"spools": [filament.public(s) for s in spools], "totals": filament.totals()}
 
 
+@router.get("/api/filament/loaded")
+def loaded_now(user: dict = User):
+    """Materials and colours loaded in the pool's printers right now (everyone: the Workspace offers only these)."""
+    return filament.loaded(user)
+
+
 @router.post("/api/filament/spools")
 def add_spool(body: SpoolIn, user: dict = User):
     _staff(user)

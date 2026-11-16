@@ -21,7 +21,7 @@ STATIC_INCOMPATIBLE: dict[str, set[str]] = {
     "High Temp Plate": set(),
     "Textured PEI Plate": set(),
 }
-STATIC_EXCEPTIONS: dict[tuple[str, str], set[str]] = {("H2D", "Engineering Plate"): set()}
+STATIC_EXCEPTIONS: dict[tuple[str, str], set[str]] = {("H2D", "Engineering Plate"): set(), ("P2S", "Engineering Plate"): set()}
 
 
 @lru_cache(maxsize=512)

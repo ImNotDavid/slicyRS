@@ -69,7 +69,7 @@ def test_every_printer_gets_its_real_start_gcode(engine, model):  # noqa: F811
 
 
 @pytestmark_real
-@pytest.mark.parametrize("model", ["A1 mini", "A1", "P1S", "X1C", "H2D"])
+@pytest.mark.parametrize("model", ["A1 mini", "A1", "P1S", "P2S", "X1C", "H2D"])
 def test_sliced_file_starts_with_the_printers_real_routine(engine, tmp_path, model):  # noqa: F811
     r = engine.run(tmp_path, FIX / "cube_binary.stl", model, "0.20mm Standard", "PLA", {"curr_bed_type": "Textured PEI Plate"})
     lines = (tmp_path / "model.gcode").read_text(errors="ignore").splitlines()

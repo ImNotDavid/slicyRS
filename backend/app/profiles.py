@@ -1,6 +1,7 @@
 """Resolve OrcaSlicer BBL preset JSONs (which use `inherits`) into flat dicts
 that `orca-slicer --load-settings` accepts."""
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -79,11 +80,42 @@ def machine_name(machine_04: str, nozzle: float) -> str | None:
     return find(machine_04.replace("0.4 nozzle", f"{_nozzle_tag(nozzle)} nozzle"))
 
 
+OWN_PROFILES = {"P2S"}   # families whose own profiles are always used: by layer height, else the nearest one (layer height then set)
+
+
+def _own_process(p: dict[str, Any], suffix: str) -> str | None:
+    """The family's own profile for a preset: same layer height (same variant word, then Standard, then any), else the nearest
+    layer height below it, else the nearest above. Owner decision for the P2S: e.g. 0.28 mm Extra Draft uses its 0.24 mm Standard
+    profile with the layer height set to 0.28 mm (slicer.py sets the preset's layer height on every slice)."""
+    nozzle = p["nozzle"]
+    tail = f" @BBL {suffix}" + ("" if nozzle == 0.4 else f" {_nozzle_tag(nozzle)} nozzle")
+    mine = [n for n in _index() if n.endswith(tail) and re.match(r"^\d\.\d\dmm ", n)]
+    if not mine:
+        return None
+    height = lambda n: float(n.split("mm", 1)[0])   # noqa: E731
+    want = p["layer_height"]
+    same = sorted(n for n in mine if abs(height(n) - want) < 1e-6)
+    variant = p["label"].split(" ", 1)[1]
+    for w in (variant, "Standard"):
+        hit = next((n for n in same if n.startswith(f"{want:.2f}mm {w}{tail}") or n == f"{want:.2f}mm {w}{tail}"), None)
+        if hit:
+            return hit
+    if same:
+        return same[0]
+    below = [n for n in mine if height(n) < want]
+    pool = below or mine
+    best = max(height(n) for n in pool) if below else min(height(n) for n in pool)
+    near = sorted(n for n in pool if abs(height(n) - best) < 1e-6)
+    return next((n for n in near if " Standard @" in n), near[0])
+
+
 def process_name(preset: str, process_suffix: str) -> str | None:
     """The slicer's process profile for one of our presets on a printer family. The preset names the nozzle and layer height."""
     from .catalog import DEFAULT_NOZZLE, PROCESS_PRESETS
     p = next((x for x in PROCESS_PRESETS if x["id"] == preset), None)
     nozzle = p["nozzle"] if p else DEFAULT_NOZZLE
+    if p and process_suffix in OWN_PROFILES and (own := _own_process(p, process_suffix)):
+        return own
     if nozzle == DEFAULT_NOZZLE:
         return find(f"{preset} @BBL {process_suffix}", f"{preset} @BBL X1C")
     layer = f"{p['layer_height']:.2f}mm"

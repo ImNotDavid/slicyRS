@@ -13,7 +13,7 @@ import numpy as np
 import trimesh
 
 from . import profiles
-from .catalog import FIELDS, FILAMENTS, PRINTER_MODELS, preset_nozzle
+from .catalog import FIELDS, FILAMENTS, PRINTER_MODELS, PROCESS_PRESETS, preset_nozzle
 from .config import ORCA_BIN, SLICE_TIMEOUT_S, SLICER_MODE
 from .meshio import load_mesh
 
@@ -114,6 +114,9 @@ def _write_settings(workdir: Path, printer_model: str, preset: str, filament: st
         raise SliceError(f"Missing OrcaSlicer presets (machine={machine}, process={process}, filament={fil})")
 
     process_json = profiles.resolve(process)
+    preset_h = next((p["layer_height"] for p in PROCESS_PRESETS if p["id"] == preset), None)
+    if preset_h is not None and "layer_height" not in overrides:
+        process_json["layer_height"] = _orca_value("layer_height", preset_h)   # the profile may be a nearby height (P2S, OWN_PROFILES)
     for k, v in overrides.items():
         process_json[k] = _orca_value(k, v)
     machine_json, fil_json = profiles.resolve(machine), profiles.resolve(fil)

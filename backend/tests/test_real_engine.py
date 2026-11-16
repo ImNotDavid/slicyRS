@@ -29,7 +29,7 @@ def engine(monkeypatch):
     profiles._index.cache_clear()
 
 
-@pytest.mark.parametrize("printer", ["A1 mini", "P1S", "X1C", "H2D"])
+@pytest.mark.parametrize("printer", ["A1 mini", "P1S", "P2S", "X1C", "H2D"])
 @pytest.mark.parametrize("filament", ["PLA", "PETG", "ABS", "TPU"])
 def test_every_printer_and_filament_slices(engine, tmp_path, printer, filament):
     r = engine.run(tmp_path, FIX / "cube_binary.stl", printer, "0.20mm Standard", filament, {"curr_bed_type": "Textured PEI Plate"})
@@ -249,3 +249,13 @@ def test_a_plate_laid_out_by_hand_prints_each_part_where_it_was_put(engine, tmp_
     import re
     xs = [float(m.group(1)) for line in text.splitlines() if line.startswith("G1") and " E" in line for m in [re.search(r" X([-\d.]+)", line)] if m]
     assert min(xs) == pytest.approx(rx - 40 - 20, abs=1.5) and max(xs) == pytest.approx(rx + 40 + 15, abs=1.5)     # cube 40 wide, sphere 30 wide
+
+
+@pytest.mark.parametrize("preset,height", [("0.28mm Extra Draft", 0.28), ("0.56mm Standard @0.8", 0.56)])
+def test_a_p2s_without_its_own_profile_for_a_height_uses_its_nearest_and_prints_that_height(engine, tmp_path, preset, height):
+    """Owner decision: on the P2S, 0.28 mm Extra Draft uses the P2S 0.24 mm profile with the layer height set to 0.28 mm."""
+    from app import profiles
+    assert profiles.process_name(preset, "P2S").endswith("@BBL P2S" + ("" if "@" not in preset else " 0.8 nozzle"))
+    engine.run(tmp_path, FIX / "cube_binary.stl", "P2S", preset, "PLA", {"curr_bed_type": "Textured PEI Plate"})
+    text = (tmp_path / "model.gcode").read_text(errors="ignore")
+    assert f"; layer_height = {height:g}" in text or f"; layer_height = {height}" in text

@@ -95,6 +95,7 @@ export type QuotaPart = { allowance: number; used: number; left: number; share: 
 export type Period = { id?: string; name: string; start: number; end: number };
 export type QuotaCycle = "week" | "month" | "term";
 export type QuotaStatus = { group_id: string; group: string; period: Period | null; cycle: QuotaCycle; used: { hours: number; grams: number }; extra: { hours: number; grams: number }; hours: QuotaPart; grams: QuotaPart };
+export type LoadedMaterial = { material: string; colours: { colour: string; printers: string[] }[] };
 export type CostRow = { key: string; name: string; prints: number; grams: number; cost: number; unpriced_g: number };
 export type CostReport = { start: number; end: number; prints: number; grams: number; cost: number; unpriced_g: number; by_person: CostRow[]; by_group: CostRow[];
   prices: Record<string, number>; periods: Period[] };
@@ -276,6 +277,7 @@ export const api = {
   reject: (id: string, note: string) => post(`/api/jobs/${id}/reject`, { note }).then(j<Job>),
   costs: (q: { period?: string; start?: number; end?: number }) => fetch(`/api/admin/costs?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`).then(j<CostReport>),
   setPrices: (per_kg: Record<string, number | null>) => send("PUT", "/api/admin/costs/prices", { per_kg }).then(j<Record<string, number>>),
+  loadedFilament: () => fetch("/api/filament/loaded").then(j<LoadedMaterial[]>),
   markReady: (id: string) => post(`/api/printers/${id}/ready`).then(j<Printer>),
   bedClear: (id: string, c: { bed_empty: boolean; plate_matches: boolean; filament_matches: boolean; cause?: string | null; cause_note?: string }) => post(`/api/printers/${id}/bed/clear`, c).then(j<Bed>),
   bedOccupied: (id: string) => post(`/api/printers/${id}/bed/occupied`).then(j<Bed>),

@@ -68,7 +68,7 @@ You can still override the choice from the printer card.
 
 Besides slicing for a printer you pick (**SLICE**), a part can be **submitted to the pool** (**SUBMIT TO POOL**). The server then:
 
-1. saves a printer-independent job and slices a **preview** (estimated time, filament, layers; X1C profile until a P2S model is added);
+1. saves a printer-independent job and slices a **preview** (estimated time, filament, layers; on the P2S, the reference printer);
 2. forecasts when it would be ready; an optional **pickup time** that the forecast calls unlikely is refused, with the earliest likely time offered;
 3. keeps it in one shared pool; a printer that is idle, enabled, not holding another job and whose **build plate is confirmed clear** takes the best job it can
    print (jobs at risk of missing their pickup time first, then submission order), slices it for that printer, and optionally starts it (**auto start**);

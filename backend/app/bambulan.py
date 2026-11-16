@@ -127,11 +127,16 @@ class LanLink:
         ams_units = (report.get("ams") or {}).get("ams")
         if ams_units is not None:
             update["ams"] = _parse_ams(ams_units)
+        if isinstance(report.get("vt_tray"), dict):          # the external spool holder (A1 mini, or a spool beside an AMS)
+            update["spool"] = _parse_tray(report["vt_tray"], EXTERNAL_SLOT)
         if update:
             self.on_status(self.id, update)
 
-    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode", timelapse: bool = False) -> bool:
+    def send_print(self, local_path: Path, remote_name: str, plate: str = "Metadata/plate_1.gcode", timelapse: bool = False,
+                   slot: int | None = None) -> bool:
         """Upload a sliced .gcode.3mf over FTPS, then start it over MQTT. Returns True once the printer reports it started.
+        `slot` is the AMS slot holding the job's filament and colour (EXTERNAL_SLOT: the external spool); None keeps the old
+        behaviour (the first AMS slot, or the external spool on a printer without an AMS).
 
         Raises PrinterError with a user-readable message on any failure.
         """
@@ -143,7 +148,7 @@ class LanLink:
         self._upload(local_path, remote_name)
         ams = self.status_of().get("ams") or []
         bed = BED_TYPES.get(self.bed_type_of() or DEFAULT_BED_TYPE, "textured_plate")
-        use_ams = bool(ams)  # printers without an AMS (e.g. A1 mini) print from the external spool
+        use_ams = bool(ams) and slot != EXTERNAL_SLOT  # printers without an AMS (e.g. A1 mini) print from the external spool
         cmd = {"print": {
             "sequence_id": "0", "command": "project_file", "param": plate,
             "project_id": "0", "profile_id": "0", "task_id": "0", "subtask_id": "0",
@@ -153,7 +158,7 @@ class LanLink:
             "layer_inspect": True, "use_ams": use_ams, "bed_type": bed,
         }}
         if use_ams:
-            cmd["print"]["ams_mapping"] = [ams[0]["slot"]]
+            cmd["print"]["ams_mapping"] = [slot if slot is not None and any(t["slot"] == slot for t in ams) else ams[0]["slot"]]
         known_hms = {_hms_key(e) for e in self.status_of().get("hms", [])}
         info = self.client.publish(f"device/{self.serial}/request", json.dumps(cmd), qos=1)
         try:
@@ -364,15 +369,20 @@ def _plate_md5(bundle: Path, plate: str) -> str:
         return ""
 
 
+EXTERNAL_SLOT = 254      # Bambu's id for the external spool holder
+
+
+def _parse_tray(tray: dict[str, Any], slot: int) -> dict[str, Any]:
+    ttype = AMS_TYPE_ALIASES.get(tray.get("tray_type", ""), tray.get("tray_type", ""))
+    return {"slot": slot, "type": ttype, "color": "#" + (tray.get("tray_color") or "888888")[:6].lower(), "remain": tray.get("remain", 100)}
+
+
 def _parse_ams(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for unit in units:
         base = int(unit.get("id", 0)) * 4
         for tray in unit.get("tray", []):
-            ttype = AMS_TYPE_ALIASES.get(tray.get("tray_type", ""), tray.get("tray_type", ""))
-            out.append({"slot": base + int(tray.get("id", 0)), "type": ttype,
-                        "color": "#" + tray.get("tray_color", "888888")[:6],
-                        "remain": tray.get("remain", 100)})
+            out.append(_parse_tray(tray, base + int(tray.get("id", 0))))
     return out
 
 

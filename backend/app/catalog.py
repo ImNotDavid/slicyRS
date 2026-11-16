@@ -17,6 +17,9 @@ PRINTER_MODELS: dict[str, dict[str, Any]] = {
             "process_suffix": "X1C", "machine": "Bambu Lab P1P 0.4 nozzle", "max_nozzle_c": 300},
     "P1S": {"vendor": "Bambu Lab", "bed": (256, 256, 256), "enclosed": True, "ams": "ams",
             "process_suffix": "X1C", "machine": "Bambu Lab P1S 0.4 nozzle", "max_nozzle_c": 300},
+    # P2S: the slicer ships its own profiles, so a missing layer height uses its nearest own profile (profiles.OWN_PROFILES)
+    "P2S": {"vendor": "Bambu Lab", "bed": (256, 256, 256), "enclosed": True, "ams": "ams",
+            "process_suffix": "P2S", "machine": "Bambu Lab P2S 0.4 nozzle", "max_nozzle_c": 300},
     "X1C": {"vendor": "Bambu Lab", "bed": (256, 256, 256), "enclosed": True, "ams": "ams",
             "process_suffix": "X1C", "machine": "Bambu Lab X1 Carbon 0.4 nozzle", "max_nozzle_c": 300},
     "X1E": {"vendor": "Bambu Lab", "bed": (256, 256, 256), "enclosed": True, "ams": "ams",

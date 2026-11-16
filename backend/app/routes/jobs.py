@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from .. import allocator, assign, forecast, jobstate, meshio, multipart, pipeline, printing, slicer, store, thumbnail
 from .. import bedstate, permissions
 from .. import groups as groups_mod
+from .. import filament as filament_mod
 from ..auth import audit
 from ..defaults import effective_overrides
 from ..catalog import ALLOWED_SETTING_KEYS, DEFAULT_BED_TYPE, FILAMENTS, PROCESS_PRESETS, preset_nozzle, validate_settings
@@ -410,6 +411,9 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
     est_g = (job.get("preview") or {}).get("filament_g") or (job.get("stats") or {}).get("filament_g") or 0
     if (why := quotas.check(user, gid, (est or 0) / 3600, float(est_g))):
         raise HTTPException(409, why)
+    colour = (body.colour or "any").lower()
+    if colour != "any" and not filament_mod.is_loaded(job["filament"], colour, gid):
+        raise HTTPException(409, f"No printer has {job['filament']} in that colour loaded any more. Pick another colour.")
     store.jobs.update(job_id, group_id=gid, pinned_printer=pinned)
     job = store.jobs.get(job_id)
     now = time.time()
@@ -427,7 +431,7 @@ def submit_job(job_id: str, body: SubmitIn, user: dict = User):
     why = approvals.reasons(user, job, gid)
     jobstate.transition(job_id, "awaiting_approval" if why else "pooled", user["email"], state="awaiting_approval" if why else "pooled",
                         pooled=not why, draft=False, submitted_at=now, pickup_by=body.pickup_by,
-                        colour=body.colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False,
+                        colour=colour, auto_start=True, allow_batching=body.allow_batching, at_risk=False,
                         timelapse=body.timelapse)
     if why:
         approvals.request(store.jobs.get(job_id), why, user)

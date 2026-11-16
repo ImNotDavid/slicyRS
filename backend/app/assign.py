@@ -51,7 +51,9 @@ def nozzle_of(printer: dict[str, Any]) -> float:
 
 
 def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE,
-             offset: tuple[float, float] = (0.0, 0.0)) -> Candidate:
+             offset: tuple[float, float] = (0.0, 0.0), colour: str | None = None) -> Candidate:
+    """`colour` (a hex the person chose from what is loaded) must be loaded on the printer right now; with `assume_available`
+    (could it ever print this?) a colour that is not loaded is only a reason to wait, not a blocker."""
     model = PRINTER_MODELS.get(printer["model"])
     c = Candidate(printer["id"], printer["name"], printer["model"], True)
     if model is None:
@@ -102,6 +104,11 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     if (why_out := unavailable(printer)) and not printer.get("assume_available"):
         c.eligible = False
         c.blockers.append(why_out)
+    want = colour if colour and colour != "any" else None
+    slot = loaded_slot(status, filament, want)
+    if want and slot is None and not printer.get("assume_available"):
+        c.eligible = False
+        c.blockers.append(f"{filament} in {want} is not loaded")
     if not c.eligible:
         return c
 
@@ -118,14 +125,13 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
 
     score -= 8 * printer.get("queue_depth", 0)
 
-    slot = _match_loaded(status.get("ams", []), filament)
-    if not status.get("ams") and not fil.get("external_spool"):
-        # No AMS (e.g. A1 mini): the printer reports nothing about the external spool, so we cannot tell what is loaded.
-        c.reasons.append(f"No AMS — uses the external spool; {filament} must be loaded there")
-    elif slot is not None:
+    if slot is not None:
         score += 30
         c.loaded_slot = slot
-        c.reasons.append(f"{filament} already loaded in AMS slot {slot + 1}")
+        c.reasons.append(f"{filament} already loaded " + ("on the external spool" if slot == EXTERNAL_SLOT else f"in AMS slot {slot + 1}"))
+    elif not status.get("ams") and not fil.get("external_spool"):
+        # No AMS (e.g. A1 mini): the printer reports nothing about the external spool, so we cannot tell what is loaded.
+        c.reasons.append(f"No AMS — uses the external spool; {filament} must be loaded there")
     elif fil.get("external_spool"):
         c.reasons.append("Load on external spool")
     else:
@@ -142,16 +148,35 @@ def evaluate(printer: dict[str, Any], size: tuple[float, float, float], filament
     return c
 
 
-def _match_loaded(ams: list[dict[str, Any]], filament: str) -> int | None:
-    for t in ams:
-        if t.get("type") == filament and t.get("remain", 100) > 5:
+EXTERNAL_SLOT = 254     # the external spool holder (same id as bambulan.EXTERNAL_SLOT)
+
+
+def trays(status: dict[str, Any]) -> list[dict[str, Any]]:
+    """What a printer reports as loaded: its AMS trays, then its external spool. Empty trays and nearly empty spools are left
+    out; a spool without an RFID chip reports remain -1 (unknown), which counts as loaded."""
+    out = [*(status.get("ams") or []), *([status["spool"]] if isinstance(status.get("spool"), dict) else [])]
+    return [t for t in out if t.get("type") and not (0 <= (t.get("remain") if t.get("remain") is not None else 100) <= 5)]
+
+
+def same_colour(a: str | None, b: str | None) -> bool:
+    return (a or "").lower()[:7] == (b or "").lower()[:7]
+
+
+def loaded_slot(status: dict[str, Any], filament: str, colour: str | None = None) -> int | None:
+    """The slot holding this filament (and colour, if given), AMS before the external spool, or None."""
+    for t in trays(status):
+        if t["type"] == filament and (colour is None or same_colour(t.get("color"), colour)):
             return t["slot"]
     return None
 
 
+def _match_loaded(ams: list[dict[str, Any]], filament: str) -> int | None:      # kept for older callers
+    return loaded_slot({"ams": ams}, filament)
+
+
 def rank(printers: list[dict[str, Any]], size: tuple[float, float, float], filament: str, nozzle: float = DEFAULT_NOZZLE,
-         offset: tuple[float, float] = (0.0, 0.0)) -> list[Candidate]:
-    cands = [evaluate(p, size, filament, nozzle, offset) for p in printers]
+         offset: tuple[float, float] = (0.0, 0.0), colour: str | None = None) -> list[Candidate]:
+    cands = [evaluate(p, size, filament, nozzle, offset, colour) for p in printers]
     return sorted(cands, key=lambda c: (not c.eligible, -c.score))
 
 
