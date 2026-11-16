@@ -30,9 +30,15 @@ list several addresses with commas if people will use more than one (`SITE_ADDRE
 
 Options A and B use Caddy: set `COMPOSE_PROFILES=caddy` in `.env`.
 
-**T) A Cloudflare Tunnel.** Cloudflare does HTTPS and no ports are opened to the internet; Caddy is not used (leave
-`COMPOSE_PROFILES` empty). The app listens on plain HTTP at `APP_BIND:APP_PORT` (default `127.0.0.1:8000`):
-- cloudflared on this machine: keep the default and set the tunnel's public hostname service to `http://localhost:8000`;
+**T) A Cloudflare Tunnel.** Cloudflare does HTTPS and no ports are opened to the internet; Caddy is not used.
+- simplest, the stack runs cloudflared: `COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN=<the tunnel's token>` in `.env`, and the
+  public hostname's Service URL `http://app:8000` (`app` is the app's name inside the stack; `slicyrs_default` is the network's
+  name and does not work as an address);
+- cloudflared in its own container elsewhere on the server: attach it to this stack's network (`slicyrs_default`) and use
+  `http://app:8000`;
+
+Otherwise the app listens on plain HTTP at `APP_BIND:APP_PORT` (default `127.0.0.1:8000`; leave `COMPOSE_PROFILES` empty):
+- cloudflared installed directly on the server: keep the default and set the Service URL to `http://localhost:8000`;
 - cloudflared on another machine: set `APP_BIND` to this machine's LAN address (for example `192.168.1.111`), point the tunnel at
   `http://192.168.1.111:8000`, and let only the cloudflared machine reach that port (firewall), since it is plain HTTP.
 
