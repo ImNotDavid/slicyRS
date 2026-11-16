@@ -1,6 +1,7 @@
 # Rehearsal overlay: runs the whole production stack on one PC with HTTPS from Caddy's internal certificate authority
 # and a mail catcher (Mailpit) instead of a real mail provider, on unprivileged ports.
 #   docker compose -f docker-compose.yml -f deploy/docker-compose.rehearsal.yml --env-file deploy/rehearsal.env up -d --build
+# Needs the shared-tunnel network once: docker network create shared-tunnel
 # Sign-in codes appear in Mailpit: http://localhost:8025
 services:
   app:

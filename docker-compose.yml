@@ -1,13 +1,11 @@
-# Production stack for a Linux host on the printers' network: the app (slicer included).
+# Production stack: the app (slicer included), reached through the Cloudflare Tunnel on the existing "shared-tunnel" network.
 # Setup: ./deploy/install.sh   (or copy deploy/.env.example to .env, fill it in, then: docker compose up -d --build)
 # Guide: deploy/DEPLOY.md
 #
-# Ways in, chosen by COMPOSE_PROFILES in .env:
-#   - Cloudflare Tunnel run by this stack (COMPOSE_PROFILES=tunnel, TUNNEL_TOKEN set): the tunnel's Service URL is http://app:8000.
-#   - Cloudflare Tunnel run elsewhere (COMPOSE_PROFILES empty): cloudflared on this host uses http://localhost:8000; a
-#     cloudflared container in another stack must join this stack's network (<project>_default) and use http://app:8000; one on
-#     another machine needs APP_BIND set to this machine's LAN address and http://<that address>:<APP_PORT>.
-#   - Caddy (COMPOSE_PROFILES=caddy): Caddy does HTTPS on ports 80 and 443 for a DNS name or a LAN address (SITE_ADDRESS, CADDYFILE).
+# The cloudflared container on the "shared-tunnel" network reaches the app at http://slicyrs:8000 (set that as the tunnel's
+# Service URL). Cloudflare does HTTPS; no port is published on the host. The network must exist before starting
+# (docker network create shared-tunnel).
+# Optional: COMPOSE_PROFILES=caddy in .env adds Caddy for HTTPS on ports 80 and 443 instead (SITE_ADDRESS, CADDYFILE).
 services:
   app:
     build: .
@@ -15,18 +13,10 @@ services:
     environment:
       SLICY_DATA_DIR: /data
     volumes: ["slicyrs-data:/data"]
-    ports: ["${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"]   # where cloudflared reaches the app (see above)
-    restart: unless-stopped
-    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
-
-  cloudflared:
-    profiles: ["tunnel"]
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}     # from Cloudflare Zero Trust > Networks > Tunnels > your tunnel (cloudflared connector)
-    depends_on:
-      app: { condition: service_healthy }
+    networks:
+      default: {}
+      shared-tunnel:
+        aliases: [slicyrs]       # a name other stacks on the shared network will not also use ("app" is too common)
     restart: unless-stopped
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
 
@@ -46,6 +36,10 @@ services:
       app: { condition: service_healthy }
     restart: unless-stopped
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
+networks:
+  shared-tunnel:
+    external: true
 
 volumes:
   slicyrs-data:

@@ -42,6 +42,7 @@ if [ "$caddy" = 1 ] && echo "$first" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+
 fi
 [ "$problems" = 0 ] || { echo "Fix the items above in .env and run this script again."; exit 1; }
 
+docker network inspect shared-tunnel >/dev/null 2>&1 || { echo "Creating the Docker network shared-tunnel"; docker network create shared-tunnel >/dev/null; }
 docker compose config -q
 docker compose up -d --build
 
@@ -54,11 +55,7 @@ done
 echo
 [ "$state" = "healthy" ] || { echo "The app did not become healthy. Look at: docker compose logs app"; exit 1; }
 
-bind=$(val APP_BIND); port=$(val APP_PORT)
-case ",$(val COMPOSE_PROFILES)," in
-  *,tunnel,*) echo "Cloudflare Tunnel runs in this stack: set the tunnel's Service URL to http://app:8000" ;;
-  *) [ "$caddy" = 1 ] || echo "No Caddy: point the Cloudflare Tunnel at http://${bind:-127.0.0.1}:${port:-8000}" ;;
-esac
+[ "$caddy" = 1 ] || echo "Cloudflare Tunnel: set the tunnel's Service URL to http://slicyrs:8000 (the app is on the shared-tunnel network)."
 echo "Running. Open $(val PUBLIC_URL) and sign in with an emailed code sent to: $(val ADMIN_EMAILS)"
 if [ "$caddy" = 1 ] && [ "$(val CADDYFILE)" = "Caddyfile.internal" ]; then
   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./slicyrs-root.crt 2>/dev/null \
