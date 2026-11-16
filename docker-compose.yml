@@ -1,6 +1,12 @@
-# Production stack for a Linux host on the printers' network: the app (slicer included) behind Caddy, which does HTTPS.
+# Production stack for a Linux host on the printers' network: the app (slicer included).
 # Setup: ./deploy/install.sh   (or copy deploy/.env.example to .env, fill it in, then: docker compose up -d --build)
 # Guide: deploy/DEPLOY.md
+#
+# Two ways in, chosen by COMPOSE_PROFILES in .env:
+#   - Cloudflare Tunnel (COMPOSE_PROFILES empty): Cloudflare does HTTPS; cloudflared forwards to the app over plain HTTP on
+#     APP_BIND:APP_PORT. With cloudflared on this host keep APP_BIND=127.0.0.1 (the default); with cloudflared on another
+#     machine set APP_BIND to this machine's LAN address and point the tunnel at http://<that address>:<APP_PORT>.
+#   - Caddy (COMPOSE_PROFILES=caddy): Caddy does HTTPS on ports 80 and 443 for a DNS name or a LAN address (SITE_ADDRESS, CADDYFILE).
 services:
   app:
     build: .
@@ -8,17 +14,18 @@ services:
     environment:
       SLICY_DATA_DIR: /data
     volumes: ["slicyrs-data:/data"]
+    ports: ["${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"]   # where cloudflared reaches the app (see above)
     restart: unless-stopped
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
-    # no published port: only Caddy reaches the app
 
   caddy:
+    profiles: ["caddy"]
     image: caddy:2
     ports: ["80:80", "443:443"]
     environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (a domain name, or an internal name or IP)}
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
       # certificate served to visitors who send no server name (anyone who types an IP address)
-      DEFAULT_SNI: ${DEFAULT_SNI:-${SITE_ADDRESS}}
+      DEFAULT_SNI: ${DEFAULT_SNI:-${SITE_ADDRESS:-localhost}}
     volumes:
       - ./deploy/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

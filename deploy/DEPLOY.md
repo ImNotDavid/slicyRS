@@ -28,6 +28,18 @@ This is the right choice until you have a DNS name. Use `CADDYFILE=Caddyfile.int
 list several addresses with commas if people will use more than one (`SITE_ADDRESS=slicyrs.lan, 192.168.1.50`; then also set
 `DEFAULT_SNI` to the IP, because browsers send no server name when you type an IP).
 
+Options A and B use Caddy: set `COMPOSE_PROFILES=caddy` in `.env`.
+
+**T) A Cloudflare Tunnel.** Cloudflare does HTTPS and no ports are opened to the internet; Caddy is not used (leave
+`COMPOSE_PROFILES` empty). The app listens on plain HTTP at `APP_BIND:APP_PORT` (default `127.0.0.1:8000`):
+- cloudflared on this machine: keep the default and set the tunnel's public hostname service to `http://localhost:8000`;
+- cloudflared on another machine: set `APP_BIND` to this machine's LAN address (for example `192.168.1.111`), point the tunnel at
+  `http://192.168.1.111:8000`, and let only the cloudflared machine reach that port (firewall), since it is plain HTTP.
+
+Set `PUBLIC_URL` to the tunnel's hostname (`https://slicer.example.org`) and `MAX_UPLOAD_MB=95`: Cloudflare refuses requests over
+100 MB on the Free and Pro plans. Printer gateways use the same `PUBLIC_URL` as `CORE_URL` (Cloudflare carries their
+WebSocket). If you add Cloudflare Access in front, add a bypass for paths starting with `/gateway`, or the gateways cannot connect.
+
 ## 2. Install
 
 On the server, in the project folder:

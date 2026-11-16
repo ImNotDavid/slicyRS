@@ -26,17 +26,18 @@ fi
 
 val() { grep -E "^$1=" .env | head -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 problems=0
-for k in SITE_ADDRESS PUBLIC_URL SECRET_KEY ADMIN_EMAILS SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM; do
+caddy=0; case ",$(val COMPOSE_PROFILES)," in *,caddy,*) caddy=1 ;; esac   # empty: a Cloudflare Tunnel does HTTPS instead
+for k in PUBLIC_URL SECRET_KEY ADMIN_EMAILS SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM $([ "$caddy" = 1 ] && echo SITE_ADDRESS); do
   [ -n "$(val "$k")" ] || { echo "  .env is missing a value for $k"; problems=1; }
 done
 case "$(val SITE_ADDRESS) $(val ADMIN_EMAILS) $(val SMTP_USER) $(val SMTP_PASSWORD) $(val SMTP_FROM)" in
   *example*|*your-*|*you@*) echo "  .env still has placeholder values (containing 'example', 'your-' or 'you@')"; problems=1 ;;
 esac
 case "$(val PUBLIC_URL)" in https://*) ;; *) echo "  PUBLIC_URL must start with https://"; problems=1 ;; esac
-[ "$(val PUBLIC_URL)" = "https://$(val SITE_ADDRESS)" ] || echo "  note: PUBLIC_URL is not exactly https://SITE_ADDRESS. That is fine for a custom port, otherwise sign-in will fail."
+[ "$caddy" = 0 ] || [ "$(val PUBLIC_URL)" = "https://$(val SITE_ADDRESS)" ] || echo "  note: PUBLIC_URL is not exactly https://SITE_ADDRESS. That is fine for a custom port, otherwise sign-in will fail."
 [ "$(val DEV_AUTH)" != "1" ] || { echo "  DEV_AUTH=1 is not allowed on a server"; problems=1; }
 first=$(echo "$(val SITE_ADDRESS)" | cut -d, -f1 | tr -d ' ' | sed 's/:.*//')
-if echo "$first" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && [ "$(val CADDYFILE)" != "Caddyfile.internal" ]; then
+if [ "$caddy" = 1 ] && echo "$first" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && [ "$(val CADDYFILE)" != "Caddyfile.internal" ]; then
   echo "  SITE_ADDRESS is an IP address, which needs CADDYFILE=Caddyfile.internal (an IP cannot get a public certificate)"; problems=1
 fi
 [ "$problems" = 0 ] || { echo "Fix the items above in .env and run this script again."; exit 1; }
@@ -53,8 +54,10 @@ done
 echo
 [ "$state" = "healthy" ] || { echo "The app did not become healthy. Look at: docker compose logs app"; exit 1; }
 
+bind=$(val APP_BIND); port=$(val APP_PORT)
+[ "$caddy" = 1 ] || echo "No Caddy (COMPOSE_PROFILES is empty): point the Cloudflare Tunnel at http://${bind:-127.0.0.1}:${port:-8000}"
 echo "Running. Open $(val PUBLIC_URL) and sign in with an emailed code sent to: $(val ADMIN_EMAILS)"
-if [ "$(val CADDYFILE)" = "Caddyfile.internal" ]; then
+if [ "$caddy" = 1 ] && [ "$(val CADDYFILE)" = "Caddyfile.internal" ]; then
   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./slicyrs-root.crt 2>/dev/null \
     && echo "Internal certificate authority saved as ./slicyrs-root.crt: install it on each user's device (deploy/DEPLOY.md)."
 fi
